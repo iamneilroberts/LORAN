@@ -1,0 +1,120 @@
+/*
+ * Visual identity. Tailwind handles layout only - everything that makes this look like
+ * a mission-control terminal rather than a web app lives here.
+ *
+ * Rules from CLAUDE.md, enforced by convention:
+ *   near-black background, one warm amber, one cool cyan, monospace throughout,
+ *   uppercase letterspaced labels at small sizes, 1px borders with bracket corners,
+ *   translucent panels (never opaque cards), numerics right-aligned against left labels,
+ *   no radius beyond 2px, no drop shadows, no gradients except in the globe itself.
+ */
+
+:root {
+  --bg: #05070a;
+  --bg-panel: rgba(8, 11, 16, 0.82);
+  --line: #1b2530;
+  --line-bright: #243040;
+
+  --amber: #ffb000;      /* alerts, warnings, MILITARY contacts. Nothing else. */
+  --cyan: #5fd7e0;       /* civil / nominal data */
+  --txt: #c8d6e0;
+  --dim: #5a6b7a;
+  --off: #3a4652;
+
+  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --pad: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- small uppercase label ---- */
+.lbl {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* ---- panel: 1px border, bracket corners, translucent ---- */
+.panel {
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  backdrop-filter: blur(2px);
+  position: relative;
+  border-radius: 0;
+}
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+}
+.panel::before {
+  top: -1px; left: -1px;
+  border-top: 1px solid var(--cyan);
+  border-left: 1px solid var(--cyan);
+}
+.panel::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 1px solid var(--cyan);
+  border-right: 1px solid var(--cyan);
+}
+.panel--alert::before, .panel--alert::after { border-color: var(--amber); }
+
+.panel-h {
+  padding: 7px var(--pad);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* ---- label/value row: labels left, numerics right, tabular ---- */
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 2px var(--pad);
+}
+.row > span:first-child {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.row > span:last-child {
+  font-variant-numeric: tabular-nums;
+  color: var(--txt);
+}
+.row--mil > span:last-child { color: var(--amber); }
+.row--dim > span:last-child { color: var(--dim); }
+
+/* ---- status chips ---- */
+.chip { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dot { width: 5px; height: 5px; background: var(--cyan); }
+.dot--warn { background: var(--amber); }
+.dot--off { background: var(--off); }
+
+/* ---- proportional bar ---- */
+.bar { height: 3px; background: var(--cyan); opacity: 0.55; }
+
+/* Cesium's default chrome is a consumer map widget. Remove all of it. */
+.cesium-viewer-bottom,
+.cesium-widget-credits { display: none !important; }
+.cesium-widget canvas { outline: none; }
