@@ -20,7 +20,10 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { AMBER, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { createAircraftLayer } from "./aircraftLayer";
-import { FT_TO_M, matchesFilter, useStore, type Aircraft } from "../state/store";
+import { createPlacesLayer } from "./placesLayer";
+import {
+  FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
+} from "../state/store";
 
 const DATUM_PREFIX = "datum::";
 const TRACK_PREFIX = "track::";
@@ -82,7 +85,10 @@ export default function Globe() {
     scene.imageryLayers.addImageryProvider(new DarkBathymetryProvider());
 
     const layer = createAircraftLayer(scene);
+    // Static ground reference, built once here and thereafter only shown or hidden (D-032).
+    const places = createPlacesLayer(scene);
     const s0 = useStore.getState();
+    places.setShow(s0.showPlaces);
 
     /* --- open in perspective, not plan view --- */
     camera.setView({
@@ -132,9 +138,18 @@ export default function Globe() {
     /* --- per-frame: dead reckoning, planes, FPS --- */
     let frames = 0;
     let fpsMark = performance.now();
+    let lastPitch = CMath.toDegrees(camera.pitch);
 
     const onTick = () => {
       const st = useStore.getState();
+
+      // Published only when it actually moves a degree. Writing camera pitch to the store on
+      // every frame would wake every subscriber 30 times a second for nothing.
+      const pitchDeg = CMath.toDegrees(camera.pitch);
+      if (Math.abs(pitchDeg - lastPitch) >= 1) {
+        lastPitch = pitchDeg;
+        useStore.getState().setCameraPitch(pitchDeg);
+      }
       const elapsedS = st.lastFetchWall ? (Date.now() - st.lastFetchWall) / 1000 : 0;
 
       const sel: Aircraft | undefined = st.selectedHex
@@ -201,12 +216,24 @@ export default function Globe() {
       });
     });
 
+    /* --- places: static, so only ever shown or hidden --- */
+    let lastShowPlaces = s0.showPlaces;
+    const unsubPlaces = useStore.subscribe((st) => {
+      if (st.showPlaces === lastShowPlaces) return;
+      lastShowPlaces = st.showPlaces;
+      places.setShow(st.showPlaces);
+    });
+
     /* --- planes rebuild only when their inputs change --- */
     let lastKey = "";
     const unsub = useStore.subscribe((st) => {
       const sel = st.selectedHex ? st.aircraft.find((a) => a.hex === st.selectedHex) : undefined;
+      // Pitch enters the key as a boolean, not a number: the slice is either drawn or it is
+      // not, and keying on the raw angle would rebuild it on every degree of camera movement.
+      const perspective = hasSlicePerspective(st.cameraPitchDeg);
       const key = [
         st.showDatum,
+        perspective,
         st.datumRadiusNm,
         sel?.hex ?? "",
         sel?.alt_ft ?? "",
@@ -222,7 +249,12 @@ export default function Globe() {
       //
       // The slice is not cleared and rebuilt: it moves with the selected contact on every
       // poll, and destroying its label that often corrupts Cesium's glyph atlas (upsertPlane).
-      if (!(st.showDatum && sel?.alt_ft != null)) {
+      //
+      // It is also suppressed when the camera has no useful perspective on it (D-034): from
+      // plan view it is a sheet over the whole display, from the horizon a band across it.
+      // Co-altitude amber on the icons is NOT suppressed - that is the readout which still
+      // works at those angles, and it is the reason losing the slice geometry costs nothing.
+      if (!(st.showDatum && perspective && sel?.alt_ft != null)) {
         clearByPrefix(viewer, DATUM_PREFIX);
       } else {
         upsertPlane(viewer, {
@@ -245,9 +277,11 @@ export default function Globe() {
       window.clearTimeout(depthTimer);
       unsub();
       unsubTrack();
+      unsubPlaces();
       scene.postRender.removeEventListener(onTick);
       handler.destroy();
       layer.destroy();
+      places.destroy();
       if (!viewer.isDestroyed()) viewer.destroy();
       viewerRef.current = null;
     };

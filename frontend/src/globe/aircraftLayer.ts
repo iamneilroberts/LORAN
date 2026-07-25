@@ -138,6 +138,12 @@ const scratchA = new Cartesian2();
 const scratchB = new Cartesian2();
 
 /**
+ * How deep a click drills looking for a contact. Bounded because each level is another
+ * render pass; 8 is well past the worst realistic stack of place marker, label and slice.
+ */
+const DRILL_LIMIT = 8;
+
+/**
  * Billboard rotation that points the nose along the contact's on-screen direction of travel.
  *
  * Cesium billboard rotation is counter-clockwise from screen up; window coordinates have y
@@ -291,10 +297,23 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
     }
   }
 
+  /*
+   * Which contact is under the cursor, or null for "nothing selectable here".
+   *
+   * DRILL pick, not a single pick. `scene.pick` returns only the frontmost primitive, so
+   * anything drawn over a contact swallowed the click and, because a miss means null and
+   * null means DESELECT, clicking a contact could clear the dossier instead of switching to
+   * it. The ALTITUDE SLICE rectangle could already do this; the PLACES layer (D-032) added
+   * ~26,000 ground primitives and would have made it common.
+   *
+   * Drilling and taking the first ADS-B contact in the list keeps click-empty-to-clear
+   * working - a click that genuinely hits no contact still returns null - while making a
+   * contact behind a place label or the slice selectable. Runs on click only, never per frame.
+   */
   function pick(s: Scene, pos: Cartesian2): string | null {
-    const picked = s.pick(pos);
-    if (picked?.primitive && ownerOf.has(picked.primitive)) {
-      return ownerOf.get(picked.primitive) ?? null;
+    for (const entry of s.drillPick(pos, DRILL_LIMIT)) {
+      const hex = entry?.primitive ? ownerOf.get(entry.primitive) : undefined;
+      if (hex) return hex;
     }
     return null;
   }

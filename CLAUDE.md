@@ -70,6 +70,8 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 | Esri World Ocean Base | ocean basemap | none | — | attribution required |
 | GEBCO WMS | bathymetry + depth readout | none | — | attribution required |
 | NOAA NCEI DEM | depth cross-check | none | — | US public domain |
+| OurAirports | airfield markers, **build time only** | none | — | public domain |
+| Natural Earth | city labels, **build time only** | none | — | public domain |
 | OpenSky | **REJECTED** | — | 400 credits/day anon | — |
 | Cesium ion | **NOT REQUIRED** | — | — | — |
 

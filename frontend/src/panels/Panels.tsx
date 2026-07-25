@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  matchesFilter, operatorKey, useStore,
+  hasSlicePerspective, matchesFilter, operatorKey, useStore,
   type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult, type TrackResult,
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
@@ -178,7 +178,9 @@ export function CursorReadout() {
 export function LayerCluster() {
   const showDatum = useStore((s) => s.showDatum);
   const showDropLines = useStore((s) => s.showDropLines);
+  const showPlaces = useStore((s) => s.showPlaces);
   const selected = useStore((s) => s.selectedHex);
+  const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const toggle = useStore((s) => s.toggle);
 
   const Item = ({
@@ -205,12 +207,16 @@ export function LayerCluster() {
   // Both layers need a selection to exist. Saying so stops the toggles looking broken -
   // which is exactly how they read before, when clicking them did nothing visible.
   const needsSel = selected ? undefined : "needs a selected contact";
+  // Same honesty for D-034: the slice is on but withheld because the camera angle cannot
+  // show it. Without the note, "on and invisible" is indistinguishable from broken.
+  const sliceNote = needsSel ?? (hasSlicePerspective(pitchDeg) ? undefined : "needs a tilted view");
 
   return (
     <div className="panel p-[5px] w-[148px] pointer-events-auto">
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
-      <Item on={showDatum} label="Altitude slice" k="showDatum" note={needsSel} />
+      <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
+      <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
     </div>
   );
 }
@@ -489,13 +495,13 @@ export function SelectionPanel() {
 
   return (
     <div
-      className={`panel w-[268px] pointer-events-auto ${a.military ? "panel--mil" : ""}`}
+      className={`panel panel--dossier w-[344px] pointer-events-auto ${a.military ? "panel--mil" : ""}`}
       // minHeight:0 is what actually lets a flex child shrink below its content height;
       // without it the panel refuses to scroll and overflows its container instead.
       style={{ minHeight: 0, overflowY: "auto" }}
     >
       <div className="panel-h">
-        <span style={{ color: a.military ? "var(--mil)" : "var(--cyan)", fontSize: 11, letterSpacing: ".1em" }}>
+        <span style={{ color: a.military ? "var(--mil)" : "var(--cyan)", fontSize: 14, letterSpacing: ".1em" }}>
           {(a.flight || a.hex || DASH).toUpperCase()}
         </span>
         <button onClick={() => select(null)} className="lbl" style={{ background: "none", border: "none", cursor: "pointer" }}>×</button>
@@ -529,13 +535,13 @@ export function SelectionPanel() {
         </div>
         <div className={`row ${model ? "" : "row--dim"}`} title={model ?? undefined}>
           <span>Model</span>
-          <span style={{ fontSize: 10 }}>{model ? model.slice(0, 26) : pending}</span>
+          <span style={{ fontSize: 12 }}>{model ? model.slice(0, 32) : pending}</span>
         </div>
         <div className={`row ${operator ? "" : "row--dim"}`} title={operator ?? undefined}>
           <span>Operator</span>
           {/* 16 chars cut "AMERICAN AIRLINES" to "AMERICAN AIRLINE", which reads as wrong
               data rather than truncated data. Full value is in the hover title. */}
-          <span style={{ fontSize: 10 }}>{operator ? operator.slice(0, 26) : pending}</span>
+          <span style={{ fontSize: 12 }}>{operator ? operator.slice(0, 32) : pending}</span>
         </div>
         <div className={`row ${enRoute?.origin ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.origin)}>

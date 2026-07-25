@@ -125,6 +125,16 @@ body {
 .row--mil > span:last-child { color: var(--amber); }
 .row--dim > span:last-child { color: var(--dim); }
 
+/*
+ * The dossier reads at arm's length, so it gets its own larger type scale.
+ *
+ * Scoped to this panel deliberately: the traffic list, the legend and the cursor readout are
+ * glanceable chrome and stay small. The dossier is the one panel that is actually READ, and
+ * at the owner's 100% browser zoom the shared 10px/13px scale was too small to read.
+ */
+.panel--dossier .row > span:first-child { font-size: 11px; }
+.panel--dossier .row > span:last-child { font-size: 15px; }
+
 /* ---- status chips ---- */
 .chip { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .dot { width: 5px; height: 5px; background: var(--cyan); }

@@ -188,8 +188,11 @@ interface State {
   trackPending: boolean;
   showDatum: boolean;
   showDropLines: boolean;
+  showPlaces: boolean;
   datumRadiusNm: number;
   separationFt: number;
+  /** Camera pitch in degrees, -90 = straight down. Drives slice suppression (D-034). */
+  cameraPitchDeg: number;
 
   fps: number;
 
@@ -203,9 +206,10 @@ interface State {
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
-  toggle: (k: "showDatum" | "showDropLines") => void;
+  toggle: (k: "showDatum" | "showDropLines" | "showPlaces") => void;
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
+  setCameraPitch: (deg: number) => void;
 }
 
 export const useStore = create<State>((set) => ({
@@ -233,6 +237,9 @@ export const useStore = create<State>((set) => ({
   trackPending: false,
   showDatum: true,
   showDropLines: true,
+  showPlaces: true,
+  // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
+  cameraPitchDeg: -32,
   datumRadiusNm: 50,
   separationFt: 1000,
 
@@ -266,6 +273,7 @@ export const useStore = create<State>((set) => ({
   toggle: (k) => set((s) => ({ [k]: !s[k] }) as Pick<State, typeof k>),
   setFilter: (f) => set((s) => ({ filter: { ...s.filter, ...f } })),
   setFps: (fps) => set({ fps }),
+  setCameraPitch: (cameraPitchDeg) => set({ cameraPitchDeg }),
 }));
 
 /* ---- shared helpers ---- */
@@ -279,6 +287,24 @@ export function matchesFilter(a: Aircraft, f: Filter): boolean {
   if (f.militaryOnly && !a.military) return false;
   if (f.operator && operatorKey(a) !== f.operator) return false;
   return true;
+}
+
+/*
+ * The ALTITUDE SLICE only means something under a PERSPECTIVE camera angle.
+ *
+ * Seen from directly overhead it projects to a flat sheet covering the display: it conveys no
+ * height at all and occludes the traffic and terrain underneath it. Seen edge-on from the
+ * horizon it degenerates into a bright band smeared across the scene. Either way it costs
+ * visibility and returns nothing, which is why it is suppressed rather than drawn (D-034).
+ *
+ * Bounds are set against the camera presets in CameraCluster: PLAN VIEW is -89.9 deg and
+ * HORIZON VIEW is -9 deg, both suppressed; the default perspective view is -32 deg, kept.
+ */
+export const SLICE_PITCH_MIN = -70;
+export const SLICE_PITCH_MAX = -12;
+
+export function hasSlicePerspective(pitchDeg: number): boolean {
+  return pitchDeg > SLICE_PITCH_MIN && pitchDeg < SLICE_PITCH_MAX;
 }
 
 export const FT_TO_M = 0.3048;

@@ -645,3 +645,129 @@ The **selected** contact is always drawn even when the filter excludes it; hidin
 the dossier is currently describing would be incoherent. Operator and MIL filters are mutually
 exclusive rather than combining, because military spans many operators and an AND of the two
 produces counts that are hard to reason about at a glance.
+
+---
+
+### D-032 · Place markers are vendored and processed at BUILD time, not fetched
+
+**Date:** 2026-07-25
+
+Aircraft positions only mean something against known ground. Implements D-023.
+
+**Decision:** `scripts/build_places.py` turns two public-domain datasets — OurAirports
+`airports.csv` and Natural Earth `ne_10m_populated_places_simple` — into one compact
+`frontend/src/data/places.json` (385 KB, 5,856 airfields + 7,342 cities) that the frontend
+imports. No runtime API, no key, no rate limit, nothing new in the request path, and no
+dependency on a third party staying up. Raw downloads are cached in `data/raw/` (already
+gitignored); only the processed output is committed. Re-run with `--refresh` to update.
+
+**What is deliberately left out:** small civil airports (42,698), heliports (23,135), seaplane
+bases and balloonports. Including them is ~66,000 extra markers worldwide and 321 inside 2°
+of Mobile alone — the unreadable mat this project exists to avoid. Large and medium airports
+are where the traffic ADS-B actually shows us operates. This is a reversible taste call, not a
+technical limit.
+
+**Built once, never rebuilt.** The data is static, so every primitive is created on the first
+call and after that only `.show` flips — the D-015/D-028 discipline. Zoom thinning is handed
+to Cesium as a per-primitive `DistanceDisplayCondition` (airfields by class, cities by Natural
+Earth `scalerank`) rather than recomputed in JS, so it costs nothing per frame.
+
+**Label anchoring:** city names sit centred BELOW their dot, airfield codes to the RIGHT of
+their square. A city and its airport are a few km apart, so a shared anchor overprinted pairs
+like `KMGM`/MONTGOMERY and `KBIX`/BILOXI into mush. Verified against live traffic.
+
+Both sources are public domain, so attribution is courtesy rather than obligation — unlike
+Esri, GEBCO and planespotters. Provenance is recorded in the generated file's `_sources`.
+
+---
+
+### D-033 · Military airfield detection is a NAME heuristic, and says so
+
+**Date:** 2026-07-25
+
+The plan in the previous handoff assumed OurAirports has a military `type` value. **It does
+not**, and it has no `military` keyword either — verified: 0 of 25,104 US non-closed airports
+carry one, and the only `type` values are large/medium/small_airport, heliport, seaplane_base,
+balloonport, closed.
+
+**Decision:** classify military airfields by matching the airport **name** (`AFB`, `Air Force
+Base`, `Air Base`, `Naval Air Station`, `NAS`, `Army Airfield`, `AAF`, `MCAS`, …). This is
+derived from real data in the file rather than an invented attribute, so it stays inside
+ground rule 1. It generalises internationally — "Air Base" carries most of the 529 non-US
+large/medium hits — and near Mobile it correctly catches Keesler, Maxwell, Tyndall, Hurlburt,
+NAS Pensacola, both Whiting Fields, NAS Meridian, NAS JRB New Orleans and Cairns AAF.
+
+**Known false negatives, stated rather than hidden:** `KVPS` is Eglin AFB but is named
+"Destin-Fort Walton Beach Airport", so it renders civil. `KEGI` (Duke Field) likewise. This is
+NOT an authoritative order of battle and must never be presented as one.
+
+Military airfields take `--mil` magenta, the same accent military *contacts* use (D-029). The
+two cannot be confused: a contact is an aircraft silhouette in the air, an airfield is a
+filled square on the ground.
+
+---
+
+### D-034 · The ALTITUDE SLICE is suppressed when the camera has no perspective on it
+
+**Date:** 2026-07-25
+
+Owner feedback from the live display. Seen from directly overhead the slice projects to a flat
+sheet covering the display: it conveys no height whatsoever and occludes the traffic and
+terrain underneath it. Seen edge-on from the horizon it degenerates into a bright band smeared
+across the scene. Either way it costs visibility and returns nothing.
+
+**Decision:** draw the slice only while camera pitch is between **-70° and -12°**. Bounds are
+set against the presets in `CameraCluster`: `PLAN VIEW` (-89.9°) and `HORIZON VIEW` (-9°) are
+both suppressed, the default perspective view (-32°) is kept.
+
+**Co-altitude amber on the icons is NOT suppressed.** That is the readout which still works at
+those angles, and it is the reason losing the slice geometry costs nothing.
+
+Camera pitch is published to the store only when it moves a whole degree, and enters the
+slice's rebuild key as a boolean — keying on the raw angle would rebuild the slice on every
+degree of camera movement, which is exactly the churn D-028 removed.
+
+The toggle states **"needs a tilted view"** when it is on but withheld, for the same reason
+D-022 added "needs a selected contact": on-and-invisible is indistinguishable from broken.
+
+---
+
+### D-035 · Clicks DRILL for a contact, and the flaky click check was the harness
+
+**Date:** 2026-07-25
+
+`scene.pick` returns only the frontmost primitive. Because a pick miss returns `null` and
+`null` means *deselect*, anything drawn over a contact could swallow the click and clear the
+dossier instead of switching to it. The ALTITUDE SLICE rectangle could already do this; D-032
+added ~26,000 ground primitives and would have made it routine.
+
+**Decision:** `aircraftLayer.pick()` uses `scene.drillPick(pos, 8)` and returns the first
+ADS-B contact in the stack. Click-empty-to-clear still works — a click that genuinely hits no
+contact still returns `null` — but a contact behind a place label or the slice is now
+selectable. Runs on click only, never per frame.
+
+**Root cause of the intermittent `verify_phase1.py` click check, which was a different thing
+entirely.** The previous handoff's leading hypothesis (the slice rectangle stealing the pick)
+was **wrong**: measured over 30 contacts, 0 were blocked by an overlapping primitive. The real
+cause was in the harness — it chose the first contact projecting inside a 60 px border without
+checking what was actually at that point, so it would happily click a contact drawn *behind*
+the AIR TRAFFIC panel. The panels are `pointer-events-auto`, so the panel ate the event and
+the canvas never saw it. The failing run clicked (134,259), squarely inside that panel.
+
+**Fix:** the harness now requires `document.elementFromPoint()` at the target to be the globe
+`CANVAS`. 9/9 on three consecutive runs, where the previous rate was roughly 1 failure in 3.
+The drill-pick change above is still correct and worth keeping, but it was not the bug.
+
+---
+
+### D-036 · The dossier gets its own, larger type scale
+
+**Date:** 2026-07-25
+
+Owner feedback: the dossier was still too small to read at their preferred 100% browser zoom.
+
+**Decision:** the dossier widens to **344 px** and takes a `.panel--dossier` type scale —
+11 px labels, 15 px values, 14 px header. Scoped to this one panel deliberately: the traffic
+list, legend and cursor readout are *glanceable* chrome and stay small, whereas the dossier is
+the one panel that is actually **read**. Model and operator truncate at 32 characters instead
+of 26 now that there is room, with the full value still in the hover title.

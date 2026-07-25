@@ -1,0 +1,183 @@
+/*
+ * Ground reference: airfields and city labels (D-023, D-032, D-033).
+ *
+ * Aircraft positions only mean something against known ground. Without this the display
+ * answers "where is that contact relative to nothing?".
+ *
+ * BUILT ONCE, never rebuilt. The data is static - it comes from a build-time JSON, not a
+ * feed - so every primitive is created on the first call and after that we only flip `.show`
+ * on the two collections. That is the discipline D-015/D-028 arrived at the hard way:
+ * rebuilding primitives per frame cost the frame rate, and destroying labels repeatedly
+ * corrupts Cesium's glyph atlas.
+ *
+ * Zoom thinning is handed to Cesium as a DistanceDisplayCondition per primitive rather than
+ * being recomputed in JS. It costs nothing per frame and it is what keeps 13,000 markers from
+ * piling into an unreadable mat when the camera pulls back.
+ */
+import {
+  BillboardCollection,
+  Cartesian2,
+  Cartesian3,
+  Color,
+  DistanceDisplayCondition,
+  HorizontalOrigin,
+  LabelCollection,
+  LabelStyle,
+  VerticalOrigin,
+  type Scene,
+} from "cesium";
+
+import placesData from "../data/places.json";
+
+/** [lat, lon, code, kind] - kind 0 large, 1 medium, 2 military. Generated, see build_places.py. */
+type AirportRow = [number, number, string, number];
+/** [lat, lon, name, scalerank] - scalerank 0 world city .. 10 minor. */
+type CityRow = [number, number, string, number];
+
+const KIND_LARGE = 0;
+const KIND_MEDIUM = 1;
+const KIND_MILITARY = 2;
+
+const MIL = "#ff4fd8";
+const CYAN = "#5fd7e0";
+const DIM = "#5a6b7a";
+const OFF = "#3a4652";
+
+/*
+ * How far out each class of place stays on screen, in metres of camera distance.
+ *
+ * These are the thinning thresholds. Airfields outrank cities because this is an aviation
+ * display: a military field is worth seeing before the town it sits next to.
+ */
+const FAR_LARGE = 3_000_000;
+const FAR_MILITARY = 1_200_000;
+const FAR_MEDIUM = 600_000;
+
+/** Cities thin by Natural Earth's scalerank, which is what the rank exists for. */
+function cityFar(scalerank: number): number {
+  if (scalerank <= 2) return 9_000_000;
+  if (scalerank <= 4) return 3_500_000;
+  if (scalerank <= 6) return 1_200_000;
+  if (scalerank === 7) return 500_000;
+  return 220_000;
+}
+
+/* ---- marker glyphs: 3 airfield shapes and a city dot, so 4 data URIs in total ---- */
+
+function squareUri(colour: string, filled: boolean): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">` +
+    `<rect x="3.5" y="3.5" width="9" height="9" fill="${filled ? colour : "none"}" ` +
+    `stroke="${colour}" stroke-width="1.5"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function dotUri(colour: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">` +
+    `<circle cx="4" cy="4" r="1.6" fill="${colour}"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/*
+ * Military airfields take --mil magenta, the same accent military CONTACTS use (D-029).
+ * They cannot be confused with each other: a contact is an aircraft silhouette in the air,
+ * an airfield is a filled square on the ground. Civil fields are cyan, cities are dim -
+ * the whole point is that ground reference stays subordinate to the traffic above it.
+ */
+const AIRPORT_STYLE: Record<number, { marker: string; label: string; size: number }> = {
+  [KIND_LARGE]: { marker: squareUri(CYAN, false), label: CYAN, size: 13 },
+  [KIND_MEDIUM]: { marker: squareUri(CYAN, false), label: DIM, size: 10 },
+  [KIND_MILITARY]: { marker: squareUri(MIL, true), label: MIL, size: 12 },
+};
+
+const CITY_MARKER = dotUri(OFF);
+
+export interface PlacesLayer {
+  setShow: (on: boolean) => void;
+  destroy: () => void;
+  counts: { airports: number; cities: number };
+}
+
+export function createPlacesLayer(scene: Scene): PlacesLayer {
+  const billboards = scene.primitives.add(
+    new BillboardCollection({ scene }),
+  ) as BillboardCollection;
+  const labels = scene.primitives.add(new LabelCollection({ scene })) as LabelCollection;
+
+  const airports = placesData.airports as AirportRow[];
+  const cities = placesData.cities as CityRow[];
+
+  for (const [lat, lon, code, kind] of airports) {
+    const style = AIRPORT_STYLE[kind];
+    if (!style) continue;
+    const position = Cartesian3.fromDegrees(lon, lat, 0);
+    const far = kind === KIND_LARGE ? FAR_LARGE
+      : kind === KIND_MILITARY ? FAR_MILITARY
+      : FAR_MEDIUM;
+    // No disableDepthTestDistance here, unlike the aircraft: these sit ON the ellipsoid, so
+    // the globe must be allowed to occlude the ones on the far side of the planet.
+    const ddc = new DistanceDisplayCondition(0, far);
+
+    billboards.add({
+      position,
+      image: style.marker,
+      width: style.size,
+      height: style.size,
+      distanceDisplayCondition: ddc,
+    });
+    labels.add({
+      position,
+      text: code,
+      font: `500 ${kind === KIND_MEDIUM ? 10 : 11}px 'JetBrains Mono', ui-monospace, monospace`,
+      style: LabelStyle.FILL,
+      fillColor: Color.fromCssColorString(style.label),
+      horizontalOrigin: HorizontalOrigin.LEFT,
+      verticalOrigin: VerticalOrigin.CENTER,
+      pixelOffset: new Cartesian2(Math.round(style.size / 2) + 3, 0),
+      distanceDisplayCondition: ddc,
+    });
+  }
+
+  for (const [lat, lon, name, scalerank] of cities) {
+    const position = Cartesian3.fromDegrees(lon, lat, 0);
+    const ddc = new DistanceDisplayCondition(0, cityFar(scalerank));
+
+    billboards.add({
+      position,
+      image: CITY_MARKER,
+      width: 8,
+      height: 8,
+      distanceDisplayCondition: ddc,
+    });
+    labels.add({
+      position,
+      // Uppercase at small sizes, per the project's visual direction.
+      text: name.toUpperCase(),
+      font: "400 10px 'JetBrains Mono', ui-monospace, monospace",
+      style: LabelStyle.FILL,
+      fillColor: Color.fromCssColorString(DIM),
+      // City names go BELOW their dot, centred; airfield codes go to the RIGHT of their
+      // square. A city and its airport sit within a few km of each other, so sharing an
+      // anchor made pairs like KMGM/MONTGOMERY and KBIX/BILOXI overprint into mush.
+      horizontalOrigin: HorizontalOrigin.CENTER,
+      verticalOrigin: VerticalOrigin.TOP,
+      pixelOffset: new Cartesian2(0, 6),
+      distanceDisplayCondition: ddc,
+    });
+  }
+
+  return {
+    setShow: (on: boolean) => {
+      billboards.show = on;
+      labels.show = on;
+    },
+    destroy: () => {
+      scene.primitives.remove(billboards);
+      scene.primitives.remove(labels);
+    },
+    counts: { airports: airports.length, cities: cities.length },
+  };
+}

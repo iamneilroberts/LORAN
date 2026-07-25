@@ -2,8 +2,10 @@
 .env
 .env.local
 
-# Archive database (Phase 5)
-data/
+# Archive database (Phase 5), and the raw place-marker downloads (scripts/build_places.py).
+# Leading slash is load-bearing: a bare "data/" matches a directory of that name at ANY depth,
+# which silently swallowed the GENERATED and committed frontend/src/data/places.json.
+/data/
 *.db
 *.db-wal
 *.db-shm

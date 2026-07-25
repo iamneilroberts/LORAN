@@ -129,9 +129,15 @@ async def main():
               new (Object.getPrototypeOf(s.camera.positionCartographic).constructor)(
                 a.lon*Math.PI/180, a.lat*Math.PI/180, a.alt_ft*0.3048));
             const w = s.cartesianToCanvasCoordinates ? s.cartesianToCanvasCoordinates(pos) : null;
-            if (w && w.x>60 && w.x<1440 && w.y>60 && w.y<840)
-              return JSON.stringify({hex:a.hex, x:Math.round(w.x), y:Math.round(w.y),
-                                     alt:a.alt_ft, mil:a.military});
+            if (!(w && w.x>60 && w.x<1440 && w.y>60 && w.y<840)) continue;
+            // The point must actually belong to the globe canvas. The overlay panels are
+            // pointer-events-auto, so a contact drawn BEHIND one cannot be clicked - the
+            // panel eats the event and the canvas never sees it, which reads as "click did
+            // not select" and was the whole of this check's intermittent failure.
+            const el = document.elementFromPoint(Math.round(w.x), Math.round(w.y));
+            if (!el || el.tagName !== "CANVAS") continue;
+            return JSON.stringify({hex:a.hex, x:Math.round(w.x), y:Math.round(w.y),
+                                   alt:a.alt_ft, mil:a.military});
           }
           return null;})()""")
         if not target:
