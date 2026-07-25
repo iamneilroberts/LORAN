@@ -18,7 +18,7 @@ import {
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
-import { addPlane, AMBER, clearByPrefix, CYAN } from "./altitudePlanes";
+import { AMBER, clearByPrefix, CYAN, upsertPlane } from "./altitudePlanes";
 import { createAircraftLayer } from "./aircraftLayer";
 import { distanceNm, FT_TO_M, useStore, type Aircraft } from "../state/store";
 
@@ -53,6 +53,16 @@ export default function Globe() {
       contextOptions: { webgl: { alpha: false } },
     });
     viewerRef.current = viewer;
+
+    // Render at the display's real pixel density. Cesium defaults this to true, which pins the
+    // drawing buffer to one buffer pixel per CSS pixel - so on a HiDPI screen every label and
+    // icon is upscaled, which is what made the readouts look soft.
+    //
+    // Do NOT also raise resolutionScale. Cesium computes
+    //     pixelRatio = (useBrowserRecommendedResolution ? 1 : devicePixelRatio) * resolutionScale
+    // so setting resolutionScale to devicePixelRatio squares it: 4x linear / 16x the pixels on
+    // a 2x display. Measured at 6400px of buffer for a 1600px canvas before this was corrected.
+    viewer.useBrowserRecommendedResolution = false;
     // Exposed deliberately: this is a single-user homelab console and being able to poke the
     // scene from devtools is worth more than hiding it.
     (window as unknown as { __viewer: Viewer }).__viewer = viewer;
@@ -208,12 +218,15 @@ export default function Globe() {
       if (key === lastKey) return;
       lastKey = key;
 
+      // Bands only change when their configuration does, so rebuilding them is cheap and rare.
+      // The DATUM is not cleared here: it moves with the selected contact on every poll, and
+      // destroying its label that often corrupts Cesium's glyph atlas (see upsertPlane). It is
+      // mutated in place below, and only removed when it genuinely should not exist.
       clearByPrefix(viewer, BAND_PREFIX);
-      clearByPrefix(viewer, DATUM_PREFIX);
 
       if (st.showBands) {
         st.bands.forEach((b, i) =>
-          addPlane(viewer, {
+          upsertPlane(viewer, {
             id: `${BAND_PREFIX}${i}`,
             lat: st.home.lat,
             lon: st.home.lon,
@@ -224,8 +237,10 @@ export default function Globe() {
           }),
         );
       }
-      if (st.showDatum && sel?.alt_ft != null) {
-        addPlane(viewer, {
+      if (!(st.showDatum && sel?.alt_ft != null)) {
+        clearByPrefix(viewer, DATUM_PREFIX);
+      } else {
+        upsertPlane(viewer, {
           id: `${DATUM_PREFIX}0`,
           lat: sel.lat,
           lon: sel.lon,

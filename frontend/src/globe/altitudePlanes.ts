@@ -57,11 +57,39 @@ export interface PlaneSpec {
   fill?: "solid" | "grid";
 }
 
-/** Add (or replace) one plane and its floating bracketed label. */
-export function addPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
+/**
+ * Create one plane and its floating bracketed label, or MUTATE them if the id already exists.
+ *
+ * Mutating matters for the datum, whose altitude changes with every poll of the selected
+ * contact. Destroying and re-adding a label thirty times a minute churns Cesium's signed-
+ * distance-field glyph atlas, which was observed dropping characters outright - a label
+ * rendering "[ DATUM 34, 50 FT ]" for 34,650 ft. A missing digit on an altitude readout is
+ * worse than a missing label. Same reasoning as D-015 for the aircraft billboards: reuse the
+ * primitive, change its properties.
+ */
+export function upsertPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
   const rect = rectAround(s.lat, s.lon, s.radiusNm);
   const heightM = s.altFt * FT_TO_M;
   const style = s.fill ?? (s.emphasis ? "solid" : "grid");
+  const labelText = `[ ${s.label} ]`;
+  const centreOf = (r: Rectangle) => {
+    const c = Rectangle.center(r);
+    return Cartesian3.fromDegrees(
+      c.longitude * (180 / Math.PI), c.latitude * (180 / Math.PI), heightM,
+    );
+  };
+
+  const existing = viewer.entities.getById(s.id);
+  const existingLabel = viewer.entities.getById(`${s.id}::label`);
+  if (existing && existingLabel) {
+    if (existing.rectangle) {
+      existing.rectangle.coordinates = rect as never;
+      existing.rectangle.height = heightM as never;
+    }
+    existingLabel.position = centreOf(rect) as never;
+    if (existingLabel.label) existingLabel.label.text = labelText as never;
+    return [existing, existingLabel];
+  }
 
   const material =
     style === "solid"
@@ -91,16 +119,11 @@ export function addPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
   // both labels landed on nearly the same screen point and collided; the west edge fell
   // outside the viewport entirely. At the centre the labels separate vertically by exactly
   // the altitude difference they are naming, and they stay in frame whenever the plane is.
-  const centre = Rectangle.center(rect);
   const label = viewer.entities.add({
     id: `${s.id}::label`,
-    position: Cartesian3.fromDegrees(
-      centre.longitude * (180 / Math.PI),
-      centre.latitude * (180 / Math.PI),
-      heightM,
-    ),
+    position: centreOf(rect),
     label: {
-      text: `[ ${s.label} ]`,
+      text: labelText,
       font: "500 13px 'JetBrains Mono', ui-monospace, monospace",
       fillColor: s.colour,
       style: LabelStyle.FILL,

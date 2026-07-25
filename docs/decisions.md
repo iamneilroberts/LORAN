@@ -508,3 +508,61 @@ boundary caught it and displayed the message, rather than reasoning from React's
 semantics. An earlier attempt threw inside a zustand subscriber instead, which boundaries
 correctly do **not** catch — worth knowing: state-subscriber errors in `Globe.tsx` are outside
 the boundary's reach and would still blank the display.
+
+---
+
+### D-027 · Icon heading is computed in screen space, not compass space
+
+**Date:** 2026-07-25
+
+**Context:** Owner reported that aircraft "appear to be diving or climbing vertically".
+
+**Diagnosis:** the icons are camera-facing billboards rotated by raw ADS-B `track`. That draws a
+northbound aircraft pointing straight up the screen, and under this project's tilted camera
+(pitch −32°) "up the screen" reads as CLIMBING rather than "flying away from you".
+
+**Decision:** project the contact's position and a point 4 km ahead along its ground track, then
+rotate the icon along the resulting screen-space vector.
+
+**Verified differentially** rather than by eye: in plan view (pitch −90°) the new rotation
+reduces to the old compass behaviour — median difference **0.6°** — while under the tilted
+camera it diverges by a median of **10.6°** and up to **54.5°**. The largest corrections land on
+tracks near due north/south, which are exactly the contacts that looked like vertical climbs.
+
+**Known limit, stated rather than hidden:** this fixes heading only. A billboard always faces the
+camera, so the silhouette is not laid flat into the ground plane — that would need ground-aligned
+geometry per contact, which is not worth the cost here. Vertical rate is not encoded in the icon
+at all; V/S remains a numeric readout in the dossier.
+
+---
+
+### D-028 · Text sharpness: native pixel density, no backdrop blur, and stop rebuilding labels
+
+**Date:** 2026-07-25
+
+Owner reported text "fuzzy and easily garbled, almost like it's multiple overlays". That turned
+out to be **three** separate defects, not one.
+
+**1. Cesium rendered at CSS resolution.** `useBrowserRecommendedResolution` defaults to true,
+which pins the drawing buffer to one pixel per CSS pixel, so on a HiDPI display every label and
+icon was upscaled. Now set to false.
+
+> Do **not** also raise `resolutionScale`. Cesium computes
+> `pixelRatio = (useBrowserRecommendedResolution ? 1 : devicePixelRatio) * resolutionScale`,
+> so setting `resolutionScale = devicePixelRatio` squares it. Measured: 6400 px of drawing buffer
+> for a 1600 px canvas — 4× linear, 16× the fragments — before this was corrected to a clean 2×.
+
+**2. `backdrop-filter: blur(2px)` on panels.** It blurs only what is *behind* the panel, but it
+also promotes the element to its own compositing layer, which drops subpixel antialiasing and
+visibly softens 10 px letterspaced text. Removed; `--bg-panel` went from 0.82 to 0.90 opacity to
+recover the legibility the blur was providing. Panels stay translucent, as the spec requires.
+
+**3. Glyph dropout — the real "garbled".** A screenshot showed the datum label rendering
+`[ DATUM 34, 50 FT ]` for 34,650 ft: a digit gone entirely. The datum entity and its label were
+being destroyed and re-added on **every poll**, because the rebuild key includes the selected
+contact's altitude. That churns Cesium's signed-distance-field glyph atlas. `addPlane` became
+`upsertPlane`, which mutates an existing plane's height, position and label text in place — the
+same reuse-don't-rebuild reasoning as D-015 for the billboards.
+
+Verified: the datum label entity keeps object identity across polls while its text updates
+1,425 → 1,400 → 1,350 FT, and the digit pattern matched on every sample.

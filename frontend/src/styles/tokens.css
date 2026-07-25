@@ -11,7 +11,9 @@
 
 :root {
   --bg: #05070a;
-  --bg-panel: rgba(8, 11, 16, 0.82);
+  /* Slightly more opaque than the original 0.82 to make up the legibility that the removed
+     backdrop blur was providing. Still translucent - the spec forbids opaque cards. */
+  --bg-panel: rgba(8, 11, 16, 0.9);
   --line: #1b2530;
   --line-bright: #243040;
 
@@ -52,7 +54,10 @@ body {
 .panel {
   border: 1px solid var(--line);
   background: var(--bg-panel);
-  backdrop-filter: blur(2px);
+  /* backdrop-filter deliberately removed. It only blurs what is BEHIND the panel, but it also
+     promotes the element to its own compositing layer, which drops subpixel antialiasing and
+     makes 10px letterspaced text render noticeably softer. On an instrument, sharp readouts
+     beat a blurred backdrop. Legibility over the globe comes from --bg-panel opacity instead. */
   position: relative;
   border-radius: 0;
 }

@@ -21,12 +21,14 @@
 - [ ] Open-source prep: licence + README stating single-user-by-design
 
 ### Owner feedback 2026-07-25 (from live view)
-- [ ] Aircraft icons read as diving/climbing — rotate by screen-projected track, not raw heading
-- [ ] Text fuzzy/garbled — no devicePixelRatio handling for Cesium; panel `backdrop-filter: blur(2px)`
+- [x] Aircraft icons read as diving/climbing — screen-projected track (D-027)
+- [x] Text fuzzy/garbled — 3 defects: Cesium DPI, panel blur, datum label rebuild churn (D-028)
 - [ ] Map markers for airports, military airfields, city names — **needs a data source decision**
 - [ ] Altitude bands / datum toggles give no feedback (datum needs a selection to exist)
 - [ ] Rename "Datum Plane" — **owner to choose the term**
 - [ ] Drop lines to the surface — **reverses the current deliberate design**, needs a decision entry
 - [ ] FUTURE: multi-user hosting for friends — **reverses CLAUDE.md non-goals**, see task notes
 
-_Updated: 2026-07-25 16:05 — phase2-dossier_
+- [ ] verify_phase1.py click check is intermittent (1 fail / 2 runs, not a regression)
+
+_Updated: 2026-07-25 16:40 — phase2-dossier_
