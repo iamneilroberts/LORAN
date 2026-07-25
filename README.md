@@ -8,7 +8,16 @@ the Phase 0 recon; `docs/decisions.md` for every non-obvious call.
 
 ## Run it
 
-Two processes. Backend first:
+One command, from whichever checkout you want to run (worktrees included — it resolves paths
+relative to itself, which is the easy thing to get wrong when several checkouts exist):
+
+```
+bash scripts/dev.sh            # start/restart both servers
+bash scripts/dev.sh status     # what is listening, and from which checkout
+bash scripts/dev.sh stop       # stop both
+```
+
+Or by hand. Backend first:
 
 ```
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

@@ -6,6 +6,7 @@
 - [x] Mockups — basemap G and Layout 1 chosen
 - [x] Phase 1 — 3D globe, live aircraft at true altitude, bands + datum, cursor depth
 - [x] Phase 1 feedback — primitive-churn fix, solid datum, camera cluster
+- [x] Untrack generated Cesium assets, fix .gitignore symlink blindness (fc7fc9a)
 - [ ] **Phase 2** — adsbdb enrichment (registration / type / operator / origin / destination)
 - [ ] **Phase 2** — planespotters photo + mandatory attribution, per D-009 constraints
 - [ ] **Phase 2** — track path via backend ring buffer (D-016), draw, clear
@@ -19,4 +20,4 @@
 - [ ] Phase 4 — vessels via self-hosted RTL-SDR + AIS-catcher (D-018). NEEDS MARINE-VHF ANTENNA (162 MHz)
 - [ ] Open-source prep: licence + README stating single-user-by-design
 
-_Updated: 2026-07-25 — phase2-dossier_
+_Updated: 2026-07-25 14:41 — phase2-dossier_
