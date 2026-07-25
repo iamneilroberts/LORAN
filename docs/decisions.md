@@ -803,3 +803,49 @@ AFB, Montgomery Regional and Montgomery itself — three labels still overlap at
 they separate as you zoom in. Cesium's `LabelCollection` has no declutter, so fixing this needs
 a real collision-avoidance pass. Deliberately not attempted; the cheap fix would be dropping
 one of the three, which loses information the operator asked for.
+
+---
+
+### D-038 · Airfield markers are clickable, and the panel states the limits of what it knows
+
+**Date:** 2026-07-25
+
+Owner: *"If we are going to include these military airfields (I assume because they are magenta)
+we have to provide some kind of detail when the user clicks on them."* Correct — a magenta
+marker asserts significance, and before this a click on one returned `null`, which *deselected*
+whatever was in the dossier.
+
+**Decision:** airfields (civil and military alike — a class of marker either is or is not
+interrogable) resolve to a `PlacePanel` showing name, class, field size, IATA, city, region,
+country, elevation and coordinates. Marker **and** label are both hit targets; a 10 px square
+alone is a mean thing to ask anyone to hit. Aircraft still win the pick — the traffic is the
+subject — and a click hitting neither still clears, so click-empty-to-clear survives.
+
+The build now carries the detail fields it had been discarding, so the generated JSON grows
+313 KB → 631 KB. No new network call: this is all build-time data, which is why the panel has
+no pending state. A blank field means the SOURCE is blank and renders as an em-dash.
+
+**The panel names its own limits**, because a detail panel is exactly where a heuristic starts
+looking like an authority: military entries carry *"class inferred from field name · not an
+authoritative source"* (D-033), and every entry is credited to OurAirports. Cities are
+deliberately NOT clickable — a city dot is context, not a contact, and there is nothing to say
+about it that the label does not already say.
+
+Selecting an airfield clears the aircraft selection and vice versa: the right column is
+height-bounded and two stacked dossiers would push one off screen.
+
+---
+
+### D-039 · Airfield codes are cyan or magenta; only cities are dim
+
+**Date:** 2026-07-25
+
+Owner: *"I want to make the airport names more legible and a different color than City names."*
+This was a defect in D-032's own colour choices, not a preference — **medium airfield labels
+were `--dim`, the same token cities use**, so `KMOB` and `KBFM` rendered as though they were
+town names, dim and indistinguishable.
+
+**Decision:** colour encodes CLASS and size encodes importance. All airfield codes are cyan
+(civil) or magenta (military); cities alone keep `--dim`. Large versus medium is carried by
+marker size (13 px vs 10 px) and type size (12 px vs 11 px) rather than by dimming the label,
+which is what destroyed the distinction in the first place.

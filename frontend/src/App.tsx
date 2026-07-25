@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import Globe from "./globe/Globe";
 import {
-  AltitudeLegend, Attribution, CursorReadout, LayerCluster, SelectionPanel, StatusBar,
-  TrafficPanel,
+  AltitudeLegend, Attribution, CursorReadout, LayerCluster, PlacePanel, SelectionPanel,
+  StatusBar, TrafficPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { useStore } from "./state/store";
@@ -67,7 +67,10 @@ export default function App() {
         >
           <CameraCluster />
           <LayerCluster />
+          {/* Mutually exclusive by construction - the store clears one when the other is
+              set - so these never stack and fight for the bounded height. */}
           <SelectionPanel />
+          <PlacePanel />
         </div>
       </div>
       <Attribution />

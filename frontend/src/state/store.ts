@@ -177,6 +177,7 @@ interface State {
   depthPending: boolean;
 
   selectedHex: string | null;
+  selectedPlace: PlaceInfo | null;
   filter: Filter;
   // Carries its own hex so a late reply for a deselected contact can be discarded rather
   // than shown against whatever is selected now.
@@ -203,6 +204,7 @@ interface State {
   setCursor: (c: { lat: number; lon: number } | null) => void;
   setDepth: (m: number | null, pending: boolean) => void;
   select: (hex: string | null) => void;
+  selectPlace: (p: PlaceInfo | null) => void;
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
@@ -228,6 +230,7 @@ export const useStore = create<State>((set) => ({
   depthPending: false,
 
   selectedHex: null,
+  selectedPlace: null,
   filter: { operator: null, militaryOnly: false },
   enrichment: null,
   enrichPending: false,
@@ -263,10 +266,14 @@ export const useStore = create<State>((set) => ({
   // registration under another's callsign would be worse than showing nothing.
   select: (selectedHex) => set({
     selectedHex,
+    // An aircraft and an airfield are never both selected: the right column is height-bounded
+    // and two stacked dossiers would push one off screen.
+    selectedPlace: null,
     enrichment: null, enrichPending: false,
     photo: null, photoPending: false,
     track: null, trackPending: false,
   }),
+  selectPlace: (selectedPlace) => set({ selectedPlace, selectedHex: null }),
   setEnrichment: (enrichment, enrichPending) => set({ enrichment, enrichPending }),
   setPhoto: (photo, photoPending) => set({ photo, photoPending }),
   setTrack: (track, trackPending) => set({ track, trackPending }),
@@ -287,6 +294,27 @@ export function matchesFilter(a: Aircraft, f: Filter): boolean {
   if (f.militaryOnly && !a.military) return false;
   if (f.operator && operatorKey(a) !== f.operator) return false;
   return true;
+}
+
+/**
+ * A clickable airfield, straight out of the build-time place data (D-038).
+ *
+ * Every field is verbatim from OurAirports; empty means the source is empty and the panel
+ * renders an em-dash. `military` is the D-033 NAME heuristic, not an authoritative flag, and
+ * the panel says so — a magenta marker must not imply an order of battle we do not have.
+ */
+export interface PlaceInfo {
+  ident: string;
+  name: string;
+  municipality: string;
+  region: string;
+  country: string;
+  elevationFt: number | null;
+  iata: string;
+  military: boolean;
+  large: boolean;
+  lat: number;
+  lon: number;
 }
 
 /*

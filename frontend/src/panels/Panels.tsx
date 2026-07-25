@@ -221,6 +221,75 @@ export function LayerCluster() {
   );
 }
 
+/* ---------------- right: selected airfield ---------------- */
+
+/**
+ * Airfield detail (D-038). A magenta marker asserts significance, so it has to be
+ * interrogable — otherwise the display is making a claim it will not explain.
+ *
+ * Everything here is verbatim from the build-time OurAirports extract. There is no network
+ * call and nothing to wait for, so unlike the aircraft dossier there is no pending state:
+ * a blank field means the SOURCE is blank, and it renders as an em-dash.
+ */
+export function PlacePanel() {
+  const p = useStore((s) => s.selectedPlace);
+  const selectPlace = useStore((s) => s.selectPlace);
+  if (!p) return null;
+
+  const text = (v: string) => (v && v.trim() ? v.trim() : DASH);
+
+  return (
+    <div
+      className={`panel panel--dossier w-[344px] pointer-events-auto ${p.military ? "panel--mil" : ""}`}
+      style={{ minHeight: 0, overflowY: "auto" }}
+    >
+      <div className="panel-h">
+        <span style={{ color: p.military ? "var(--mil)" : "var(--cyan)", fontSize: 14, letterSpacing: ".1em" }}>
+          {p.ident.toUpperCase()}
+        </span>
+        <button onClick={() => selectPlace(null)} className="lbl"
+                style={{ background: "none", border: "none", cursor: "pointer" }}>×</button>
+      </div>
+      {/* Full width and wrapping: "Whiting Field Naval Air Station South Airport" does not
+          fit a right-aligned value column, and truncating it would read as wrong data. */}
+      <div className="px-[10px] py-[6px]" style={{ fontSize: 12, lineHeight: 1.35 }}>
+        {text(p.name)}
+      </div>
+      <div className="py-1" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className={`row ${p.military ? "row--mil" : ""}`}>
+          <span>Class</span><span>{p.military ? "MILITARY" : "CIVIL"}</span>
+        </div>
+        <div className="row"><span>Field</span><span>{p.large ? "LARGE" : "MEDIUM"}</span></div>
+        <div className={`row ${p.iata ? "" : "row--dim"}`}>
+          <span>IATA</span><span>{text(p.iata).toUpperCase()}</span>
+        </div>
+        <div className={`row ${p.municipality ? "" : "row--dim"}`} title={p.municipality || undefined}>
+          <span>City</span><span style={{ fontSize: 12 }}>{text(p.municipality).slice(0, 24)}</span>
+        </div>
+        <div className={`row ${p.region || p.country ? "" : "row--dim"}`}>
+          <span>Region</span>
+          <span>{[p.region, p.country].filter(Boolean).join(" · ").toUpperCase() || DASH}</span>
+        </div>
+        <div className={`row ${p.elevationFt !== null ? "" : "row--dim"}`}>
+          <span>Elev</span><span>{fmt(p.elevationFt, " FT")}</span>
+        </div>
+        <div className="row"><span>Lat</span><span>{p.lat.toFixed(4)}</span></div>
+        <div className="row"><span>Lon</span><span>{p.lon.toFixed(4)}</span></div>
+      </div>
+      {/* The one thing this panel must not do is imply an authority we do not have. */}
+      {p.military && (
+        <div className="px-[10px] pb-[6px] lbl"
+             style={{ color: "var(--amber)", fontSize: 9, letterSpacing: ".06em" }}>
+          class inferred from field name · not an authoritative source
+        </div>
+      )}
+      <div className="px-[10px] pb-[6px] lbl" style={{ fontSize: 9, letterSpacing: ".06em" }}>
+        OurAirports · public domain
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- altitude colour legend ---------------- */
 
 /**

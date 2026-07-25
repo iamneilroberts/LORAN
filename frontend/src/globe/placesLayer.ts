@@ -28,9 +28,16 @@ import {
 } from "cesium";
 
 import placesData from "../data/places.json";
+import type { PlaceInfo } from "../state/store";
 
-/** [lat, lon, code, kind] - kind 0 large, 1 medium, 2 military. Generated, see build_places.py. */
-type AirportRow = [number, number, string, number];
+/**
+ * [lat, lon, code, kind, name, municipality, region, country, elevation_ft, iata]
+ * kind 0 large, 1 medium, 2 military. Generated, see build_places.py.
+ */
+type AirportRow = [
+  number, number, string, number,
+  string, string, string, string, number | null, string,
+];
 /** [lat, lon, name, scalerank] - scalerank 0 world city .. 10 minor. */
 type CityRow = [number, number, string, number];
 
@@ -90,16 +97,26 @@ function dotUri(colour: string): string {
  * an airfield is a filled square on the ground. Civil fields are cyan, cities are dim -
  * the whole point is that ground reference stays subordinate to the traffic above it.
  */
-const AIRPORT_STYLE: Record<number, { marker: string; label: string; size: number }> = {
-  [KIND_LARGE]: { marker: squareUri(CYAN, false), label: CYAN, size: 13 },
-  [KIND_MEDIUM]: { marker: squareUri(CYAN, false), label: DIM, size: 10 },
-  [KIND_MILITARY]: { marker: squareUri(MIL, true), label: MIL, size: 12 },
+/*
+ * Colour encodes CLASS, size encodes importance. Airfield codes are cyan or magenta and
+ * cities are dim, so the two can never be confused — which they were when medium airfields
+ * shared the cities' `--dim`, making KMOB and KBFM read as though they were town names.
+ * Large versus medium is carried by marker and type size instead, not by dimming the label.
+ */
+const AIRPORT_STYLE: Record<
+  number, { marker: string; label: string; size: number; font: number }
+> = {
+  [KIND_LARGE]: { marker: squareUri(CYAN, false), label: CYAN, size: 13, font: 12 },
+  [KIND_MEDIUM]: { marker: squareUri(CYAN, false), label: CYAN, size: 10, font: 11 },
+  [KIND_MILITARY]: { marker: squareUri(MIL, true), label: MIL, size: 12, font: 12 },
 };
 
 const CITY_MARKER = dotUri(OFF);
 
 export interface PlacesLayer {
   setShow: (on: boolean) => void;
+  /** The airfield under the cursor, or null. Marker AND label are both hit targets. */
+  pick: (scene: Scene, pos: Cartesian2) => PlaceInfo | null;
   destroy: () => void;
   counts: { airports: number; cities: number };
 }
@@ -113,7 +130,13 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
   const airports = placesData.airports as AirportRow[];
   const cities = placesData.cities as CityRow[];
 
-  for (const [lat, lon, code, kind] of airports) {
+  // Primitive -> airfield, so a click can be resolved back to something to display (D-038).
+  // Cities are deliberately absent: a city dot is context, not a contact, and there is
+  // nothing to say about it that the label does not already say.
+  const placeOf = new Map<object, PlaceInfo>();
+
+  for (const row of airports) {
+    const [lat, lon, code, kind, name, municipality, region, country, elevationFt, iata] = row;
     const style = AIRPORT_STYLE[kind];
     if (!style) continue;
     const position = Cartesian3.fromDegrees(lon, lat, 0);
@@ -124,17 +147,31 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     // the globe must be allowed to occlude the ones on the far side of the planet.
     const ddc = new DistanceDisplayCondition(0, far);
 
-    billboards.add({
+    const info: PlaceInfo = {
+      ident: code,
+      name,
+      municipality,
+      region,
+      country,
+      elevationFt,
+      iata,
+      military: kind === KIND_MILITARY,
+      large: kind === KIND_LARGE,
+      lat,
+      lon,
+    };
+
+    const marker = billboards.add({
       position,
       image: style.marker,
       width: style.size,
       height: style.size,
       distanceDisplayCondition: ddc,
     });
-    labels.add({
+    const label = labels.add({
       position,
       text: code,
-      font: `500 ${kind === KIND_MEDIUM ? 10 : 11}px 'JetBrains Mono', ui-monospace, monospace`,
+      font: `500 ${style.font}px 'JetBrains Mono', ui-monospace, monospace`,
       style: LabelStyle.FILL,
       fillColor: Color.fromCssColorString(style.label),
       horizontalOrigin: HorizontalOrigin.LEFT,
@@ -142,6 +179,9 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       pixelOffset: new Cartesian2(Math.round(style.size / 2) + 3, 0),
       distanceDisplayCondition: ddc,
     });
+    // Both are hit targets: the code is a bigger, easier thing to hit than a 10px square.
+    placeOf.set(marker, info);
+    placeOf.set(label, info);
   }
 
   for (const [lat, lon, name, scalerank] of cities) {
@@ -177,9 +217,20 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       billboards.show = on;
       labels.show = on;
     },
+    // Drilled for the same reason aircraft picks are (D-035): the frontmost primitive over an
+    // airfield is often its own label, or another marker crowding it.
+    pick: (s: Scene, pos: Cartesian2) => {
+      if (!billboards.show) return null;
+      for (const entry of s.drillPick(pos, 8)) {
+        const info = entry?.primitive ? placeOf.get(entry.primitive) : undefined;
+        if (info) return info;
+      }
+      return null;
+    },
     destroy: () => {
       scene.primitives.remove(billboards);
       scene.primitives.remove(labels);
+      placeOf.clear();
     },
     counts: { airports: airports.length, cities: cities.length },
   };

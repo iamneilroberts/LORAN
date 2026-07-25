@@ -96,8 +96,16 @@ MAX_CITY_SCALERANK = 7
 
 
 def build_airports(csv_path: Path) -> list[list]:
-    """[lat, lon, code, kind] for large + medium airports only. Military is a colour, not a
-    reason to include a marker: a military heliport or outlying field stays excluded."""
+    """
+    [lat, lon, code, kind, name, municipality, region, country, elevation_ft, iata]
+
+    Large + medium airports only. Military is a colour, not a reason to include a marker: a
+    military heliport or outlying field stays excluded (D-037).
+
+    The trailing detail fields exist because the markers are CLICKABLE (D-038) - a magenta
+    marker asserts significance, so it has to be interrogable. Empty strings and None are
+    carried through as-is and render as an em-dash; nothing is invented to fill a column.
+    """
     out: list[list] = []
     counts = {KIND_LARGE: 0, KIND_MEDIUM: 0, KIND_MILITARY: 0}
 
@@ -113,9 +121,25 @@ def build_airports(csv_path: Path) -> list[list]:
             if not lat or not lon:
                 continue
 
+            # iso_region is prefixed with the country ("US-AL"); the country is its own column,
+            # so strip the redundant prefix rather than printing it twice in the panel.
+            region = row["iso_region"] or ""
+            if region.startswith(row["iso_country"] + "-"):
+                region = region[len(row["iso_country"]) + 1:]
+
+            elev = row["elevation_ft"]
+            try:
+                elev_ft = int(float(elev)) if elev else None
+            except ValueError:
+                elev_ft = None
+
             # `ident` is always populated and is the ICAO code where one exists; that is the
             # code a mission-control display should show. No fallback guessing needed.
-            out.append([round(float(lat), 4), round(float(lon), 4), row["ident"], kind])
+            out.append([
+                round(float(lat), 4), round(float(lon), 4), row["ident"], kind,
+                row["name"], row["municipality"], region, row["iso_country"],
+                elev_ft, row["iata_code"],
+            ])
             counts[kind] += 1
 
     print(f"  airports: {len(out):,}  "

@@ -132,7 +132,14 @@ export default function Globe() {
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
     handler.setInputAction((m: { position: Cartesian2 }) => {
-      useStore.getState().select(layer.pick(scene, m.position));
+      // Aircraft win over airfields: the traffic is the subject and is drawn above the ground.
+      // A click that hits neither still clears the selection, so click-empty-to-clear survives.
+      const hex = layer.pick(scene, m.position);
+      if (hex) {
+        useStore.getState().select(hex);
+        return;
+      }
+      useStore.getState().selectPlace(places.pick(scene, m.position));
     }, ScreenSpaceEventType.LEFT_CLICK);
 
     /* --- per-frame: dead reckoning, planes, FPS --- */
