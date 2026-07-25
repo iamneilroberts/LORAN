@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef } from "react";
 import {
+  ArcType,
   Cartesian2,
   Cartesian3,
   Color,
@@ -19,10 +20,11 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { addPlane, AMBER, clearByPrefix, CYAN } from "./altitudePlanes";
 import { createAircraftLayer } from "./aircraftLayer";
-import { distanceNm, useStore, type Aircraft } from "../state/store";
+import { distanceNm, FT_TO_M, useStore, type Aircraft } from "../state/store";
 
 const BAND_PREFIX = "band::";
 const DATUM_PREFIX = "datum::";
+const TRACK_PREFIX = "track::";
 
 export default function Globe() {
   const ref = useRef<HTMLDivElement>(null);
@@ -161,6 +163,33 @@ export default function Globe() {
     };
     scene.postRender.addEventListener(onTick);
 
+    /* --- track path: drawn at the TRUE altitude of each fix, not flattened to the ground.
+     *     Rebuilt only when the loaded track changes, which is a user action, not a poll. --- */
+    let lastTrackKey = "";
+    const unsubTrack = useStore.subscribe((st) => {
+      const t = st.track;
+      const key = t ? `${t.hex}|${t.count}|${t.last_ts ?? ""}` : "";
+      if (key === lastTrackKey) return;
+      lastTrackKey = key;
+
+      clearByPrefix(viewer, TRACK_PREFIX);
+      if (!t || t.points.length < 2) return;
+
+      viewer.entities.add({
+        id: `${TRACK_PREFIX}${t.hex}`,
+        polyline: {
+          positions: t.points.map((p) =>
+            Cartesian3.fromDegrees(p.lon, p.lat, (p.alt_ft ?? 0) * FT_TO_M),
+          ),
+          width: 1.6,
+          material: Color.fromCssColorString("#5fd7e0").withAlpha(0.75),
+          // The track is a measurement, not scenery: it must stay visible where it passes
+          // behind terrain rather than being silently clipped into a shorter path.
+          arcType: ArcType.GEODESIC,
+        },
+      });
+    });
+
     /* --- planes rebuild only when their inputs change --- */
     let lastKey = "";
     const unsub = useStore.subscribe((st) => {
@@ -215,6 +244,7 @@ export default function Globe() {
     return () => {
       window.clearTimeout(depthTimer);
       unsub();
+      unsubTrack();
       scene.postRender.removeEventListener(onTick);
       handler.destroy();
       layer.destroy();

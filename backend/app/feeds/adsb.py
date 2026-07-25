@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -119,6 +119,9 @@ class AdsbClient:
         self._locks: dict[str, asyncio.Lock] = {}
         self._gate = asyncio.Lock()          # serialises upstream calls
         self._last_upstream = 0.0
+        # Set by main.py to the track ring buffer. Called ONLY with a fresh upstream payload,
+        # never on a cache hit - replaying a cached response must not inflate a track.
+        self.on_fresh: Callable[[list[dict[str, Any]]], None] | None = None
 
     async def start(self) -> None:
         self._client = httpx.AsyncClient(
@@ -177,6 +180,8 @@ class AdsbClient:
                         self._last_upstream = time.monotonic()
 
                     aircraft = [a for a in (normalize(r) for r in rows) if a]
+                    if self.on_fresh:
+                        self.on_fresh(aircraft)
                     src.ok, src.last_error = True, None
                     src.last_ok_ts, src.consecutive_failures = time.time(), 0
                     payload = {

@@ -21,12 +21,16 @@ from .config import CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, USER_AGENT
 from .feeds.adsb import client as adsb
 from .feeds.adsbdb import client as adsbdb
 from .feeds.planespotters import client as photos
+from .feeds.track import store as tracks
 
 START = time.time()
 
 
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Wired here rather than inside the feed client so the coupling is visible at one place:
+    # every fresh upstream payload feeds the ring buffer, cache hits do not.
+    adsb.on_fresh = tracks.record
     await adsb.start()
     await adsbdb.start()
     await photos.start()
@@ -72,6 +76,19 @@ async def get_enrich(
     the UI can tell "unknown" apart from "unavailable".
     """
     return await adsbdb.enrich(icao, callsign)
+
+
+@app.get("/api/track")
+async def get_track(hex: str = Query(..., min_length=6, max_length=6)):
+    """
+    Recent position fixes for one contact, from the in-memory ring buffer (D-016).
+
+    The response reports the window it ACTUALLY covers (`first_ts`, `last_ts`, `span_s`) and
+    whether older points have already been discarded (`truncated`). This buffer dies with the
+    process and reaches back at most `buffer_window_s`; callers must present that honestly and
+    never imply history it does not hold.
+    """
+    return tracks.get(hex)
 
 
 @app.get("/api/photo")
@@ -132,6 +149,7 @@ async def health():
             "adsbdb": adsbdb.status(),
             "planespotters": photos.status(),
         },
+        "track_buffer": tracks.status(),
         # Recorded honestly: measured zero coverage at Mobile. docs/data-sources.md 5.1a
         "ais": {"configured": False, "reason": "no source - aisstream measured zero at Mobile"},
     }

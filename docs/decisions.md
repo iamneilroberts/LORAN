@@ -459,3 +459,52 @@ MODEL beside it so a mismatch is visible to the operator rather than hidden.
 
 **Terms compliance unchanged:** JSON only, contact-carrying UA, 24 h cache cap, credit as visible
 text, plain `<a>` to the photo page with no `rel="nofollow"`, no image bytes touched server-side.
+
+---
+
+### D-025 · Track buffer: sample floor, run collapsing, and coverage in the export
+
+**Date:** 2026-07-25
+
+Implementation calls behind D-016, all three about not letting the buffer lie.
+
+**Sample floor (`ADSBVIZ_TRACK_SAMPLE_SECONDS`, default 5 s).** The poll runs every 2 s. Storing
+every poll would put ~900 near-identical points per contact in a 30-minute buffer without
+covering any more time. One sample per contact per 5 s gives 361 slots, which is the whole window.
+
+**Run collapsing.** A contact whose upstream fix has not moved would otherwise fill all 361 slots
+with the same coordinate and evict its own real history. A run of identical positions is
+collapsed to its two endpoints — "here at t0", "still here at t1" — which preserves the observed
+span exactly while costing two slots instead of the entire buffer. Verified: a stationary contact
+holds 2 points where a moving one holds 12 over the same period.
+
+**Recording hooks the FRESH payload only.** `AdsbClient.on_fresh` fires where an upstream response
+is normalised, not where a cached one is returned. Serving a cached payload to a second browser
+tab must not append a duplicate fix.
+
+**The GeoJSON carries its own coverage.** `properties` includes `first_fix`, `last_fix`,
+`span_seconds`, `buffer_window_seconds`, `older_points_discarded` and a plain-language
+`coverage_note`. A bare LineString invites the reader to assume it is the whole flight; these
+fields make the real extent explicit in the file, which is where it matters once the export has
+left the app. Altitudes are metres in the third coordinate position per RFC 7946, converted from
+the feed's feet.
+
+---
+
+### D-026 · Error boundary shows the real error, not a friendly one
+
+**Date:** 2026-07-25
+
+**Decision:** A React error boundary wraps the app and renders the actual error name, message and
+component stack, plus an explicit statement that live data is no longer updating.
+
+**Why:** without a boundary a render throw unmounts React and leaves a black rectangle that looks
+exactly like "the globe is still loading" and "the feed is down" — three different situations that
+must never be indistinguishable on an instrument. And the person reading this console is the
+person who can fix it, so "something went wrong" would only cost them a devtools round-trip.
+
+**Verified** by injecting a render-time throw through the real code path and confirming the
+boundary caught it and displayed the message, rather than reasoning from React's documented
+semantics. An earlier attempt threw inside a zustand subscriber instead, which boundaries
+correctly do **not** catch — worth knowing: state-subscriber errors in `Globe.tsx` are outside
+the boundary's reach and would still blank the display.

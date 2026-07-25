@@ -63,6 +63,13 @@ ADSBDB_MIN_INTERVAL_S = _f("ADSBVIZ_ADSBDB_MIN_INTERVAL_SECONDS", 0.2)
 PHOTO_TTL_S = min(_f("ADSBVIZ_PHOTO_TTL_SECONDS", 86400.0), 86400.0)
 PHOTO_MISS_TTL_S = _f("ADSBVIZ_PHOTO_MISS_TTL_SECONDS", 21600.0)
 
+# Track ring buffer (D-016). In memory, dies with the process; Phase 5 makes it durable.
+# The sample floor matters: at a 2 s poll an unthrottled buffer is 900 near-identical points
+# per contact, which costs memory without lengthening the window it can cover.
+TRACK_WINDOW_S = _f("ADSBVIZ_TRACK_WINDOW_SECONDS", 1800.0)
+TRACK_SAMPLE_S = _f("ADSBVIZ_TRACK_SAMPLE_SECONDS", 5.0)
+TRACK_MAX_CONTACTS = int(_f("ADSBVIZ_TRACK_MAX_CONTACTS", 3000))
+
 CORS_ORIGINS = os.environ.get(
     "ADSBVIZ_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")

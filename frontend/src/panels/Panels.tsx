@@ -7,8 +7,10 @@
  */
 import { useEffect, useState } from "react";
 import {
-  useStore, type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult,
+  useStore,
+  type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult, type TrackResult,
 } from "../state/store";
+import { downloadGeoJSON } from "./trackExport";
 
 const DASH = "—";
 
@@ -256,6 +258,75 @@ function PhotoBlock({ result, pending }: { result: PhotoResult | null; pending: 
   );
 }
 
+/** "22 MIN" / "47 SEC" - the span actually covered, never the configured window. */
+function spanLabel(s: number): string {
+  if (s < 90) return `${Math.round(s)} SEC`;
+  return `${Math.round(s / 60)} MIN`;
+}
+
+/**
+ * Track controls. The readout beside them states the window the buffer really holds
+ * (D-016) - a contact seen ninety seconds ago has a 90-second track, and saying "30 MIN"
+ * because that is the buffer size would be inventing history.
+ */
+function TrackBlock({ hex, label }: { hex: string; label: string }) {
+  const track = useStore((s) => s.track);
+  const pending = useStore((s) => s.trackPending);
+  const mine = track && track.hex.toLowerCase() === hex.toLowerCase() ? track : null;
+
+  const load = () => {
+    useStore.getState().setTrack(null, true);
+    fetch(`/api/track?hex=${hex.toUpperCase()}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: TrackResult) => useStore.getState().setTrack(d, false))
+      .catch(() => useStore.getState().setTrack(null, false));
+  };
+
+  const btn = {
+    font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase" as const,
+    background: "transparent", cursor: "pointer", padding: "4px 6px",
+    border: "1px solid var(--line-bright)", borderRadius: 0, color: "var(--cyan)", flex: 1,
+  };
+
+  return (
+    <div className="py-1 px-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="flex gap-1">
+        <button style={btn} onClick={load} disabled={pending}>
+          {pending ? "…" : "Track"}
+        </button>
+        <button
+          style={{ ...btn, color: mine ? "var(--cyan)" : "var(--dim)" }}
+          onClick={() => useStore.getState().setTrack(null, false)}
+          disabled={!mine}
+        >
+          Clear
+        </button>
+        <button
+          style={{ ...btn, color: mine?.count ? "var(--cyan)" : "var(--dim)" }}
+          onClick={() => mine && downloadGeoJSON(mine, label)}
+          disabled={!mine?.count}
+        >
+          Export
+        </button>
+      </div>
+      {mine && (
+        <div className="lbl pt-1" style={{ fontSize: 9 }}>
+          {mine.count === 0
+            ? "No fixes buffered yet"
+            : `${mine.count} fixes · ${spanLabel(mine.span_s)}${mine.truncated ? " · older discarded" : ""}`}
+        </div>
+      )}
+      {mine && mine.count > 0 && (
+        // The buffer is in-memory and starts when the contact came into range. Say so, so
+        // a short track is never read as a short flight.
+        <div className="lbl" style={{ fontSize: 8, color: "var(--dim)" }}>
+          Buffered since contact came into range · max {Math.round(mine.buffer_window_s / 60)} min
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SelectionPanel() {
   const hex = useStore((s) => s.selectedHex);
   const aircraft = useStore((s) => s.aircraft);
@@ -368,6 +439,7 @@ export function SelectionPanel() {
           </div>
         )}
       </div>
+      <TrackBlock hex={a.hex ?? ""} label={(a.flight || a.hex || "").trim()} />
       <PhotoBlock
         result={photo && photo.hex?.toUpperCase() === a.hex?.toUpperCase() ? photo : null}
         pending={photoPending}

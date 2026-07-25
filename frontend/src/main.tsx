@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 import "./styles/index.css";
 import { useStore } from "./state/store";
 
@@ -10,6 +11,8 @@ window.CESIUM_BASE_URL = CESIUM_BASE_URL;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

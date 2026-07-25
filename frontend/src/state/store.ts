@@ -121,6 +121,30 @@ export interface PhotoResult {
   errors: string[];
 }
 
+/* ---- track ring buffer (GET /api/track, D-016) ----
+ * `span_s` is what these points ACTUALLY cover, which is not the same as `buffer_window_s`.
+ * `truncated` means older points existed and were discarded. Both must reach the UI: the
+ * track may never imply more history than the buffer holds.
+ */
+export interface TrackPoint {
+  ts: number;
+  lat: number;
+  lon: number;
+  alt_ft: number | null;
+}
+
+export interface TrackResult {
+  hex: string;
+  count: number;
+  first_ts: number | null;
+  last_ts: number | null;
+  span_s: number;
+  buffer_window_s: number;
+  sample_s: number;
+  truncated: boolean;
+  points: TrackPoint[];
+}
+
 export interface FeedStatus {
   name: string;
   ok: boolean;
@@ -162,6 +186,8 @@ interface State {
   enrichPending: boolean;
   photo: PhotoResult | null;
   photoPending: boolean;
+  track: TrackResult | null;
+  trackPending: boolean;
   showBands: boolean;
   showDatum: boolean;
   showDropLines: boolean;
@@ -180,6 +206,7 @@ interface State {
   select: (hex: string | null) => void;
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
+  setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showBands" | "showDatum" | "showDropLines") => void;
   setFps: (n: number) => void;
 }
@@ -204,6 +231,8 @@ export const useStore = create<State>((set) => ({
   enrichPending: false,
   photo: null,
   photoPending: false,
+  track: null,
+  trackPending: false,
   showBands: true,
   showDatum: true,
   showDropLines: true,
@@ -233,9 +262,11 @@ export const useStore = create<State>((set) => ({
     selectedHex,
     enrichment: null, enrichPending: false,
     photo: null, photoPending: false,
+    track: null, trackPending: false,
   }),
   setEnrichment: (enrichment, enrichPending) => set({ enrichment, enrichPending }),
   setPhoto: (photo, photoPending) => set({ photo, photoPending }),
+  setTrack: (track, trackPending) => set({ track, trackPending }),
   toggle: (k) => set((s) => ({ [k]: !s[k] }) as Pick<State, typeof k>),
   setFps: (fps) => set({ fps }),
 }));
