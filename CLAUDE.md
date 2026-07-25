@@ -72,6 +72,7 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 | NOAA NCEI DEM | depth cross-check | none | — | US public domain |
 | OurAirports | airfield markers, **build time only** | none | — | public domain |
 | Natural Earth | city labels, **build time only** | none | — | public domain |
+| NEXRAD via Iowa State Mesonet | weather radar, **off by default** | none | — | US public domain, credit IEM |
 | OpenSky | **REJECTED** | — | 400 credits/day anon | — |
 | Cesium ion | **NOT REQUIRED** | — | — | — |
 
@@ -140,5 +141,16 @@ See `docs/visual-reference.md` for the annotated reference image.
 
 ## Explicit non-goals
 
-No accounts. No multi-user. No mobile layout. No satellites. No weather. No AI summarization.
+No accounts. No multi-user. No mobile layout. No satellites. ~~No weather.~~ No AI summarization.
 No alerting engine. If you find yourself building one of these — **stop and ask.**
+
+**Weather is no longer a non-goal, narrowly.** The owner asked for NEXRAD radar on 2026-07-25;
+it ships as a single translucent imagery layer, **off by default**, behind the `WEATHER RADAR`
+toggle (D-040). That is the whole of the reversal — no forecasts, no alerting, no
+lightning, no soundings. Do not read it as a licence to build a weather feature.
+
+**"No accounts / no multi-user" is under active review**, not reversed: the owner wants remote
+access for one trusted family member with a token and sticky preferences. Nothing has been
+built. It collides with planespotters clause 8 (`docs/data-sources.md`), which forbids
+re-exposing their API and whose recorded mitigation is *"never expose it publicly"*. Get a
+ruling before writing auth code.

@@ -22,6 +22,9 @@
 - [x] **Map markers** — airfields + city labels, vendored and processed at build time (D-023, D-032)
 - [x] Military airfields in `--mil` magenta via a name heuristic; false negatives documented (D-033)
 - [x] `PLACES` layer toggle; zoom thinning via DistanceDisplayCondition; label anchors separated
+- [x] **Weather radar** — NEXRAD via Iowa State Mesonet, one translucent layer, OFF by default,
+      `WEATHER RADAR` toggle, self-refreshing every 5 min while visible (D-040). REVERSES the
+      "no weather" non-goal narrowly, on owner instruction. CLAUDE.md updated to say so.
 - [x] Airfield markers CLICKABLE with an honest detail panel; military entries state the class is
       inferred from the name, not authoritative (D-038) — owner request
 - [x] Airfield codes cyan/magenta, only cities dim — medium airfields had been sharing the cities'
@@ -58,7 +61,10 @@
 - [ ] Phase 6 — status bar polish, compass, FPS (cluster + chips partly done)
 - [ ] Phase 4 — vessels via self-hosted RTL-SDR + AIS-catcher (D-018). NEEDS MARINE-VHF ANTENNA (162 MHz)
 - [ ] Open-source prep: licence + README stating single-user-by-design
-- [ ] FUTURE: multi-user hosting for friends — **reverses CLAUDE.md non-goals**, blocked on 2 hard constraints
+- [ ] **NEXT: remote access for one trusted family member** — owner wants a hosted URL, a real
+      auth token, no hoops for the guest, and sticky per-user prefs. Reverses "no accounts / no
+      multi-user". Blocked on an owner ruling re planespotters clause 8 ("never expose it
+      publicly" is the recorded mitigation) and a choice of exposure mechanism + prefs storage.
 - [ ] FUTURE: colour scheme chooser incl. light mode — needs a second ramp (current lightness assumes near-black ground)
 
 _Updated: 2026-07-25 — phase2-dossier_

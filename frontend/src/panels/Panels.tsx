@@ -179,6 +179,7 @@ export function LayerCluster() {
   const showDatum = useStore((s) => s.showDatum);
   const showDropLines = useStore((s) => s.showDropLines);
   const showPlaces = useStore((s) => s.showPlaces);
+  const showRadar = useStore((s) => s.showRadar);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const toggle = useStore((s) => s.toggle);
@@ -217,6 +218,9 @@ export function LayerCluster() {
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
+      {/* The note is not decoration: it says the coverage is US-only and the frame is minutes
+          old, so an empty layer reads as "no echo" or "outside coverage", never as broken. */}
+      <Item on={showRadar} label="Weather radar" k="showRadar" note="NEXRAD · US · ~5 min old" />
     </div>
   );
 }
@@ -681,12 +685,17 @@ export function StatusBar() {
 /* ---------------- attribution: mandatory, not optional ---------------- */
 
 export function Attribution() {
+  // Radar credit appears only while the layer is on: crediting a source we are not currently
+  // drawing would be as misleading as failing to credit one we are.
+  const showRadar = useStore((s) => s.showRadar);
   return (
     <div
       className="absolute right-3"
       style={{ bottom: 30, fontSize: 8, color: "var(--dim)", letterSpacing: ".06em" }}
     >
       GEBCO Compilation Group · aircraft data © airplanes.live (non-commercial) · airframe/route via adsbdb
+      {" · places via OurAirports / Natural Earth (public domain)"}
+      {showRadar && " · NEXRAD NOAA/NWS via Iowa State Mesonet"}
     </div>
   );
 }

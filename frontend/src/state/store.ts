@@ -190,6 +190,7 @@ interface State {
   showDatum: boolean;
   showDropLines: boolean;
   showPlaces: boolean;
+  showRadar: boolean;
   datumRadiusNm: number;
   separationFt: number;
   /** Camera pitch in degrees, -90 = straight down. Drives slice suppression (D-034). */
@@ -208,7 +209,7 @@ interface State {
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
-  toggle: (k: "showDatum" | "showDropLines" | "showPlaces") => void;
+  toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar") => void;
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
@@ -241,6 +242,9 @@ export const useStore = create<State>((set) => ({
   showDatum: true,
   showDropLines: true,
   showPlaces: true,
+  // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
+  // the altitude ramp, so it is a question you ask, not part of the resting display.
+  showRadar: false,
   // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
   cameraPitchDeg: -32,
   datumRadiusNm: 50,

@@ -21,6 +21,7 @@ import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { AMBER, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
+import { createRadarLayer } from "./radarLayer";
 import {
   FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
 } from "../state/store";
@@ -87,8 +88,12 @@ export default function Globe() {
     const layer = createAircraftLayer(scene);
     // Static ground reference, built once here and thereafter only shown or hidden (D-032).
     const places = createPlacesLayer(scene);
+    // Weather radar builds nothing until it is switched on (D-040), so an off toggle costs
+    // no tiles and no upstream requests at all.
+    const radar = createRadarLayer(scene);
     const s0 = useStore.getState();
     places.setShow(s0.showPlaces);
+    radar.setShow(s0.showRadar);
 
     /* --- open in perspective, not plan view --- */
     camera.setView({
@@ -225,10 +230,16 @@ export default function Globe() {
 
     /* --- places: static, so only ever shown or hidden --- */
     let lastShowPlaces = s0.showPlaces;
+    let lastShowRadar = s0.showRadar;
     const unsubPlaces = useStore.subscribe((st) => {
-      if (st.showPlaces === lastShowPlaces) return;
-      lastShowPlaces = st.showPlaces;
-      places.setShow(st.showPlaces);
+      if (st.showPlaces !== lastShowPlaces) {
+        lastShowPlaces = st.showPlaces;
+        places.setShow(st.showPlaces);
+      }
+      if (st.showRadar !== lastShowRadar) {
+        lastShowRadar = st.showRadar;
+        radar.setShow(st.showRadar);
+      }
     });
 
     /* --- planes rebuild only when their inputs change --- */
@@ -289,6 +300,7 @@ export default function Globe() {
       handler.destroy();
       layer.destroy();
       places.destroy();
+      radar.destroy();
       if (!viewer.isDestroyed()) viewer.destroy();
       viewerRef.current = null;
     };

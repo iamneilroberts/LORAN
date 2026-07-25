@@ -849,3 +849,42 @@ town names, dim and indistinguishable.
 (civil) or magenta (military); cities alone keep `--dim`. Large versus medium is carried by
 marker size (13 px vs 10 px) and type size (12 px vs 11 px) rather than by dimming the label,
 which is what destroyed the distinction in the first place.
+
+---
+
+### D-040 · Weather radar: NEXRAD, one translucent layer, OFF by default
+
+**Date:** 2026-07-25
+
+**This reverses CLAUDE.md's "no weather" non-goal**, on the owner's explicit instruction:
+*"weather radar: add it, default off, toggle"*. The reversal is narrow — one imagery layer.
+No forecasts, no alerting, no lightning, no soundings.
+
+**Source:** Iowa State Mesonet's WMS render of NOAA/NWS NEXRAD base reflectivity
+(`nexrad-n0q-900913`). Free, keyless, US public domain data; IEM credited for the hosting.
+Verified live before building: a CONUS `GetMap` returned real convective cells, and the
+`-900913` layer serves EPSG:3857 so it matches Cesium's tiling scheme without server-side
+reprojection. US coverage only — elsewhere the layer is simply transparent.
+
+**Why OFF by default, and why that is not timidity:** reflectivity ramps green → yellow →
+orange → red, and the altitude hue ramp (D-029) already spends green at 20,000 ft, yellow-green
+at 30,000 and pale yellow at 45,000. With both on, colour stops being a single unambiguous
+encoding — the exact defect D-029 was adopted to fix. Radar is therefore something you switch
+on to answer a question, not part of the resting display. Alpha 0.55 so it reads as an overlay
+rather than a basemap.
+
+**Staleness is handled, not ignored.** Frames publish about every five minutes, so the layer
+rebuilds itself on that interval *while visible* (the request carries a frame-bucket
+cache-buster; otherwise the browser and Cesium both happily serve an hour-old frame). Nothing
+refreshes while hidden, and the toggle reads `NEXRAD · US · ~5 min old` so an empty layer says
+"no echo, or outside coverage" rather than looking broken. Radar credit appears in the
+attribution line **only while the layer is on** — crediting a source we are not drawing would
+mislead as much as failing to credit one we are.
+
+**Stated limit:** base reflectivity is a GROUND-PLANE product draped on the ellipsoid. It is
+not the weather at the selected contact's altitude. The honest reading is "there is a cell under
+that deviation", never "that aircraft is in this".
+
+All knobs are `VITE_`-prefixed build-time env vars (D-019), documented in `.env.example`.
+`maximumLevel` is capped at 10 because radar is ~1 km data and further zoom is pure upscaling,
+which would imply precision the source does not have.
