@@ -49,17 +49,20 @@ const OFF = "#3a4652";
  * These are the thinning thresholds. Airfields outrank cities because this is an aviation
  * display: a military field is worth seeing before the town it sits next to.
  */
-const FAR_LARGE = 3_000_000;
-const FAR_MILITARY = 1_200_000;
-const FAR_MEDIUM = 600_000;
+const FAR_LARGE = 2_500_000;
+const FAR_MILITARY = 900_000;
+const FAR_MEDIUM = 450_000;
 
-/** Cities thin by Natural Earth's scalerank, which is what the rank exists for. */
+/**
+ * Cities thin by Natural Earth's scalerank, which is what the rank exists for.
+ *
+ * The build drops everything above scalerank 7 outright (D-037), so 7 is the floor here.
+ */
 function cityFar(scalerank: number): number {
   if (scalerank <= 2) return 9_000_000;
-  if (scalerank <= 4) return 3_500_000;
-  if (scalerank <= 6) return 1_200_000;
-  if (scalerank === 7) return 500_000;
-  return 220_000;
+  if (scalerank <= 4) return 3_000_000;
+  if (scalerank <= 6) return 1_000_000;
+  return 400_000;
 }
 
 /* ---- marker glyphs: 3 airfield shapes and a city dot, so 4 data URIs in total ---- */

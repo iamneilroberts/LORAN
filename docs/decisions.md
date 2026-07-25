@@ -771,3 +771,35 @@ Owner feedback: the dossier was still too small to read at their preferred 100% 
 list, legend and cursor readout are *glanceable* chrome and stay small, whereas the dossier is
 the one panel that is actually **read**. Model and operator truncate at 32 characters instead
 of 26 now that there is room, with the full value still in the hover title.
+
+---
+
+### D-037 · Err on the side of legibility: large/medium airfields only, cities to scalerank 7
+
+**Date:** 2026-07-25
+
+Owner instruction after seeing D-032's first pass on the real display: *"drop smaller places,
+heliports, etc. Err on the side of legibility"* and *"exclude heliports"*.
+
+**Decision, superseding the inclusion rule in D-032:**
+
+- Airfields are **large_airport and medium_airport only**. Heliports, small airports, seaplane
+  bases and balloonports are excluded outright.
+- **The exclusion applies to military fields too.** Military is a *colour* distinction inside
+  the large/medium set, never a reason to add a marker back. This is the substantive change:
+  D-032's name heuristic had been pulling in military heliports and outlying fields regardless
+  of type, which is where markers like `1MS8` and `3MS4` came from. Military count drops from
+  1,208 to 627 — 581 of the originals were heliports, small fields or a balloonport.
+- Cities above **Natural Earth scalerank 7** are dropped at build time (1,815 of 7,342). Around
+  Mobile this keeps Montgomery, Mobile, Pensacola, Biloxi, Selma, Gulfport and Hattiesburg, and
+  drops the Slidell / Crestview / Meridian / Laurel tier that was filling in the gaps.
+- Display ranges tightened with it: large 2,500 km, military 900 km, medium 450 km; cities
+  9,000 / 3,000 / 1,000 / 400 km by scalerank band.
+
+Totals: **10,802 markers, down from 13,198**; the generated JSON drops 385 KB → 313 KB.
+
+**Known residual, not fixed:** where an airfield pair and a city sit within a few km — Maxwell
+AFB, Montgomery Regional and Montgomery itself — three labels still overlap at wide zoom, and
+they separate as you zoom in. Cesium's `LabelCollection` has no declutter, so fixing this needs
+a real collision-avoidance pass. Deliberately not attempted; the cheap fix would be dropping
+one of the three, which loses information the operator asked for.

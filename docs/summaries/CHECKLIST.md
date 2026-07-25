@@ -22,6 +22,9 @@
 - [x] **Map markers** — airfields + city labels, vendored and processed at build time (D-023, D-032)
 - [x] Military airfields in `--mil` magenta via a name heuristic; false negatives documented (D-033)
 - [x] `PLACES` layer toggle; zoom thinning via DistanceDisplayCondition; label anchors separated
+- [x] Owner: err on the side of legibility (D-037) — large/medium airfields ONLY (heliports, small
+      fields, seaplane bases excluded even when military-named), cities capped at scalerank 7.
+      10,802 markers, down from 13,198.
 - [x] ALTITUDE SLICE suppressed when the camera has no perspective on it (D-034) — owner request
 - [x] Dossier widened to 344px with its own larger type scale (D-036) — owner request
 - [x] **verify_phase1.py click check ROOT CAUSED and fixed** (D-035) — was the harness clicking a
@@ -32,8 +35,9 @@
 
 - [ ] Pick a repo name to replace the placeholder "adsb-viz" before open-sourcing
 - [ ] Low end of the altitude ramp: deep blue over dark blue ocean is the lowest-contrast pairing — owner to judge on a real display
-- [ ] Judge the place markers on the real display — label density, and whether small airports /
-      heliports are actually wanted (D-032 excludes them deliberately; reversible)
+- [ ] Judge the place markers on the real display now that D-037 has thinned them
+- [ ] Residual label overlap where two airfields + a city sit within a few km (Maxwell / Montgomery
+      Regional / Montgomery). Needs a real declutter pass; Cesium LabelCollection has none.
 - [ ] Re-measure FPS on real hardware WITH places on. Baseline from owner's screenshot BEFORE
       places: **27 FPS, WebGL2, 89 contacts** — first real number we have. Headless is software
       GL at 0–3 FPS and tells us nothing.
