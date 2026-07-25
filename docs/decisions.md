@@ -339,3 +339,123 @@ reproduce two artifacts in it.
 Pacific Ocean and Kermadec Trench cannot be co-visible), and its aircraft icons are scaled far
 larger than real traffic at that camera distance. Reproducing either would violate the project's
 honesty rule — the first invents geography, the second misrepresents scale.
+
+---
+
+### D-020 · adsbdb enrichment: cache budget is ours to set, and a miss is cached too
+
+**Date:** 2026-07-25
+
+**Context:** adsbdb needs no key and publishes no rate limit. Absence of a stated limit is not
+permission to hammer it.
+
+**Decision:** `backend/app/feeds/adsbdb.py` caches airframe lookups for 24 h, route lookups for
+1 h, and **negative results for 1 h**. Upstream calls are serialised behind a 0.2 s floor. All
+four values are `.env`-tunable (`ADSBVIZ_ADSBDB_*`).
+
+**Why:** airframe data is static per hull, so a hex should cost one upstream call a day no matter
+how often it is clicked. Routes change per flight, so an hour is the honest ceiling. Caching the
+*miss* matters most: without it, every click on an aircraft adsbdb has never heard of is a fresh
+upstream call, and the aircraft most likely to be clicked repeatedly — an unidentified contact —
+is exactly the one most likely to miss.
+
+**Also decided:** `GET /api/enrich` always returns 200. `aircraft`/`route` are `null` when adsbdb
+does not know the contact; a lookup that could not be *made* appears in `errors` instead. The
+panel renders these differently ("—" vs "adsbdb unavailable") because **"we do not know" and "we
+could not ask" are different claims**, and collapsing them would let an outage masquerade as an
+absence of data.
+
+**Not used:** the adsbdb aircraft response carries `url_photo` / `url_photo_thumbnail`. Photos
+come from planespotters under D-009 instead, so those fields are ignored.
+
+---
+
+### D-021 · Max altitude / max speed are OBSERVED peaks, never airframe limits
+
+**Date:** 2026-07-25
+
+**Context:** The owner asked for max altitude and max speed in the dossier.
+
+**Decision:** Show the highest altitude and ground speed **this session has actually observed**
+for a contact, labelled `MAX ALT OBS` / `MAX SPD OBS`, with a hover note naming the window and
+stating it is not the airframe's limit. Peaks live in the frontend store keyed by hex and are
+**dropped when the contact leaves the feed**.
+
+**Why:** we have no source for service ceiling or Vne — not in the readsb feeds, not in adsbdb.
+Presenting an observed peak as a capability would be inventing data (ground rule 1), and an
+airframe that has been in range for ninety seconds has a "max altitude" that means almost
+nothing unless the reader knows that. Dropping peaks with the contact keeps the window from
+outliving the evidence behind it.
+
+**Revisit at Phase 5:** the SQLite recorder gives a real, durable observation window, at which
+point these become genuinely useful rather than merely honest.
+
+---
+
+### D-022 · "Datum plane" renamed to ALTITUDE SLICE
+
+**Date:** 2026-07-25
+
+**Decision:** Owner chose **ALTITUDE SLICE**. The layer toggle, the floating plane label
+(`[ SLICE 14,325 FT · ±50 NM ]`), and `docs/design-altitude.md` all adopt it. D-010, D-013 and
+D-015 keep their original wording as a historical record; this entry is the pointer.
+
+**Why:** "datum" is surveying vocabulary. The instrument is a horizontal cut through the airspace
+at the selected contact's height, and "slice" says that without a glossary. The owner reported
+the old term as confusing on first contact with the running app, which is the only test that
+matters for a label.
+
+---
+
+### D-023 · Place markers from OurAirports + Natural Earth, vendored as static data
+
+**Date:** 2026-07-25
+
+**Decision:** Approved under ground rule 2. Airports and **military airfields** from
+**OurAirports** (public domain); city names from **Natural Earth populated places** (public
+domain). Both are vendored as static files processed at build time — no runtime API, no key, no
+rate limit, nothing new in the request path.
+
+**Why:** the alternatives are live geocoding APIs, which would add a sixth upstream dependency,
+a key to manage and a rate limit to respect, for data that changes on a timescale of years.
+Natural Earth ranks places by importance, so city labels can thin out with zoom instead of
+piling into an unreadable mat at wide view. OurAirports carries an explicit military flag, so
+military airfields can take the amber that D-017 reserves for military contacts.
+
+**Constraint:** these files describe real places and are used as-is. No interpolation, no
+"nearest major city" invention. A place we do not have stays unlabelled.
+
+---
+
+### D-024 · Photos are looked up by REGISTRATION first; two hex values are blocklisted
+
+**Date:** 2026-07-25
+
+**Context:** Measured while building the Phase 2 photo panel. The planespotters hex endpoint
+returns a real photo of the **wrong aircraft** for at least two hex values:
+
+```
+/pub/photos/hex/FFFFFE  ->  05-0419, a USAF U-28A
+/pub/photos/hex/000001  ->  FAC1285, Fuerza Aerea Colombiana
+```
+
+Both are deterministic and repeatable. `FFFFFF`, `000000`, `FFFFFD` and `000002` all correctly
+return no photos, so this is a handful of bad records in their database rather than a fallback
+feature. `FFFFFE` and `000001` are exactly the values a misconfigured transponder emits.
+
+**Decision:** `GET /api/photo` tries the **registration** endpoint first and only falls back to
+hex, and it refuses to query hex at all for `POISONED_HEX = {000000, 000001, FFFFFD, FFFFFE,
+FFFFFF}`.
+
+**Why:** an aircraft squawking a garbage hex is precisely the contact an operator would look at
+twice, and showing it a stranger's photograph would be the worst available failure of ground
+rule 1 — not a blank where data is missing, but confident wrong data. Registration was correct
+on every case tested (`N922AE`, `00-0184`, `N98XS`), and adsbdb now supplies a registration even
+when the feed omits one, so the strong key is almost always available.
+
+**Residual risk:** a *plausible but wrong* registration from either source would defeat this. The
+photo panel is therefore never the sole evidence of identity — the dossier shows REG, TYPE and
+MODEL beside it so a mismatch is visible to the operator rather than hidden.
+
+**Terms compliance unchanged:** JSON only, contact-carrying UA, 24 h cache cap, credit as visible
+text, plain `<a>` to the photo page with no `rel="nofollow"`, no image bytes touched server-side.

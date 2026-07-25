@@ -56,6 +56,16 @@ body {
   position: relative;
   border-radius: 0;
 }
+/* A scrolling panel gets an instrument-thin scrollbar, not the OS default slab. The default
+   is ~15px wide, which eats enough of a 212px dossier to wrap values onto two lines. */
+.panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-track { background: transparent; }
+.panel::-webkit-scrollbar-thumb { background: var(--line-bright); border-radius: 0; }
+
 .panel::before,
 .panel::after {
   content: "";

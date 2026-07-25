@@ -50,6 +50,19 @@ HOME_LABEL = os.environ.get("ADSBVIZ_HOME_LABEL", "MOBILE, AL")
 POLL_SECONDS = _f("ADSBVIZ_ADSB_POLL_SECONDS", 2.0)
 MAX_RADIUS_NM = _f("ADSBVIZ_ADSB_MAX_RADIUS_NM", 250.0)
 
+# adsbdb enrichment. No key, no published limit, so we set our own budget: airframe data is
+# static per hull and cached for a day; routes change per flight and are cached for an hour;
+# a miss is cached briefly so an unknown hex is not re-asked on every selection.
+ADSBDB_TTL_S = _f("ADSBVIZ_ADSBDB_TTL_SECONDS", 86400.0)
+ADSBDB_ROUTE_TTL_S = _f("ADSBVIZ_ADSBDB_ROUTE_TTL_SECONDS", 3600.0)
+ADSBDB_MISS_TTL_S = _f("ADSBVIZ_ADSBDB_MISS_TTL_SECONDS", 3600.0)
+ADSBDB_MIN_INTERVAL_S = _f("ADSBVIZ_ADSBDB_MIN_INTERVAL_SECONDS", 0.2)
+
+# planespotters photo JSON. D-009 caps the cache at 24 h. Image bytes are never cached
+# anywhere - the browser loads those straight from their CDN.
+PHOTO_TTL_S = min(_f("ADSBVIZ_PHOTO_TTL_SECONDS", 86400.0), 86400.0)
+PHOTO_MISS_TTL_S = _f("ADSBVIZ_PHOTO_MISS_TTL_SECONDS", 21600.0)
+
 CORS_ORIGINS = os.environ.get(
     "ADSBVIZ_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")

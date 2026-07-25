@@ -28,6 +28,99 @@ export interface Aircraft {
   rssi: number | null;
 }
 
+/* ---- adsbdb enrichment (GET /api/enrich) ----
+ * Every field is nullable on purpose. null means adsbdb does not know, and the dossier
+ * renders an em-dash. `errors` non-empty means we could not ask at all, which the panel
+ * says out loud rather than passing off as "unknown".
+ */
+export interface EnrichAirport {
+  iata: string | null;
+  icao: string | null;
+  name: string | null;
+  municipality: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+export interface Enrichment {
+  hex: string | null;
+  callsign: string | null;
+  aircraft: {
+    registration: string | null;
+    type: string | null;
+    icao_type: string | null;
+    manufacturer: string | null;
+    operator: string | null;
+    operator_country: string | null;
+  } | null;
+  route: {
+    callsign: string | null;
+    airline: string | null;
+    origin: EnrichAirport | null;
+    destination: EnrichAirport | null;
+  } | null;
+  errors: string[];
+}
+
+/**
+ * Highest altitude and ground speed we have actually OBSERVED for a contact.
+ *
+ * This is not the airframe's service ceiling or Vne - we have no source for those, and
+ * presenting an observed peak as a capability would be inventing data. It is only "the
+ * fastest/highest we have seen it since it came into range", and the panel says so.
+ *
+ * Peaks are dropped when a contact leaves the feed, so the window never outlives the
+ * evidence behind it.
+ */
+export interface Peak {
+  altFt: number | null;
+  gsKt: number | null;
+  sinceWall: number;
+}
+
+function maxOf(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (a === null || a === undefined) return b ?? null;
+  if (b === null || b === undefined) return a;
+  return Math.max(a, b);
+}
+
+function nextPeaks(prev: Record<string, Peak>, list: Aircraft[]): Record<string, Peak> {
+  const now = Date.now();
+  const next: Record<string, Peak> = {};
+  for (const a of list) {
+    if (!a.hex) continue;
+    const p = prev[a.hex];
+    next[a.hex] = {
+      altFt: maxOf(p?.altFt, a.alt_ft),
+      gsKt: maxOf(p?.gsKt, a.gs_kt),
+      sinceWall: p?.sinceWall ?? now,
+    };
+  }
+  return next;
+}
+
+/* ---- planespotters photo (GET /api/photo) ----
+ * Metadata only. `src` is loaded by the browser straight from their CDN and is never
+ * proxied, cached or rewritten by us (D-009). `photographer` and `link` are not optional
+ * decoration - the credit is a condition of use.
+ */
+export interface Photo {
+  src: string;
+  width: number | null;
+  height: number | null;
+  link: string;
+  photographer: string | null;
+}
+
+export interface PhotoResult {
+  hex: string | null;
+  registration: string | null;
+  photo: Photo | null;
+  /** "registration" or "hex" - which key actually matched. */
+  matched_on: string | null;
+  errors: string[];
+}
+
 export interface FeedStatus {
   name: string;
   ok: boolean;
@@ -55,6 +148,7 @@ interface State {
   lastFetchWall: number | null;   // Date.now() of the last successful fetch
   lastFetchOk: boolean;
   feeds: FeedStatus[];
+  peaks: Record<string, Peak>;   // by hex, observed only
 
   home: { lat: number; lon: number; label: string };
   cursor: { lat: number; lon: number } | null;
@@ -62,6 +156,12 @@ interface State {
   depthPending: boolean;
 
   selectedHex: string | null;
+  // Carries its own hex so a late reply for a deselected contact can be discarded rather
+  // than shown against whatever is selected now.
+  enrichment: Enrichment | null;
+  enrichPending: boolean;
+  photo: PhotoResult | null;
+  photoPending: boolean;
   showBands: boolean;
   showDatum: boolean;
   showDropLines: boolean;
@@ -78,6 +178,8 @@ interface State {
   setCursor: (c: { lat: number; lon: number } | null) => void;
   setDepth: (m: number | null, pending: boolean) => void;
   select: (hex: string | null) => void;
+  setEnrichment: (e: Enrichment | null, pending: boolean) => void;
+  setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   toggle: (k: "showBands" | "showDatum" | "showDropLines") => void;
   setFps: (n: number) => void;
 }
@@ -90,6 +192,7 @@ export const useStore = create<State>((set) => ({
   lastFetchWall: null,
   lastFetchOk: true,
   feeds: [],
+  peaks: {},
 
   home: { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" },
   cursor: null,
@@ -97,6 +200,10 @@ export const useStore = create<State>((set) => ({
   depthPending: false,
 
   selectedHex: null,
+  enrichment: null,
+  enrichPending: false,
+  photo: null,
+  photoPending: false,
   showBands: true,
   showDatum: true,
   showDropLines: true,
@@ -107,7 +214,11 @@ export const useStore = create<State>((set) => ({
   fps: 0,
 
   setAircraft: (aircraft, source, degraded, errors) =>
-    set({ aircraft, source, degraded, errors, lastFetchWall: Date.now(), lastFetchOk: true }),
+    set((s) => ({
+      aircraft, source, degraded, errors,
+      lastFetchWall: Date.now(), lastFetchOk: true,
+      peaks: nextPeaks(s.peaks, aircraft),
+    })),
   // A failed poll does NOT clear the aircraft list, but it does flip lastFetchOk so the
   // status bar can say so. Positions keep ageing out on their own; we never present a
   // stale frame as if it were current.
@@ -116,7 +227,15 @@ export const useStore = create<State>((set) => ({
   setHome: (home) => set({ home }),
   setCursor: (cursor) => set({ cursor }),
   setDepth: (depthM, depthPending) => set({ depthM, depthPending }),
-  select: (selectedHex) => set({ selectedHex }),
+  // Changing selection drops the old dossier immediately. Showing one contact's
+  // registration under another's callsign would be worse than showing nothing.
+  select: (selectedHex) => set({
+    selectedHex,
+    enrichment: null, enrichPending: false,
+    photo: null, photoPending: false,
+  }),
+  setEnrichment: (enrichment, enrichPending) => set({ enrichment, enrichPending }),
+  setPhoto: (photo, photoPending) => set({ photo, photoPending }),
   toggle: (k) => set((s) => ({ [k]: !s[k] }) as Pick<State, typeof k>),
   setFps: (fps) => set({ fps }),
 }));

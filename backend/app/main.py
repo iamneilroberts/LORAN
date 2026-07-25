@@ -19,6 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, USER_AGENT
 from .feeds.adsb import client as adsb
+from .feeds.adsbdb import client as adsbdb
+from .feeds.planespotters import client as photos
 
 START = time.time()
 
@@ -26,7 +28,11 @@ START = time.time()
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI):
     await adsb.start()
+    await adsbdb.start()
+    await photos.start()
     yield
+    await photos.close()
+    await adsbdb.close()
     await adsb.close()
 
 
@@ -51,6 +57,38 @@ async def get_aircraft(
     radius: float = Query(100.0, gt=0),
 ):
     return await adsb.aircraft(lat, lon, radius)
+
+
+@app.get("/api/enrich")
+async def get_enrich(
+    icao: str | None = Query(None, alias="hex", min_length=6, max_length=6),
+    callsign: str | None = Query(None, max_length=8),
+):
+    """
+    Static airframe and route detail for one contact, from adsbdb.
+
+    Always 200. A contact adsbdb does not know returns null aircraft/route - that is an
+    answer, not an error - and a lookup we could not make shows up in `errors` instead, so
+    the UI can tell "unknown" apart from "unavailable".
+    """
+    return await adsbdb.enrich(icao, callsign)
+
+
+@app.get("/api/photo")
+async def get_photo(
+    icao: str | None = Query(None, alias="hex", min_length=6, max_length=6),
+    reg: str | None = Query(None, max_length=12),
+):
+    """
+    Photo METADATA for one contact. Never the image itself.
+
+    Returns the URL planespotters published, their photo-page link and the photographer's
+    name; the browser loads the bytes from their CDN directly. This endpoint must stay
+    private - their clause 8 forbids re-exposing their API (docs/decisions.md D-009).
+
+    `photo: null` is a normal answer, not an error - plenty of airframes have no photo.
+    """
+    return await photos.photo(icao, reg)
 
 
 @app.get("/api/depth")
@@ -89,7 +127,11 @@ async def health():
     return {
         "ok": True,
         "uptime_s": round(time.time() - START, 1),
-        "feeds": {"adsb": adsb.status()},
+        "feeds": {
+            "adsb": adsb.status(),
+            "adsbdb": adsbdb.status(),
+            "planespotters": photos.status(),
+        },
         # Recorded honestly: measured zero coverage at Mobile. docs/data-sources.md 5.1a
         "ais": {"configured": False, "reason": "no source - aisstream measured zero at Mobile"},
     }

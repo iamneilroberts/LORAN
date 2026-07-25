@@ -55,7 +55,12 @@ export default function App() {
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute left-3 top-3"><TrafficPanel /></div>
         <div className="absolute left-3" style={{ bottom: 34 }}><CursorReadout /></div>
-        <div className="absolute right-3 top-3 flex flex-col gap-3 items-end">
+        {/* Bounded to the viewport so the dossier - which grew a photo in Phase 2 - scrolls
+            inside itself instead of running off the bottom edge behind the status bar. */}
+        <div
+          className="absolute right-3 top-3 flex flex-col gap-3 items-end"
+          style={{ maxHeight: "calc(100% - 46px)" }}
+        >
           <CameraCluster />
           <LayerCluster />
           <SelectionPanel />
