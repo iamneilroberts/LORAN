@@ -1,0 +1,496 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>adsb-viz — interface & basemap options</title>
+<style>
+  :root{
+    --bg:#05070a; --bg2:#080b10; --line:#1b2530; --line2:#243040;
+    --amber:#ffb000; --cyan:#5fd7e0; --dim:#5a6b7a; --txt:#c8d6e0;
+    --mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:var(--mono);font-size:13px;line-height:1.5;
+       -webkit-font-smoothing:antialiased}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .num{font-variant-numeric:tabular-nums;text-align:right}
+  a{color:var(--cyan)}
+
+  header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;gap:24px;
+         align-items:baseline;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:50}
+  header h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);font-weight:500}
+  nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
+  nav button{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    background:transparent;color:var(--dim);border:1px solid var(--line);padding:6px 14px;cursor:pointer}
+  nav button:hover{color:var(--txt);border-color:var(--line2)}
+  nav button[aria-selected="true"]{color:var(--bg);background:var(--cyan);border-color:var(--cyan)}
+  main{padding:20px;max-width:1600px;margin:0 auto}
+  .view{display:none} .view.on{display:block}
+  .intro{max-width:78ch;margin-bottom:20px;color:var(--dim);font-size:12px}
+  .intro strong{color:var(--txt);font-weight:500}
+  h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);
+     margin:26px 0 12px;font-weight:500}
+
+  /* ---- bracket-corner panel ---- */
+  .panel{border:1px solid var(--line);background:rgba(8,11,16,.82);position:relative}
+  .panel::before,.panel::after{content:"";position:absolute;width:7px;height:7px;pointer-events:none}
+  .panel::before{top:-1px;left:-1px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan)}
+  .panel::after{bottom:-1px;right:-1px;border-bottom:1px solid var(--cyan);border-right:1px solid var(--cyan)}
+  .panel-h{padding:7px 10px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
+           align-items:center;gap:10px}
+
+  /* ---- basemap grid ---- */
+  .maps{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+  .mapcard{border:1px solid var(--line);background:var(--bg2)}
+  .mapcard.pick{border-color:var(--amber)}
+  .mapwrap{position:relative;aspect-ratio:1;overflow:hidden;background:#000}
+  .mapwrap .layer{position:absolute;inset:0;background-size:cover;background-position:center}
+  .mapcard figcaption{padding:9px 11px;border-top:1px solid var(--line)}
+  .mapcard h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt);font-weight:500}
+  .mapcard p{font-size:11px;color:var(--dim);margin-top:5px}
+  .tag{display:inline-block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+       border:1px solid var(--line2);padding:2px 6px;color:var(--dim);margin-top:7px}
+  .tag.rec{border-color:var(--amber);color:var(--amber)}
+  .scalebar{position:absolute;left:8px;bottom:8px;font-size:9px;letter-spacing:.1em;color:#fff;
+    text-shadow:0 0 3px #000;border-left:1px solid #fff;border-bottom:1px solid #fff;
+    border-right:1px solid #fff;padding:0 4px 2px;height:9px;display:flex;align-items:flex-end}
+
+  /* ---- layout mockups ---- */
+  .frame{position:relative;aspect-ratio:16/9;border:1px solid var(--line);overflow:hidden;background:#000}
+  .frame .basemap{position:absolute;inset:0;background-size:cover;background-position:center}
+  .frame svg{position:absolute;inset:0;width:100%;height:100%}
+  .ov{position:absolute;font-size:11px}
+  .ov .panel{backdrop-filter:blur(2px)}
+  .rows{padding:4px 0}
+  .row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:2px 10px}
+  .row span:first-child{color:var(--dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+  .row span:last-child{font-variant-numeric:tabular-nums;color:var(--txt)}
+  .row.mil span:last-child{color:var(--amber)}
+  .bar{height:3px;background:var(--cyan);opacity:.55}
+  .barrow{padding:3px 10px}
+  .barrow .t{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.08em}
+  .barrow .t b{font-weight:400;color:var(--dim);text-transform:uppercase}
+  .barrow .t i{font-style:normal;font-variant-numeric:tabular-nums}
+  .statusbar{position:absolute;left:0;right:0;bottom:0;height:24px;border-top:1px solid var(--line);
+    background:rgba(5,7,10,.9);display:flex;align-items:center;gap:18px;padding:0 12px;
+    font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  .chip{display:flex;align-items:center;gap:5px}
+  .dot{width:5px;height:5px;background:var(--cyan)}
+  .dot.warn{background:var(--amber)} .dot.off{background:#3a4652}
+  .btn{display:block;width:100%;text-align:left;font-family:var(--mono);font-size:10px;
+    letter-spacing:.12em;text-transform:uppercase;background:transparent;color:var(--cyan);
+    border:1px solid var(--line2);padding:6px 9px;margin-top:5px;cursor:pointer}
+  .btn.primary{border-color:var(--cyan)}
+  .photo{border:1px solid var(--line);height:74px;display:flex;align-items:center;justify-content:center;
+    color:var(--dim);font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:#0a0e13}
+  .cluster{display:grid;grid-template-columns:repeat(3,20px);gap:2px}
+  .cluster i{height:18px;border:1px solid var(--line2);display:block}
+  .attrib{position:absolute;right:8px;bottom:28px;font-size:8px;color:var(--dim);letter-spacing:.06em}
+
+  table.cmp{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+  table.cmp th,table.cmp td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  table.cmp th{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:500}
+  table.cmp td.y{color:var(--cyan)} table.cmp td.n{color:var(--dim)}
+  .foot{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}
+  code{background:#0d1219;border:1px solid var(--line);padding:1px 4px;font-size:11px}
+</style>
+
+<header>
+  <h1>adsb-viz · interface &amp; basemap options</h1>
+  <span class="lbl" id="meta"></span>
+  <nav>
+    <button data-v="basemaps" aria-selected="true">Basemaps</button>
+    <button data-v="layouts" aria-selected="false">Layouts</button>
+    <button data-v="datum" aria-selected="false">Datum plane</button>
+  </nav>
+</header>
+
+<main>
+  <p class="intro" id="banner"></p>
+
+  <section class="view on" id="v-basemaps">
+    <h2>Basemap options — real tiles, same view, same zoom</h2>
+    <div class="maps" id="mapgrid"></div>
+    <h2>Trade-offs</h2>
+    <table class="cmp">
+      <tr><th>Option</th><th>Bathymetry</th><th>Land detail</th><th>Console fit</th><th>Attribution</th></tr>
+      <tr><td>A · Esri Imagery</td><td class="n">none</td><td class="y">photographic</td><td class="n">competes with overlay</td><td>Esri, Vantor, Earthstar</td></tr>
+      <tr><td>B · Esri Imagery, darkened</td><td class="n">none</td><td class="y">photographic</td><td class="y">good</td><td>Esri, Vantor, Earthstar</td></tr>
+      <tr><td>C · Esri Ocean Base</td><td class="y">shaded relief</td><td class="n">minimal</td><td class="n">far too pale</td><td>Esri, Garmin, GEBCO, NOAA</td></tr>
+      <tr><td>D · GEBCO 2024 raw</td><td class="y">true grid</td><td class="n">hillshade only</td><td class="n">far too pale</td><td>GEBCO</td></tr>
+      <tr><td>E · CARTO dark, no labels</td><td class="n">flat fill</td><td class="y">vector coast</td><td class="y">excellent</td><td>CARTO, OpenStreetMap</td></tr>
+      <tr><td>F · CARTO dark + labels</td><td class="n">flat fill</td><td class="y">vector + place names</td><td class="y">excellent</td><td>CARTO, OpenStreetMap</td></tr>
+      <tr><td><b>G · GEBCO dark remap</b></td><td class="y">true grid</td><td class="y">hillshade relief</td><td class="y">excellent</td><td>GEBCO</td></tr>
+      <tr><td><b>H · GEBCO dark + CARTO coast</b></td><td class="y">true grid</td><td class="y">vector + hillshade</td><td class="y">excellent</td><td>GEBCO, CARTO, OpenStreetMap</td></tr>
+    </table>
+  </section>
+
+  <section class="view" id="v-layouts">
+    <h2>Chrome layouts — same live data, three arrangements</h2>
+    <nav style="margin:0 0 14px"><span id="layoutbtns"></span></nav>
+    <div class="frame" id="frame"></div>
+    <p class="intro" id="layoutnote" style="margin-top:14px"></p>
+  </section>
+
+  <section class="view" id="v-datum">
+    <h2>Datum plane — side elevation, real altitudes</h2>
+    <p class="intro">
+      The layouts above are top-down because they mock the <strong>chrome</strong>. The datum plane is the
+      one thing that only makes sense in elevation, so here it is drawn from the side with the
+      <strong>real altitudes of the live contacts</strong> above. Click any aircraft to move the datum to it.
+    </p>
+    <div class="panel" style="padding:0">
+      <div class="panel-h"><span class="lbl">Elevation view · selected datum</span>
+        <span class="lbl" id="datumlbl"></span></div>
+      <div id="elev" style="position:relative"></div>
+    </div>
+    <p class="intro" style="margin-top:14px">
+      Amber contacts sit within <strong>±1000 ft</strong> of the datum — the RVSM vertical separation
+      minimum. That is the whole point of the feature: co-altitude traffic announces itself instead of
+      having to be measured by eye. Drop-lines run to the datum, not the ground, so their length reads
+      directly as altitude difference. The plane is <strong>finite</strong> (50 nm default), so it stops
+      where the comparison stops being meaningful.
+    </p>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</main>
+
+<script>
+const A = /*__ASSETS__*/;
+
+/* ---------- helpers ---------- */
+const TS = 256, N = A.grid * TS;
+const tileURL = (set, dx, dy) => {
+  const t = A.basemaps[set] && A.basemaps[set][dx + "_" + dy];
+  return t ? `url("data:${t.type};base64,${t.b64}")` : "none";
+};
+function mosaic(set){                     // assemble the GRIDxGRID tiles into one CSS background
+  const imgs=[], pos=[], size=[];
+  for(let dy=0; dy<A.grid; dy++) for(let dx=0; dx<A.grid; dx++){
+    imgs.push(tileURL(set,dx,dy));
+    pos.push(`${(dx*100/(A.grid-1))}% ${(dy*100/(A.grid-1))}%`);
+    size.push(`${100/A.grid}% ${100/A.grid}%`);
+  }
+  return {backgroundImage:imgs.join(","), backgroundPosition:pos.join(","),
+          backgroundSize:size.join(","), backgroundRepeat:"no-repeat"};
+}
+const gebcoURL = A.gebco ? `url("data:${A.gebco.type};base64,${A.gebco.b64}")` : "none";
+const gebcoDarkURL = A.gebco_dark ? `url("data:${A.gebco_dark.type};base64,${A.gebco_dark.b64}")` : gebcoURL;
+function applyLayer(el, style){ Object.assign(el.style, style); }
+
+/* web-mercator → pixel within the assembled grid, 0..1 */
+function project(lat, lon){
+  const n = 2 ** A.zoom;
+  const x = (lon + 180) / 360 * n;
+  const lr = lat * Math.PI/180;
+  const y = (1 - Math.log(Math.tan(lr) + 1/Math.cos(lr))/Math.PI)/2 * n;
+  return {x:(x - A.x0)/A.grid, y:(y - A.y0)/A.grid};
+}
+const isMil = a => (a.dbFlags & 1) === 1;
+const altOf = a => (typeof a.alt_geom === "number") ? a.alt_geom
+                 : (typeof a.alt_baro === "number") ? a.alt_baro : null;
+const fmt = n => n===null||n===undefined ? "—" : n.toLocaleString("en-US");
+
+const inView = A.aircraft.filter(a=>{
+  const p = project(a.lat,a.lon); return p.x>=-0.02&&p.x<=1.02&&p.y>=-0.02&&p.y<=1.02;
+});
+const mil = inView.filter(isMil);
+
+document.getElementById("meta").textContent =
+  `${A.home.label} · ${inView.length} live contacts · built ${A.generated_utc}`;
+document.getElementById("banner").innerHTML =
+  `Every tile below is fetched from the real provider and every aircraft is a <strong>real contact over
+   Mobile</strong> at build time (${A.generated_utc}) — <strong>${inView.length} in frame,
+   ${mil.length} military</strong>. Nothing here is synthesized; ground rule #1 applies to mockups too.
+   Aircraft are static because this is a snapshot, not a live feed.`;
+document.getElementById("foot").innerHTML =
+  `Basemap tiles © their providers — Esri, Vantor, Earthstar Geographics · CARTO · OpenStreetMap
+   contributors · GEBCO Compilation Group. Attribution shown here is illustrative; the built app must
+   display it persistently. Aircraft data © airplanes.live (non-commercial).`;
+
+/* ---------- basemap cards ---------- */
+const MAPS = [
+  {id:"A", t:"Esri World Imagery", d:"Raw satellite. Highest land fidelity, but bright and busy — the traffic overlay has to fight it for attention.", layers:[{set:"esri_imagery"}]},
+  {id:"B", t:"Esri Imagery · darkened", d:"Same tiles, brightness and saturation knocked back in CSS. Keeps the photography, stops it shouting. Ocean stays flat — no depth.", layers:[{set:"esri_imagery", css:{filter:"brightness(.42) saturate(.5) contrast(1.15)"}}]},
+  {id:"C", t:"Esri World Ocean Base", d:"Purpose-built ocean cartography with shaded relief. Far too pale for a near-black console, and the land is nearly empty.", layers:[{set:"esri_ocean"}]},
+  {id:"D", t:"GEBCO 2024 · raw", d:"The real shaded-relief depth grid as GEBCO serves it. This is the data behind the cursor depth readout — but it is light cartography.", layers:[{gebco:true}]},
+  {id:"E", t:"CARTO dark · no labels", d:"Vector dark basemap. Clean coastline, zero visual competition. The ocean is a flat fill — carries no depth information at all.", layers:[{set:"carto_darknolabels"}]},
+  {id:"F", t:"CARTO dark · labels", d:"Same with place names. Good orientation, but the labels are screen-horizontal and will fight a tilted 3D camera.", layers:[{set:"carto_dark"}]},
+  {id:"G", t:"GEBCO · dark remap", d:"The real GEBCO depth signal remapped onto a dark ramp: near-black land keeping its hillshade, teal shelf, navy abyss. Shelf break and Mississippi Fan both read clearly.", rec:true,
+     layers:[{gebcoDark:true}]},
+  {id:"H", t:"GEBCO dark + CARTO coast", d:"The dark remap with CARTO's vector coastline and roads screened over it. Adds land structure without losing the bathymetry.", rec:true,
+     layers:[{gebcoDark:true},
+             {set:"carto_darknolabels", css:{mixBlendMode:"screen", opacity:".38"}}]},
+];
+const grid = document.getElementById("mapgrid");
+MAPS.forEach(m=>{
+  const f = document.createElement("figure");
+  f.className = "mapcard" + (m.rec ? " pick" : "");
+  const w = document.createElement("div"); w.className = "mapwrap";
+  m.layers.forEach(L=>{
+    const d = document.createElement("div"); d.className="layer";
+    if(L.gebco){ d.style.backgroundImage=gebcoURL; d.style.backgroundSize="cover"; }
+    else if(L.gebcoDark){ d.style.backgroundImage=gebcoDarkURL; d.style.backgroundSize="cover"; }
+    else applyLayer(d, mosaic(L.set));
+    if(L.css) Object.assign(d.style, L.css);
+    w.appendChild(d);
+  });
+  const sb=document.createElement("div"); sb.className="scalebar"; sb.style.width="72px";
+  sb.textContent="~50 NM"; w.appendChild(sb);
+  f.appendChild(w);
+  const c = document.createElement("figcaption");
+  c.innerHTML = `<h3>${m.id} · ${m.t}</h3><p>${m.d}</p>` +
+    (m.rec ? `<span class="tag rec">Recommended</span>` : `<span class="tag">Option</span>`);
+  f.appendChild(c); grid.appendChild(f);
+});
+
+/* ---------- aircraft overlay ---------- */
+function planesSVG(opts={}){
+  const bands = a => { const A_=altOf(a); return A_===null?"var(--dim)": A_<18000?"#5fd7e0": A_<29000?"#7fe0c0":"#b8d96a"; };
+  let s = `<svg viewBox="0 0 1000 563" preserveAspectRatio="none">`;
+  inView.forEach(a=>{
+    const p = project(a.lat,a.lon), x=p.x*1000, y=p.y*563;
+    if(x<0||x>1000||y<0||y>563) return;
+    const m = isMil(a), col = m ? "var(--amber)" : bands(a);
+    const rot = a.track ?? 0;
+    s += `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${rot})">
+            <path d="M0,-5 L3.2,4 L0,2.2 L-3.2,4 Z" fill="${col}" opacity="${m?1:.9}"/></g>`;
+    if(m && opts.labelMil){
+      s += `<text x="${(x+7).toFixed(1)}" y="${(y+3).toFixed(1)}" fill="var(--amber)"
+              font-size="7" font-family="var(--mono)" letter-spacing=".6">${a.flight||a.hex}</text>`;
+    }
+  });
+  s += `</svg>`; return s;
+}
+
+/* ---------- layouts ---------- */
+const sel = inView.find(a=>isMil(a) && altOf(a)!==null) || inView[0];
+const byOp = {};
+inView.forEach(a=>{ const k=(a.ownOp||(isMil(a)?"MILITARY":"UNKNOWN")).slice(0,22); byOp[k]=(byOp[k]||0)+1; });
+const ops = Object.entries(byOp).sort((a,b)=>b[1]-a[1]).slice(0,6);
+const maxOp = ops.length?ops[0][1]:1;
+
+function dossier(){
+  const a=sel, alt=altOf(a);
+  return `<div class="panel" style="width:212px">
+    <div class="panel-h"><span style="color:${isMil(a)?'var(--amber)':'var(--cyan)'};font-size:11px;letter-spacing:.1em">${a.flight||a.hex.toUpperCase()}</span><span class="lbl">×</span></div>
+    <div class="rows">
+      <div class="row"><span>ICAO24</span><span>${a.hex.toUpperCase()}</span></div>
+      <div class="row ${isMil(a)?'mil':''}"><span>Class</span><span>${isMil(a)?'MILITARY':'CIVIL'}</span></div>
+      <div class="row"><span>Speed</span><span>${a.gs!=null?Math.round(a.gs)+' KT':'—'}</span></div>
+      <div class="row"><span>Altitude</span><span>${alt!=null?fmt(alt)+' FT':'—'}</span></div>
+      <div class="row"><span>Heading</span><span>${a.track!=null?Math.round(a.track)+'°':'—'}</span></div>
+      <div class="row"><span>Lat</span><span>${a.lat.toFixed(4)}</span></div>
+      <div class="row"><span>Lon</span><span>${a.lon.toFixed(4)}</span></div>
+    </div>
+    <div style="border-top:1px solid var(--line)" class="rows">
+      <div class="row"><span>Reg</span><span>${a.r||'—'}</span></div>
+      <div class="row"><span>Type</span><span>${a.t||'—'}</span></div>
+      <div class="row"><span>Operator</span><span style="font-size:9px">${(a.ownOp||'—').slice(0,16)}</span></div>
+      <div class="row"><span>Origin</span><span>—</span></div>
+      <div class="row"><span>Dest</span><span>—</span></div>
+    </div>
+    <div style="padding:7px 10px">
+      <div class="photo">no photo returned</div>
+      <div style="font-size:8px;color:var(--dim);margin-top:3px">© photographer / planespotters.net</div>
+      <button class="btn primary">▸ Track path</button>
+      <button class="btn">Clear track</button>
+      <button class="btn">Export GeoJSON</button>
+    </div></div>`;
+}
+function traffic(compact){
+  return `<div class="panel" style="width:${compact?150:186}px">
+    <div class="panel-h"><span class="lbl" style="color:var(--cyan)">▸ Air traffic</span><span class="num" style="font-size:11px">${inView.length}</span></div>
+    <div class="rows">${ops.map(([k,v])=>`
+      <div class="barrow"><div class="t"><b>${k.slice(0,compact?12:18)}</b><i>${v}</i></div>
+      <div class="bar" style="width:${Math.max(6,v/maxOp*100)}%"></div></div>`).join("")}</div>
+    <div class="panel-h" style="border-top:1px solid var(--line);border-bottom:none">
+      <span class="lbl">▸ Sea traffic</span><span class="num" style="font-size:11px;color:var(--dim)">—</span></div>
+    <div style="padding:4px 10px 9px"><div class="lbl" style="color:var(--amber);font-size:9px">No AIS source</div></div>
+  </div>`;
+}
+const readout = `<div class="panel" style="width:150px"><div class="rows">
+   <div class="row"><span>Lat</span><span>30.6944</span></div>
+   <div class="row"><span>Lon</span><span>−88.0399</span></div>
+   <div class="row"><span>Depth</span><span>${A.sample_depth_m!=null?Math.abs(A.sample_depth_m).toLocaleString()+' M':'—'}</span></div>
+ </div></div>`;
+const camera = `<div class="panel" style="padding:6px"><div class="cluster">
+   ${Array.from({length:9},()=>'<i></i>').join("")}</div></div>`;
+const statusbar = `<div class="statusbar">
+   <span class="chip"><span class="dot"></span>ADS-B live</span>
+   <span class="chip"><span class="dot off"></span>AIS no source</span>
+   <span class="chip">${inView.length} air</span>
+   <span class="chip" style="color:var(--amber)">${mil.length} mil</span>
+   <span style="margin-left:auto">60 FPS · WebGL2</span></div>`;
+const attrib = `<div class="attrib">Esri · CARTO · OSM · GEBCO</div>`;
+
+const LAYOUTS = {
+  reference:{ n:"1 · Reference-faithful",
+    note:"Mirrors your inspiration image: traffic panel left, dossier right, cursor readout bottom-left, camera cluster top-right, feed chips along the bottom. Familiar, and every element from the reference has a home. Costs the most globe area — roughly 30% of the frame is chrome.",
+    html:()=>`
+      <div class="ov" style="left:12px;top:12px">${traffic(false)}</div>
+      <div class="ov" style="left:12px;bottom:36px">${readout}</div>
+      <div class="ov" style="right:12px;top:12px">${dossier()}</div>
+      <div class="ov" style="right:236px;top:12px">${camera}</div>
+      ${attrib}${statusbar}` },
+  instrument:{ n:"2 · Instrument-forward",
+    note:"Built around the datum-plane workflow. The right column merges dossier and separation readout into one stack, so the numbers you are comparing sit together. The left panel collapses to counts only. More globe, and the co-altitude readout gets primary position — this is the layout that best serves 'where are these two relative to each other'.",
+    html:()=>`
+      <div class="ov" style="left:12px;top:12px">${traffic(true)}</div>
+      <div class="ov" style="right:12px;top:12px">${dossier()}</div>
+      <div class="ov" style="right:12px;bottom:36px;width:212px">
+        <div class="panel"><div class="panel-h"><span class="lbl" style="color:var(--amber)">Separation</span></div>
+        <div class="rows">
+          <div class="row mil"><span>Δ Altitude</span><span>+400 FT</span></div>
+          <div class="row"><span>Horizontal</span><span>6.2 NM</span></div>
+          <div class="row"><span>Slant</span><span>6.2 NM</span></div>
+          <div class="row"><span>Trend</span><span style="color:var(--amber)">CLOSING</span></div>
+        </div></div></div>
+      <div class="ov" style="left:12px;bottom:36px">${readout}</div>
+      ${attrib}${statusbar}` },
+  rail:{ n:"3 · Wide rail",
+    note:"Maximum globe. All persistent chrome collapses into the bottom rail; the dossier is the only floating panel and only exists while something is selected. Best if this ends up on a wall display where you mostly look, not click. Weakest for dense comparison work — the traffic breakdown has nowhere to live.",
+    html:()=>`
+      <div class="ov" style="right:12px;top:12px">${dossier()}</div>
+      <div class="ov" style="left:12px;top:12px">${camera}</div>
+      <div class="statusbar" style="height:38px;gap:22px">
+        <span class="chip"><span class="dot"></span>ADS-B live</span>
+        <span class="chip"><span class="dot off"></span>AIS —</span>
+        <span class="chip">${inView.length} air</span>
+        <span class="chip" style="color:var(--amber)">${mil.length} mil</span>
+        <span class="chip">lat 30.6944</span><span class="chip">lon −88.0399</span>
+        <span class="chip">depth ${A.sample_depth_m!=null?Math.abs(A.sample_depth_m).toLocaleString()+' m':'—'}</span>
+        <span style="margin-left:auto">60 FPS · WebGL2</span></div>
+      ${attrib}` },
+};
+let curLayout = "reference";
+const lb = document.getElementById("layoutbtns");
+Object.entries(LAYOUTS).forEach(([k,v])=>{
+  const b=document.createElement("button");
+  b.textContent=v.n; b.setAttribute("aria-selected", k===curLayout);
+  b.onclick=()=>{ curLayout=k; drawLayout(); [...lb.children].forEach(c=>c.setAttribute("aria-selected", c===b)); };
+  lb.appendChild(b);
+});
+function drawLayout(){
+  const f=document.getElementById("frame");
+  f.innerHTML="";
+  const g=document.createElement("div"); g.className="basemap";
+  g.style.backgroundImage=gebcoDarkURL; g.style.backgroundSize="cover";
+  f.appendChild(g);
+  const bm=document.createElement("div"); bm.className="basemap";
+  applyLayer(bm, mosaic("carto_darknolabels"));
+  bm.style.mixBlendMode="screen"; bm.style.opacity=".34";
+  f.appendChild(bm);
+  f.insertAdjacentHTML("beforeend", planesSVG({labelMil:true}));
+  f.insertAdjacentHTML("beforeend", LAYOUTS[curLayout].html());
+  document.getElementById("layoutnote").innerHTML = LAYOUTS[curLayout].note;
+}
+drawLayout();
+
+/* ---------- datum elevation ---------- */
+const withAlt = inView.filter(a=>altOf(a)!==null);
+const RADIUS_NM = 50, SPAN_NM = 80, SEP_FT = 1000;
+
+/* signed horizontal distance from the datum, in nautical miles. East positive.
+   This is what makes the "50 NM" plane label honest - the x-axis is real distance,
+   not a longitude spread stretched to fit. */
+function distNM(a, d){
+  const R = 3440.065;                                   // earth radius in NM
+  const φ1=d.lat*Math.PI/180, φ2=a.lat*Math.PI/180;
+  const dφ=(a.lat-d.lat)*Math.PI/180, dλ=(a.lon-d.lon)*Math.PI/180;
+  const h=Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  const dist = 2*R*Math.asin(Math.sqrt(h));
+  return (a.lon < d.lon ? -1 : 1) * dist;
+}
+
+/* default datum: something at cruise, where the feature is actually interesting.
+   Picking the lowest aircraft puts every circuit-bashing trainer inside the band. */
+let datumIdx = (()=>{
+  let best=0, bestD=Infinity;
+  withAlt.forEach((a,i)=>{ const dd=Math.abs(altOf(a)-25000); if(dd<bestD){bestD=dd;best=i;} });
+  return best;
+})();
+
+function drawElev(){
+  const W=1400,H=430,PADL=62,PADR=30,PADB=46,PADT=26;
+  const d = withAlt[datumIdx] || withAlt[0];
+  const dAlt = altOf(d);
+  const maxAlt = Math.max(45000, ...withAlt.map(altOf));
+
+  const near = withAlt.map(a=>({a, nm:distNM(a,d), dz:altOf(a)-dAlt}))
+                      .filter(o=>Math.abs(o.nm)<=SPAN_NM);
+  const X = nm => PADL + ((nm+SPAN_NM)/(2*SPAN_NM))*(W-PADL-PADR);
+  const Y = alt => H-PADB - (alt/maxAlt)*(H-PADB-PADT);
+  const yD = Y(dAlt);
+
+  let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">`;
+  for(let ft=0; ft<=maxAlt; ft+=10000){
+    s+=`<line x1="${PADL}" y1="${Y(ft)}" x2="${W-PADR}" y2="${Y(ft)}" stroke="#1b2530"/>
+        <text x="${PADL-8}" y="${Y(ft)+3}" fill="#5a6b7a" font-size="9" text-anchor="end"
+          font-family="monospace">${(ft/1000)|0}k</text>`;
+  }
+  for(let nm=-SPAN_NM; nm<=SPAN_NM; nm+=20){
+    s+=`<line x1="${X(nm)}" y1="${H-PADB}" x2="${X(nm)}" y2="${H-PADB+4}" stroke="#243040"/>
+        <text x="${X(nm)}" y="${H-PADB+16}" fill="#5a6b7a" font-size="9" text-anchor="middle"
+          font-family="monospace">${nm===0?"0":Math.abs(nm)}</text>`;
+  }
+  // ±1000 ft separation band, spanning only the finite plane
+  s+=`<rect x="${X(-RADIUS_NM)}" y="${Y(dAlt+SEP_FT)}" width="${X(RADIUS_NM)-X(-RADIUS_NM)}"
+        height="${Math.abs(Y(dAlt-SEP_FT)-Y(dAlt+SEP_FT))}" fill="#ffb000" opacity=".10"/>`;
+  // the finite datum plane, with its edge rim
+  const px0=X(-RADIUS_NM), px1=X(RADIUS_NM);
+  s+=`<line x1="${px0}" y1="${yD}" x2="${px1}" y2="${yD}" stroke="#ffb000" stroke-width="1.4"/>
+      <line x1="${px0}" y1="${yD-5}" x2="${px0}" y2="${yD+5}" stroke="#ffb000"/>
+      <line x1="${px1}" y1="${yD-5}" x2="${px1}" y2="${yD+5}" stroke="#ffb000"/>
+      <text x="${X(0)}" y="${yD-8}" fill="#ffb000" font-size="9" font-family="monospace"
+        text-anchor="middle" letter-spacing=".8">${(d.flight||d.hex).trim()} · DATUM ${fmt(dAlt)} FT · ±${RADIUS_NM} NM</text>`;
+
+  // labels only for co-altitude contacts, staggered so they never collide
+  const lanes = [];
+  const placed = o => {
+    let lane = 0;
+    while(lanes[lane] !== undefined && lanes[lane] > X(o.nm)-56) lane++;
+    lanes[lane] = X(o.nm); return lane;
+  };
+
+  near.sort((p,q)=>Math.abs(p.dz)-Math.abs(q.dz)).forEach(o=>{
+    const a=o.a, x=X(o.nm), y=Y(altOf(a)), isD=(a===d);
+    const co = Math.abs(o.dz)<=SEP_FT && !isD;
+    const inside = Math.abs(o.nm)<=RADIUS_NM;
+    const col = isD ? "#ffffff" : co ? "#ffb000" : "#5fd7e0";
+    if(inside && !isD)                       // drop-line to the datum, not the ground
+      s+=`<line x1="${x}" y1="${y}" x2="${x}" y2="${yD}" stroke="${col}"
+            opacity="${co?.55:.28}"/>`;
+    const i = withAlt.indexOf(a);
+    s+=`<g class="ac" data-i="${i}" style="cursor:pointer">
+          <circle cx="${x}" cy="${y}" r="10" fill="transparent"/>
+          <path d="M${x},${y-5} L${x+3.4},${y+4} L${x},${y+2} L${x-3.4},${y+4} Z"
+            fill="${col}" opacity="${inside?1:.4}"/>`;
+    if(co){                       // datum itself is already named on the plane label
+      const lane = placed(o), ly = y - 11 - lane*11;
+      s+=`<text x="${x+6}" y="${ly}" fill="${col}" font-size="8.5" font-family="monospace">`
+        + `${(a.flight||a.hex).trim()} ${o.dz>0?"+":""}${o.dz} FT</text>`;
+    }
+    s+=`</g>`;
+  });
+  s+=`<line x1="${PADL}" y1="${H-PADB}" x2="${W-PADR}" y2="${H-PADB}" stroke="#243040"/>
+      <text x="${X(0)}" y="${H-8}" fill="#5a6b7a" font-size="9" font-family="monospace"
+        text-anchor="middle" letter-spacing=".1em">HORIZONTAL DISTANCE FROM DATUM · NM · WEST ← → EAST</text>
+      </svg>`;
+  const el=document.getElementById("elev"); el.innerHTML=s;
+  const coN = near.filter(o=>o.a!==d && Math.abs(o.dz)<=SEP_FT && Math.abs(o.nm)<=RADIUS_NM).length;
+  document.getElementById("datumlbl").innerHTML =
+    `${(d.flight||d.hex).trim()} @ ${fmt(dAlt)} ft · ` +
+    `<span style="color:${coN?'var(--amber)':'var(--dim)'}">${coN} within ±${SEP_FT} ft &amp; ${RADIUS_NM} nm</span>`;
+  el.querySelectorAll(".ac").forEach(g=>g.onclick=()=>{ datumIdx=+g.dataset.i; drawElev(); });
+}
+drawElev();
+
+/* ---------- nav ---------- */
+document.querySelectorAll("header nav button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll("header nav button").forEach(x=>x.setAttribute("aria-selected", x===b));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+    document.getElementById("v-"+b.dataset.v).classList.add("on");
+  };
+});
+</script>

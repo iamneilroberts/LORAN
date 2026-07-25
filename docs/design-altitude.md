@@ -137,15 +137,21 @@ a frame-time measurement during Phase 3 rather than guessing.
 
 ---
 
-## Open question for the owner
+## Resolved — the datum plane is finite
 
-Should the datum plane be **finite** (a 50 nm disc/square around the selected aircraft, clearly
-bounded) or **effectively infinite** (spanning the visible globe)?
+**Decided by the owner, 2026-07-25: finite.** A bounded plane around the selected aircraft,
+radius configurable, default 50 nm.
 
-Finite reads as an instrument attached to a specific aircraft and stays legible when several
-things are happening. Infinite reads more like the reference image's horizon-spanning sheets and
-looks more dramatic, but gets visually noisy and implies a comparison across distances where
-"co-altitude" stops being meaningful.
+Rationale: it reads as an instrument attached to a specific aircraft and stays legible when
+several contacts are in play. An infinite sheet would look more like the reference image and be
+more dramatic, but it gets visually noisy and implies comparisons across distances where
+"co-altitude" has stopped meaning anything — two aircraft level with each other but 300 nm apart
+have no relationship worth drawing.
 
-**Recommendation: finite, radius configurable, default 50 nm.** Two aircraft co-altitude but
-300 nm apart have no relationship worth drawing.
+Consequences for implementation:
+- The plane's edge is a visible boundary, so it needs an edge treatment — a brighter 1px rim, per
+  the panel language in the visual direction.
+- Drop-lines are drawn only for contacts **inside** the radius. This is also the performance
+  answer from the section above: the cap falls out of the design rather than being imposed on it.
+- The radius wants to be adjustable live (not just config), because the useful radius differs
+  between "who is in the pattern with this trainer" and "who is on this airliner's level".
