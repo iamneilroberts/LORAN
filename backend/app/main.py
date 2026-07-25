@@ -12,18 +12,30 @@ from __future__ import annotations
 
 import contextlib
 import time
+from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from .config import CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, USER_AGENT
+from .auth import COOKIE_NAME, TokenAuth
+from .config import (
+    ACCESS_TOKENS, CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL,
+    PHOTO_GUEST_ACCESS, SESSION_SECRET, SESSION_TTL_S, STATIC_DIR, USER_AGENT,
+)
 from .feeds.adsb import client as adsb
 from .feeds.adsbdb import client as adsbdb
 from .feeds.planespotters import client as photos
 from .feeds.track import store as tracks
 
 START = time.time()
+
+auth = TokenAuth(ACCESS_TOKENS, OWNER_PRINCIPAL, SESSION_SECRET, SESSION_TTL_S)
+
+# Paths reachable without a session. Everything else under /api needs one once auth is on.
+OPEN_PATHS = {"/api/session", "/api/health"}
 
 
 @contextlib.asynccontextmanager
@@ -49,9 +61,78 @@ app.add_middleware(
 )
 
 
+def principal_of(request: Request) -> str:
+    """Who is asking. With auth off, everyone is the owner - the single-user default."""
+    if not auth.enabled:
+        return auth.owner
+    return auth.verify(request.cookies.get(COOKIE_NAME)) or ""
+
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """
+    The door. Only guards /api - the static shell carries no data, and letting it load is what
+    allows an unauthorised visitor to be TOLD they need a token instead of getting a blank page.
+
+    /api/health stays open deliberately: it is how you check the service is alive from outside
+    without holding a token, and it reports no traffic, positions or airframe data.
+    """
+    path = request.url.path
+    if auth.enabled and path.startswith("/api/") and path not in OPEN_PATHS:
+        if not auth.verify(request.cookies.get(COOKIE_NAME)):
+            return JSONResponse(
+                {"detail": "access token required", "auth": "token"}, status_code=401,
+            )
+    return await call_next(request)
+
+
+@app.get("/api/session")
+async def session(request: Request, t: str | None = Query(None, max_length=256)):
+    """
+    Exchange a token for a signed session cookie, or report the current session.
+
+    `?t=` is how a link logs someone in: the frontend calls this once on load, then strips the
+    token out of the address bar so it does not sit in history or get pasted onward by accident.
+    """
+    if not auth.enabled:
+        return {"auth": False, "principal": auth.owner, "owner": True}
+
+    if t is None:
+        who = auth.verify(request.cookies.get(COOKIE_NAME))
+        if not who:
+            return JSONResponse({"auth": True, "principal": None, "owner": False},
+                                status_code=401)
+        return {"auth": True, "principal": who, "owner": who == auth.owner}
+
+    who = auth.principal_for_token(t)
+    if not who:
+        # Deliberately vague, and deliberately not logged with the token value.
+        return JSONResponse({"auth": True, "principal": None, "owner": False,
+                             "detail": "invalid token"}, status_code=401)
+
+    body = {"auth": True, "principal": who, "owner": who == auth.owner}
+    resp = JSONResponse(body)
+    resp.set_cookie(
+        COOKIE_NAME, auth.issue(who),
+        max_age=int(SESSION_TTL_S), httponly=True, samesite="lax",
+        # Cloudflare terminates TLS and forwards the original scheme; trust it for this one
+        # decision only. Falling back to insecure on plain http keeps local dev working.
+        secure=request.headers.get("x-forwarded-proto", request.url.scheme) == "https",
+    )
+    return resp
+
+
 @app.get("/api/config")
-async def get_config():
-    return {"home": {"lat": HOME_LAT, "lon": HOME_LON, "label": HOME_LABEL}}
+async def get_config(request: Request):
+    who = principal_of(request)
+    return {
+        "home": {"lat": HOME_LAT, "lon": HOME_LON, "label": HOME_LABEL},
+        # The UI states who it thinks you are, so a guest is never confused about why a
+        # feature is missing.
+        "principal": who or None,
+        "owner": who == auth.owner,
+        "auth": auth.enabled,
+    }
 
 
 @app.get("/api/aircraft")
@@ -93,6 +174,7 @@ async def get_track(hex: str = Query(..., min_length=6, max_length=6)):
 
 @app.get("/api/photo")
 async def get_photo(
+    request: Request,
     icao: str | None = Query(None, alias="hex", min_length=6, max_length=6),
     reg: str | None = Query(None, max_length=12),
 ):
@@ -100,11 +182,21 @@ async def get_photo(
     Photo METADATA for one contact. Never the image itself.
 
     Returns the URL planespotters published, their photo-page link and the photographer's
-    name; the browser loads the bytes from their CDN directly. This endpoint must stay
-    private - their clause 8 forbids re-exposing their API (docs/decisions.md D-009).
+    name; the browser loads the bytes from their CDN directly. Their clause 8 forbids
+    re-exposing their API (docs/decisions.md D-009, D-041).
 
-    `photo: null` is a normal answer, not an error - plenty of airframes have no photo.
+    `photo: null` is a normal answer, not an error - plenty of airframes have no photo. A photo
+    WITHHELD from a guest is a different thing and says so in `errors`, because "we won't tell
+    you" and "there is no photo" must not look identical.
     """
+    if not PHOTO_GUEST_ACCESS and principal_of(request) != auth.owner:
+        return {
+            "hex": (icao or "").strip().upper() or None,
+            "registration": (reg or "").strip().upper() or None,
+            "photo": None,
+            "matched_on": None,
+            "errors": ["photos are owner-only on this instance (planespotters clause 8)"],
+        }
     return await photos.photo(icao, reg)
 
 
@@ -152,4 +244,26 @@ async def health():
         "track_buffer": tracks.status(),
         # Recorded honestly: measured zero coverage at Mobile. docs/data-sources.md 5.1a
         "ais": {"configured": False, "reason": "no source - aisstream measured zero at Mobile"},
+        # No token values, no principal names - just whether the door exists.
+        "auth": {"enabled": auth.enabled, "principals": len(set(auth.principals.values()))},
     }
+
+
+# ---------------------------------------------------------------------------
+# Static frontend, LAST so it never shadows an /api route.
+#
+# Serving the built app from this process is what makes remote access one origin and one
+# tunnel: no CORS, no second port to expose, and the session cookie is same-site by
+# construction. Unset ADSBVIZ_STATIC_DIR for the dev path, where Vite serves on 5173 and
+# proxies /api here.
+# ---------------------------------------------------------------------------
+if STATIC_DIR:
+    _static = Path(STATIC_DIR)
+    if not _static.is_dir():
+        raise RuntimeError(f"ADSBVIZ_STATIC_DIR is set but not a directory: {_static}")
+
+    @app.get("/")
+    async def index():
+        return FileResponse(_static / "index.html")
+
+    app.mount("/", StaticFiles(directory=_static, html=True), name="static")

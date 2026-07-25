@@ -888,3 +888,71 @@ that deviation", never "that aircraft is in this".
 All knobs are `VITE_`-prefixed build-time env vars (D-019), documented in `.env.example`.
 `maximumLevel` is capped at 10 because radar is ~1 km data and further zoom is pure upscaling,
 which would imply precision the source does not have.
+
+---
+
+### D-041 · Remote access: one token per person, a signed cookie, prefs in localStorage
+
+**Date:** 2026-07-25
+
+**This reverses "No accounts. No multi-user."** — narrowly, and on the owner's explicit
+instruction: they want their brother to open a URL and have it work, with a real token and
+settings that stick. Runbook: `docs/remote-access.md`.
+
+**What it is:** a shared-secret door in front of a single-user console. `ADSBVIZ_ACCESS_TOKENS`
+maps `name:token` pairs to principals; `GET /api/session?t=…` trades a token for an
+HMAC-signed `HttpOnly` cookie. No registration, no password reset, no roles beyond
+owner-or-not. Calling it auth rather than an account system is the honest description.
+
+**Decisions inside the decision:**
+
+- **Disabled unless configured.** With no tokens set, every request is the owner and behaviour
+  is byte-for-byte what it was. An open-source user is never silently running an auth system,
+  and CLAUDE.md's single-user default stays true. Verified: with auth off, `/api/track` answers
+  200 with no cookie.
+- **A link is the whole login**, because "no hoops" was the requirement. The cost is a bearer
+  credential in a URL, so the frontend spends it once and **strips `?t=` via `replaceState`** —
+  otherwise a live credential sits in history and in the address bar for the next person to
+  copy. Verified in a browser: the URL is back to `/` after load.
+- **HMAC cookie, stdlib only.** `hmac`/`hashlib`, no new dependency (rule 2).
+- **The cookie key derives from the tokens** unless overridden, so sessions survive restarts
+  with no extra secret to manage, and removing a token revokes its sessions. Verified: a cookie
+  minted for `brother` is rejected once `brother` leaves the config.
+- **`/api/health` stays open** so the service can be checked from outside without a token. It
+  reports uptime and feed status only — no positions, no airframe data.
+- **The static shell is NOT gated.** An unauthorised visitor gets the app plus the compiled-in
+  airfield and city labels — public reference data — and an explicit **ACCESS TOKEN REQUIRED**
+  panel stating that nothing on screen is current. A blank globe would be indistinguishable
+  from a dead feed and would send them to the owner asking the wrong question. A 401 is
+  therefore reported as "not authorised", never through `setFetchFailed` as a feed outage.
+- **One origin.** `ADSBVIZ_STATIC_DIR` serves the built app from the API process
+  (`scripts/serve.sh`), so there is no CORS, one port to tunnel, and a same-site cookie by
+  construction. The static mount is registered last so it can never shadow an `/api` route.
+
+**Preferences are per browser, in `localStorage`**, via zustand's `persist` with an explicit
+allow-list. Only inert UI state is written: toggles, filter, slice radius, separation. Live data
+is excluded deliberately — restoring a cached aircraft list or stale selection would put
+positions on screen that nothing has confirmed since, which is ground rule 1 in the easiest
+place to break it by accident. The allow-list *is* the safety property: future state cannot
+start persisting positions without someone adding it by name. Server-side prefs were rejected
+as the wrong trade — they need a schema (triggering the Phase 5 DDL review gate) to buy
+cross-device sync nobody asked for.
+
+**The exposure mechanism is a Cloudflare tunnel** (owner's choice): outbound-only, no forwarded
+ports, TLS handled. Recorded trade-off — Cloudflare terminates TLS and can see traffic in
+principle.
+
+**Deliberate terms departure, recorded plainly.** planespotters clause 8 forbids re-exposing
+their API and `docs/data-sources.md` records our mitigation as *"never expose it publicly"*. The
+owner was shown this and chose to serve photos to both people. Therefore
+`ADSBVIZ_PHOTO_GUEST_ACCESS` exists, **defaults to `false`**, and this repository ships the
+compliant default — the owner sets it `true` in their own gitignored `.env`. That keeps a public
+open-source repo from shipping a terms violation as its out-of-the-box behaviour while giving
+the owner exactly the deployment they asked for. When photos are withheld, the response carries
+an explicit reason in `errors`: "we will not tell you" and "there is no photo" must not look
+identical.
+
+**Not done, and stated rather than implied:** no per-user rate limiting (unnecessary — the
+global 1 req/sec gate in `feeds/adsb.py` makes extra viewers queue rather than breach the
+upstream budget, so freshness degrades and compliance does not), no audit log by design, no
+protection against whoever holds the link.

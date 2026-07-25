@@ -149,8 +149,14 @@ it ships as a single translucent imagery layer, **off by default**, behind the `
 toggle (D-040). That is the whole of the reversal — no forecasts, no alerting, no
 lightning, no soundings. Do not read it as a licence to build a weather feature.
 
-**"No accounts / no multi-user" is under active review**, not reversed: the owner wants remote
-access for one trusted family member with a token and sticky preferences. Nothing has been
-built. It collides with planespotters clause 8 (`docs/data-sources.md`), which forbids
-re-exposing their API and whose recorded mitigation is *"never expose it publicly"*. Get a
-ruling before writing auth code.
+**"No accounts / no multi-user" is narrowly reversed too** (D-041, 2026-07-25). There is now a
+shared-secret door — `ADSBVIZ_ACCESS_TOKENS`, one token per person, traded for a signed
+`HttpOnly` cookie — so the owner can share a link with one trusted family member. It is **off
+unless tokens are configured**, so the default install is still exactly the single-user,
+unauthenticated console described above. Still no accounts, no roles beyond owner-or-not, no
+audit log, no per-user data. Preferences persist per browser in `localStorage`, not server-side.
+Runbook: `docs/remote-access.md`. Do not grow this into a user system without asking.
+
+Note the recorded terms departure: `ADSBVIZ_PHOTO_GUEST_ACCESS` defaults to **false** because
+planespotters clause 8 forbids re-exposing their API. **Keep that default** — this owner
+overrides it in their own `.env`, which is their call for their deployment, not this repo's.

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface Aircraft {
   hex: string | null;
@@ -197,6 +198,8 @@ interface State {
   cameraPitchDeg: number;
 
   fps: number;
+  /** The API answered 401: a token is needed. Deliberately NOT persisted (D-041). */
+  authRequired: boolean;
 
   setAircraft: (a: Aircraft[], source: string | null, degraded: boolean, errors: string[]) => void;
   setFetchFailed: (errors: string[]) => void;
@@ -213,9 +216,21 @@ interface State {
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
+  setAuthRequired: (b: boolean) => void;
 }
 
-export const useStore = create<State>((set) => ({
+/*
+ * Preferences persist to localStorage, per browser (D-041).
+ *
+ * Only the knobs a person SETS are saved. Live data is deliberately excluded: restoring a
+ * cached aircraft list, a stale selection or an old feed status on load would put positions on
+ * screen that nothing has confirmed since — ground rule 1, in the one place it would be
+ * easiest to break by accident. Everything persisted here is inert UI state.
+ *
+ * Per browser and not per account on purpose: it is sticky for whoever uses that browser,
+ * needs no schema, and does not turn a single-user console into an account system.
+ */
+export const useStore = create<State>()(persist((set) => ({
   aircraft: [],
   source: null,
   degraded: false,
@@ -251,6 +266,7 @@ export const useStore = create<State>((set) => ({
   separationFt: 1000,
 
   fps: 0,
+  authRequired: false,
 
   setAircraft: (aircraft, source, degraded, errors) =>
     set((s) => ({
@@ -285,6 +301,21 @@ export const useStore = create<State>((set) => ({
   setFilter: (f) => set((s) => ({ filter: { ...s.filter, ...f } })),
   setFps: (fps) => set({ fps }),
   setCameraPitch: (cameraPitchDeg) => set({ cameraPitchDeg }),
+  setAuthRequired: (authRequired) => set({ authRequired }),
+}), {
+  name: "adsbviz.prefs",
+  version: 1,
+  // The allow-list IS the safety property. Anything not named here is never written to disk,
+  // so no amount of future state can accidentally start persisting live positions.
+  partialize: (s) => ({
+    showDatum: s.showDatum,
+    showDropLines: s.showDropLines,
+    showPlaces: s.showPlaces,
+    showRadar: s.showRadar,
+    datumRadiusNm: s.datumRadiusNm,
+    separationFt: s.separationFt,
+    filter: s.filter,
+  }),
 }));
 
 /* ---- shared helpers ---- */

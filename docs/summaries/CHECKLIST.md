@@ -22,6 +22,11 @@
 - [x] **Map markers** — airfields + city labels, vendored and processed at build time (D-023, D-032)
 - [x] Military airfields in `--mil` magenta via a name heuristic; false negatives documented (D-033)
 - [x] `PLACES` layer toggle; zoom thinning via DistanceDisplayCondition; label anchors separated
+- [x] **Remote access** — token-per-person → HMAC-signed HttpOnly cookie, `?t=` link login with
+      the token scrubbed from the URL, single-origin static serving via `scripts/serve.sh`,
+      Cloudflare-tunnel runbook, honest ACCESS-TOKEN-REQUIRED state, prefs sticky per browser in
+      localStorage (allow-listed — no live data ever persisted). OFF unless tokens configured.
+      Reverses "no accounts / no multi-user" narrowly (D-041). Verified end to end in a browser.
 - [x] **Weather radar** — NEXRAD via Iowa State Mesonet, one translucent layer, OFF by default,
       `WEATHER RADAR` toggle, self-refreshing every 5 min while visible (D-040). REVERSES the
       "no weather" non-goal narrowly, on owner instruction. CLAUDE.md updated to say so.
@@ -61,10 +66,10 @@
 - [ ] Phase 6 — status bar polish, compass, FPS (cluster + chips partly done)
 - [ ] Phase 4 — vessels via self-hosted RTL-SDR + AIS-catcher (D-018). NEEDS MARINE-VHF ANTENNA (162 MHz)
 - [ ] Open-source prep: licence + README stating single-user-by-design
-- [ ] **NEXT: remote access for one trusted family member** — owner wants a hosted URL, a real
-      auth token, no hoops for the guest, and sticky per-user prefs. Reverses "no accounts / no
-      multi-user". Blocked on an owner ruling re planespotters clause 8 ("never expose it
-      publicly" is the recorded mitigation) and a choice of exposure mechanism + prefs storage.
+- [ ] Remote access is BUILT (D-041) but not yet live: owner still has to mint tokens into `.env`,
+      run `scripts/serve.sh`, and start `cloudflared`. See `docs/remote-access.md`.
+      Owner ruled: serve photos to both people, so set `ADSBVIZ_PHOTO_GUEST_ACCESS=true` in the
+      LOCAL `.env` only — the repo default stays compliant.
 - [ ] FUTURE: colour scheme chooser incl. light mode — needs a second ramp (current lightness assumes near-black ground)
 
 _Updated: 2026-07-25 — phase2-dossier_

@@ -12,14 +12,39 @@ import { useStore } from "./state/store";
 const RADIUS_NM = 120;
 const POLL_MS = 2000;
 
+/**
+ * Exchange a `?t=` token for a session cookie, then scrub it out of the address bar (D-041).
+ *
+ * A link is the whole login, so the token necessarily arrives in the URL. Leaving it there
+ * would park a live credential in browser history, in the title bar, and in whatever the next
+ * person copies out of the address bar — so it is removed with replaceState the moment it has
+ * been spent. Runs before the first poll, otherwise the first request races the cookie.
+ */
+async function claimSession(): Promise<void> {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("t");
+  if (!token) return;
+  try {
+    await fetch(`/api/session?t=${encodeURIComponent(token)}`);
+  } catch { /* the 401 state below is what tells the user, not a console message */ }
+  url.searchParams.delete("t");
+  window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+}
+
 export default function App() {
+  const denied = useStore((s) => s.authRequired);
+
   useEffect(() => {
     let stop = false;
 
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((c) => c?.home && useStore.getState().setHome(c.home))
-      .catch(() => {});
+    claimSession().then(() => {
+      if (stop) return;
+      fetch("/api/config")
+        .then((r) => r.json())
+        .then((c) => c?.home && useStore.getState().setHome(c.home))
+        .catch(() => {});
+      poll();
+    });
 
     async function poll() {
       const { home } = useStore.getState();
@@ -27,6 +52,14 @@ export default function App() {
         const r = await fetch(
           `/api/aircraft?lat=${home.lat}&lon=${home.lon}&radius=${RADIUS_NM}`,
         );
+        // 401 is not a feed failure and must not be reported as one - the feeds are fine,
+        // the caller is not authorised.
+        if (r.status === 401) {
+          useStore.getState().setAuthRequired(true);
+          if (!stop) window.setTimeout(poll, 5000);
+          return;
+        }
+        useStore.getState().setAuthRequired(false);
         if (!r.ok) throw new Error(String(r.status));
         const d = await r.json();
         useStore.getState().setAircraft(d.aircraft ?? [], d.source, !!d.degraded, d.errors ?? []);
@@ -36,7 +69,6 @@ export default function App() {
       }
       if (!stop) window.setTimeout(poll, POLL_MS);
     }
-    poll();
 
     const health = window.setInterval(async () => {
       try {
@@ -75,6 +107,26 @@ export default function App() {
       </div>
       <Attribution />
       <StatusBar />
+      {/* An honest locked state. A blank globe with no explanation is indistinguishable from a
+          dead feed, and would send the visitor to the owner asking the wrong question. */}
+      {denied && (
+        <div className="absolute inset-0 flex items-center justify-center"
+             style={{ background: "rgba(5,7,10,0.86)" }}>
+          <div className="panel pointer-events-auto" style={{ width: 380, padding: "18px 20px" }}>
+            <div className="lbl" style={{ color: "var(--amber)", fontSize: 11 }}>
+              Access token required
+            </div>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
+              This console is private. Open the full link you were given — it carries a
+              one-time <span style={{ color: "var(--cyan)" }}>?t=</span> token that this browser
+              then remembers.
+            </div>
+            <div style={{ fontSize: 11, color: "var(--off)", marginTop: 10 }}>
+              Live traffic is not being shown. Nothing on screen is current.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

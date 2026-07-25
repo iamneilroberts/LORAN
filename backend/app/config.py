@@ -73,3 +73,32 @@ TRACK_MAX_CONTACTS = int(_f("ADSBVIZ_TRACK_MAX_CONTACTS", 3000))
 CORS_ORIGINS = os.environ.get(
     "ADSBVIZ_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")
+
+# ---------------------------------------------------------------------------
+# Remote access (D-041). EMPTY BY DEFAULT: with no tokens configured the app is
+# exactly as single-user and unauthenticated as CLAUDE.md says it is, and every
+# request is the owner. Setting tokens is what turns the door on.
+#
+# Format: "name:token,name:token" - e.g. "neil:AAAA...,brother:BBBB...".
+# Generate tokens with:  python3 -c "import secrets;print(secrets.token_urlsafe(32))"
+# ---------------------------------------------------------------------------
+ACCESS_TOKENS = os.environ.get("ADSBVIZ_ACCESS_TOKENS", "")
+# Which principal counts as the owner. Only matters for owner-only features.
+OWNER_PRINCIPAL = os.environ.get("ADSBVIZ_OWNER_PRINCIPAL", "owner")
+# Optional. Unset means the cookie key is derived from the tokens themselves, so
+# sessions survive restarts and rotating a token revokes its sessions.
+SESSION_SECRET = os.environ.get("ADSBVIZ_SESSION_SECRET", "")
+SESSION_TTL_S = _f("ADSBVIZ_SESSION_TTL_SECONDS", 30 * 24 * 3600.0)
+
+# planespotters clause 8 forbids re-exposing their API, and docs/data-sources.md
+# records the mitigation as "never expose it publicly". So the DEFAULT here is
+# compliant: guests get the honest no-photo state, the owner still gets photos.
+# The owner of THIS deployment has chosen to override it in their own .env with
+# eyes open; see D-041. Do not flip the default in the open-source repo.
+PHOTO_GUEST_ACCESS = os.environ.get(
+    "ADSBVIZ_PHOTO_GUEST_ACCESS", "false"
+).strip().lower() in ("1", "true", "yes", "on")
+
+# Serve the built frontend from the API process, so remote access is ONE origin and
+# one tunnel. Empty means do not serve static files (the dev path: Vite on 5173).
+STATIC_DIR = os.environ.get("ADSBVIZ_STATIC_DIR", "")

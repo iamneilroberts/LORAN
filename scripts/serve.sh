@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Production / remote serving path: build the frontend, then serve BOTH the app and the API
+# from one process on one port (D-041).
+#
+# This is the path a tunnel or reverse proxy points at. One origin means no CORS, no second
+# port to expose, and a same-site session cookie by construction.
+#
+#   bash scripts/serve.sh            # build if needed, then serve
+#   bash scripts/serve.sh --rebuild  # force a frontend rebuild first
+#
+# Everything is relative to this checkout - no absolute paths (D-019).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PORT="${ADSBVIZ_PORT:-8010}"
+DIST="$ROOT/frontend/dist"
+
+if [[ "${1:-}" == "--rebuild" || ! -f "$DIST/index.html" ]]; then
+  echo "==> building frontend"
+  ( cd frontend && npm run build )
+fi
+
+if [[ ! -f "$DIST/index.html" ]]; then
+  echo "!! no build at $DIST - run: cd frontend && npm run build" >&2
+  exit 1
+fi
+
+VENV="$ROOT/backend/.venv"
+if [[ -f "$VENV/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  source "$VENV/bin/activate"
+fi
+
+# Serving static from the API process is what makes it one origin.
+export ADSBVIZ_STATIC_DIR="$DIST"
+
+if [[ -z "${ADSBVIZ_ACCESS_TOKENS:-}" ]]; then
+  cat >&2 <<'WARN'
+!! ADSBVIZ_ACCESS_TOKENS is empty, so there is NO access control.
+   That is correct for a LAN-only or localhost instance. Do NOT expose this to
+   the internet without tokens - see docs/remote-access.md.
+WARN
+fi
+
+echo "==> serving app + api on http://127.0.0.1:$PORT"
+exec python3 -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port "$PORT"
