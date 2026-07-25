@@ -109,6 +109,82 @@ feature looks good and measures nothing.
 
 ---
 
+### D-016 · Track path comes from a backend ring buffer, not client-side accumulation
+
+**Context:** The spec says TRACK PATH draws "the aircraft's recorded history", but no recorder
+exists until Phase 5. Owner chose option (c).
+
+**Decision:** Backend keeps an in-memory ring buffer of recent position fixes (~30 min, bounded by
+contact count), exposed as `GET /api/track?hex=...`. No schema, no disk, no Phase 5 commitment.
+
+**Why:** client-side accumulation dies on refresh and only ever holds what one tab happened to
+see. The ring buffer survives a reload, is shared across tabs, and gives a track worth exporting
+without pre-committing to the archive DDL - which the owner must review before it is written.
+
+**Honesty constraint:** the UI must state the window it actually has (e.g. `TRACK · 22 MIN`), and
+the GeoJSON export must carry the covered time window in `properties`. It must never imply the
+track reaches back further than the buffer does. When Phase 5 lands, this endpoint gets a
+disk-backed implementation and the UI stops being bounded by memory.
+
+---
+
+### D-017 · Amber is exclusively military; altitude is a luminance ramp within cyan
+
+**Decision:** Confirmed by the owner. `colourFor()` in
+`frontend/src/globe/aircraftLayer.ts` is the only place this lives.
+
+**Why:** the brief asks for both "colour by altitude band" and "amber for military", which
+conflict. A third hue for high altitude reads as an alert and erodes what amber means. Altitude
+is therefore luminance/saturation within the cyan family, which keeps the two-colour palette and
+leaves amber meaning exactly one thing.
+
+---
+
+### D-018 · Phase 4 unblocks via a self-hosted AIS receiver
+
+**Context:** aisstream.io measured zero coverage at Mobile (D-012). Owner has an unused SDR
+receiver and is willing to feed their own.
+
+**Decision:** Phase 4's AIS source becomes a local receiver: RTL-SDR -> AIS-catcher -> NMEA over
+UDP -> backend ingest. aisstream.io stays rejected.
+
+**Why:** it covers the actual AOI instead of someone else's, removes the upstream dependency
+entirely, and is architecturally *simpler* than aisstream - no WebSocket, no API key, no rate
+limit, no terms of service, no BETA disclaimer.
+
+**Hardware caveat the owner needs before this works:** AIS is marine VHF at **161.975 / 162.025
+MHz**. ADS-B is **1090 MHz**. The RTL-SDR dongle covers both, but an ADS-B antenna does **not** -
+1090 MHz antennas are physically far too short for 162 MHz and will receive almost nothing. A
+marine-band vertical (or a quarter-wave cut for ~162 MHz, roughly 46 cm) is required. Antenna
+height matters more than antenna cost, because AIS is line-of-sight.
+
+**Verify before building any UI:** run AIS-catcher and confirm real MMSIs appear for Mobile Bay.
+The same gate as D-005 applies - measure, then build.
+
+---
+
+### D-019 · Open-source release must run with OR without Docker
+
+**Context:** Owner intends to publish this, and wants Docker to be a user option rather than a
+requirement.
+
+**Decision:** Ship both paths as first-class: `docker compose up` and a documented bare-metal
+path. Neither is the "real" one.
+
+**Consequences to hold to from here on:**
+- No absolute paths in application code; everything configurable via `.env`.
+- The backend must not assume it can write outside its configured data dir.
+- README documents both paths with equal weight.
+
+**Licensing note that matters more than the code licence:** the upstream feed terms travel with
+anyone who runs this. airplanes.live is **non-commercial, no SLA**; adsb.fi is non-commercial;
+planespotters forbids re-exposing their API through another API and forbids using their photos
+or metadata to train ML models. This project is single-user and unauthenticated **by design** -
+that is what keeps it inside those terms. The README must say so plainly, so nobody deploys it
+publicly and breaches clause 8 on the maintainer's behalf.
+
+---
+
 ### D-013 · Datum plane is a translucent solid; bands stay wireframe
 
 **Context:** Owner reported the datum's gridlines "aren't displaying very well" and asked whether
