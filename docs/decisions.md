@@ -109,6 +109,56 @@ feature looks good and measures nothing.
 
 ---
 
+### D-013 · Datum plane is a translucent solid; bands stay wireframe
+
+**Context:** Owner reported the datum's gridlines "aren't displaying very well" and asked whether
+a translucent solid would work.
+
+**Decision:** Yes. The datum plane now renders as a translucent fill with a bright 2px rim.
+Static band planes keep the wireframe grid.
+
+**Why:** a dense grid viewed at a shallow angle moires into noise and stops reading as a surface,
+which is the one job the datum has. A solid fill reads as a surface from any angle, and the rim
+keeps the finite bound legible. Keeping the bands as wireframe is also a useful distinction:
+wireframe says "static structure", solid says "the thing I am measuring against right now".
+`PlaneSpec.fill` takes `"solid" | "grid"` so either can be used for either.
+
+---
+
+### D-014 · Camera cluster pulled forward from Phase 6
+
+**Context:** Owner could zoom and pan but had no way to rotate or change altitude.
+
+**Decision:** Built the camera cluster now rather than at Phase 6.
+
+**Why:** Cesium's mouse bindings already do all of it - middle-drag or ctrl+left-drag rotates and
+tilts - but they are undiscoverable, and the owner reasonably concluded the capability was
+missing. Explicit controls, plus two presets that matter for this project specifically:
+HORIZON VIEW (near edge-on, the clearest read on who is stacked above whom) and PLAN VIEW
+(straight down - deliberately labelled as showing horizontal separation only, since it is exactly
+the view that cannot show altitude, which is why it is not the default).
+
+---
+
+### D-015 · Aircraft primitives are reused across frames, not rebuilt
+
+**Context:** Owner reported 25-30 FPS. That was my bug, not their GPU.
+
+**Decision:** `aircraftLayer` now keys billboards, labels and drop-lines by ICAO hex and mutates
+them in place, adding or removing only when the set of contacts changes.
+
+**Why:** the first version called `removeAll()` and re-added every primitive on every postRender -
+roughly 120 allocations per frame at 30 fps, about 3,600 primitive constructions a second, plus a
+texture re-upload each time `.image` was set. Verified fixed by checking that the billboard at
+index 0 is the *same object instance* across frames
+(`billboardIdentityReusedAcrossFrames: true`), rather than by trusting the diff.
+
+**Honest limit:** the resulting frame rate on the owner's RTX 2000 Ada cannot be measured from
+this environment - headless SwiftShader is software-rendered and reports 1-2 FPS regardless.
+The allocation churn is provably gone; the FPS number has to come from the owner.
+
+---
+
 ### D-012 · aisstream.io rejected for Mobile — measured, not assumed. Phase 4 deferred.
 
 **Context:** D-005 gated Phase 4 on an empirical coverage measurement. The owner supplied a key;

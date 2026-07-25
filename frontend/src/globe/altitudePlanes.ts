@@ -16,6 +16,7 @@ import {
   Cartesian2,
   Cartesian3,
   Color,
+  ColorMaterialProperty,
   Entity,
   GridMaterialProperty,
   HorizontalOrigin,
@@ -44,29 +45,42 @@ export interface PlaneSpec {
   altFt: number;
   colour: Color;
   label: string;
-  /** Datum planes are brighter and denser; band planes recede. */
+  /** Datum planes are brighter; band planes recede. */
   emphasis?: boolean;
+  /**
+   * "solid" - translucent fill with a bright rim. Reads cleanly as a surface at any angle.
+   * "grid"  - wireframe. Good for the static bands, where it says "structure".
+   *
+   * The datum defaults to solid: a dense grid viewed at a shallow angle moires badly and
+   * stops reading as a plane at all, which is the one thing it has to do.
+   */
+  fill?: "solid" | "grid";
 }
 
 /** Add (or replace) one plane and its floating bracketed label. */
 export function addPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
   const rect = rectAround(s.lat, s.lon, s.radiusNm);
   const heightM = s.altFt * FT_TO_M;
-  const a = s.emphasis ? 0.5 : 0.28;
+  const style = s.fill ?? (s.emphasis ? "solid" : "grid");
+
+  const material =
+    style === "solid"
+      ? new ColorMaterialProperty(s.colour.withAlpha(s.emphasis ? 0.18 : 0.09))
+      : new GridMaterialProperty({
+          color: s.colour.withAlpha(s.emphasis ? 0.5 : 0.3),
+          cellAlpha: s.emphasis ? 0.1 : 0.04,
+          lineCount: new Cartesian2(10, 10),
+          lineThickness: new Cartesian2(1.0, 1.0),
+        });
 
   const plane = viewer.entities.add({
     id: s.id,
     rectangle: {
       coordinates: rect,
       height: heightM,
-      material: new GridMaterialProperty({
-        color: s.colour.withAlpha(a),
-        cellAlpha: s.emphasis ? 0.1 : 0.05,
-        lineCount: new Cartesian2(12, 12),
-        lineThickness: new Cartesian2(s.emphasis ? 1.4 : 1.0, s.emphasis ? 1.4 : 1.0),
-      }),
+      material,
       outline: true,
-      outlineColor: s.colour.withAlpha(s.emphasis ? 0.95 : 0.6),
+      outlineColor: s.colour.withAlpha(s.emphasis ? 0.95 : 0.55),
       outlineWidth: 2,
     },
   });

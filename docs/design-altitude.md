@@ -68,6 +68,14 @@ comparing anything by eye.
 
 ### 3. Drop-lines — to the datum, not the ground
 
+> **What they are for**, since the owner reasonably asked. In a tilted 3D view you cannot tell
+> whether a contact is *high and far* or *low and near* — perspective collapses those into the
+> same screen position. The drop-line resolves it: its foot marks the contact's true horizontal
+> position on the reference plane, and its length is the altitude difference. Without it you are
+> guessing; with it you are reading. They earn their place when the datum is active and several
+> contacts sit near it, and they are least useful on a sparse, near-plan-view screen — which is
+> why they are a toggle rather than always-on.
+
 A vertical line from each aircraft to the datum plane. Two things fall out of this:
 
 - **Line length encodes |Δaltitude| directly** as a visible quantity.

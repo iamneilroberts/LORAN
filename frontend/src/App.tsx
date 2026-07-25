@@ -3,6 +3,7 @@ import Globe from "./globe/Globe";
 import {
   Attribution, CursorReadout, LayerCluster, SelectionPanel, StatusBar, TrafficPanel,
 } from "./panels/Panels";
+import { CameraCluster } from "./panels/CameraCluster";
 import { useStore } from "./state/store";
 
 /** Viewport-scoped-ish polling. Phase 1 polls a fixed radius around home; the camera-derived
@@ -55,6 +56,7 @@ export default function App() {
         <div className="absolute left-3 top-3"><TrafficPanel /></div>
         <div className="absolute left-3" style={{ bottom: 34 }}><CursorReadout /></div>
         <div className="absolute right-3 top-3 flex flex-col gap-3 items-end">
+          <CameraCluster />
           <LayerCluster />
           <SelectionPanel />
         </div>

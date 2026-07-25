@@ -205,6 +205,9 @@ export default function Globe() {
           colour: AMBER,
           label: `DATUM ${Math.round(sel.alt_ft).toLocaleString()} FT · ±${st.datumRadiusNm} NM`,
           emphasis: true,
+          // Solid, not grid: a dense wireframe at a shallow viewing angle moires into
+          // noise and stops reading as a surface, which is its only job.
+          fill: "solid",
         });
       }
     });
