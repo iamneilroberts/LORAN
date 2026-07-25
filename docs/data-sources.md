@@ -16,7 +16,8 @@
 | **OpenSky** | `opensky-network.org/api/states/all?lamin=…` | none (degraded) / OAuth2 | 400 credits/day anon | not stated in API docs | **REJECT for live use** |
 | **adsbdb** | `api.adsbdb.com/v0/aircraft/{hex}`, `/v0/callsign/{cs}` | none | undocumented | open | **USE — enrichment** |
 | **planespotters** | `api.planespotters.net/pub/photos/hex/{hex}` | none, **UA must carry contact** | undocumented | attribution mandatory | **USE — photos** |
-| **aisstream.io** | `wss://stream.aisstream.io/v0/stream` | **free key required** | 1 sub-update/sec | BETA, no SLA | **CONDITIONAL — must measure first** |
+| **aisstream.io** | `wss://stream.aisstream.io/v0/stream` | free key | 1 sub-update/sec | BETA, no SLA | **REJECT for Mobile — measured, zero coverage (§5.1a)** |
+| **Own AIS receiver** | RTL-SDR @ 161.975 / 162.025 MHz → local NMEA | none | none | none | **RECOMMENDED path for Phase 4 (§5.1b)** |
 | Finnish Digitraffic | `meri.digitraffic.fi/api/ais/v1/…` | none | generous | open | **REJECT — wrong hemisphere** |
 | Norwegian BarentsWatch | `live.ais.barentswatch.no` | account | — | open-ish | **REJECT — wrong hemisphere** |
 | MarineCadastre / NOAA | `marinecadastre.gov/accessais/` | none | — | US public domain | **REJECT — historical only, not live** |
@@ -189,13 +190,44 @@ With a compliant UA (`adsb-viz/0.1 (+mailto:dneilroberts@gmail.com)`) it returns
 
 A miss returns `{"photos":[]}` — an empty array, **not** a 404. The dossier must render an honest "no photo" state for this, not a placeholder image.
 
-**Attribution — PARTIALLY VERIFIED, please sanity-check me here.** Their `/photo/api` page is behind a Cloudflare JS interstitial that I could not read from the CLI, and WebFetch got 403. What I have is a search-engine extract of their Terms of Use stating that when linking thumbnails, attribution must not be removed and must take the form:
+**Terms — NOW VERIFIED.** Owner supplied the full Photo API Terms of Use on 2026-07-25 (the page is Cloudflare-JS-gated and unreadable from the CLI). My earlier guess at the attribution format was **wrong**, and one clause changes our architecture. Binding requirements:
 
-> `Copyright © display name/author's name` or `© display name/author's name`
+| # | Requirement | Consequence for us |
+|---|---|---|
+| 1 | Photos may not be a paid/premium/member-only feature; must be freely available to all users; thumbnail sizes identical across access levels | N/A — single user, no auth. Satisfied trivially. |
+| 2 | **Each photo must credit the photographer in text visible next to the image**, and the thumbnail **must link to the photo's page using the `link` URL from the response**. Plain anchor — **no `rel="nofollow"`** or equivalent. | Dossier renders photographer text + wraps thumbnail in a plain `<a href={link}>`. |
+| 3 | Browser clients must send a valid `Origin` or `Referer` | See empirical finding below — this path does not work for us. |
+| 4 | Server-side clients must send a unique descriptive User-Agent including a contact URL or email | `ADSBVIZ_USER_AGENT` in `.env`. Generic defaults (`curl/8.0`, `python-requests`) discouraged. |
+| 5 | JSON may be cached server-side **up to 24 h**. **Image binaries must never be downloaded, stored, or re-hosted** — they must load in the end user's browser from the returned URLs. | **Backend must not proxy images.** Backend caches JSON only; `<img src>` points at their CDN. |
+| 6 | All returned URLs used **unchanged**. No proxying, rewriting, or hot-link-protection bypassing. | Never rewrite `thumbnail.src` / `link`. |
+| 7 | **Photos and metadata must not be used to train, fine-tune, evaluate, or build datasets for ML/AI models** | Never feed photo data to an LLM. Reinforces the existing no-AI-summarization non-goal. |
+| 8 | Re-exposing the API or its data through your own API, feed, bulk export, or dataset is prohibited | Our backend endpoint stays private to this single-user app. **Never expose it publicly.** |
+| 9 | Use must stay within reasonable limits; bursty traffic may be throttled | Cache hard, fetch only on selection, never bulk-prefetch. |
+| 10 | Access revocable at any time, with or without notice | Photo absence must be a normal state, never an error screen. |
 
-The terms further state that using their thumbnails elsewhere without sufficient attribution in that format is prohibited, and that rights beyond the ToU come only from the photographer.
+Also documented: the API is free, needs no key, queries by registration or hex only, **returns at most one photo**, and takes no custom parameters. Thumbnail sizes: regular is 200 px wide (landscape) or 180 px tall (portrait); large is 280 px tall with width typically 360–500 px.
 
-I am **not** confident I have the current, exact string, because I could not read the page myself. My plan for Phase 2 is to render `© {photographer} / planespotters.net` beneath the thumbnail, hyperlinked to the returned `link` (which already carries their `utm_source=api` tag), and to hotlink their CDN thumbnail rather than re-host it. **Before Phase 2 ships, please open <https://www.planespotters.net/photo/api> in a browser and confirm that wording.** This is the item on this page I'm least confident about.
+**Empirical finding that forces the architecture.** I tested all four access paths:
+
+| Test | Origin | User-Agent | Result |
+|---|---|---|---|
+| A | `http://localhost:5173` | browser (`Mozilla/5.0 … Chrome/126`) | **403** |
+| B | `https://adsb.example.com` | browser | **403** |
+| C | *none* | `curl/8.0` | 200 |
+| D | *none* | `adsb-viz/0.1 (+mailto:…)` | **200** |
+| E | image CDN hotlink w/ `Referer` | browser | **200**, `image/jpeg`, 8,349 B |
+
+Their gate is enforced on **User-Agent**, not Origin — a request carrying a valid `Origin` but an ordinary browser UA is rejected. Since **browsers forbid scripts from setting `User-Agent`** (it's a forbidden header name), the documented browser-direct path is **not usable by us**. Test C also shows the "generic library defaults may be blocked" rule is not currently enforced — but we will not rely on that.
+
+**Resulting design, which is both forced and compliant:**
+
+1. **Backend** fetches the JSON with the contact-carrying UA (path D) and caches it ≤ 24 h — explicitly permitted by clause 5.
+2. **Frontend** receives the URLs and puts `thumbnail_large.src` straight into an `<img>`. The browser loads the binary from their CDN (path E, verified). We never download, store, proxy, or rewrite it — clauses 5 and 6.
+3. **Frontend** renders the photographer credit as visible text beside the image, and wraps the thumbnail in a plain anchor to `link` — clause 2.
+
+Note the CDN host on live responses is `t.plnspttrs.net`, not the `cdn.planespotters.net` shown in their docs example. Using returned URLs unchanged handles this automatically — another reason clause 6 matters.
+
+A miss returns `{"photos":[]}` — an empty array, **not** a 404. The dossier must render an honest "no photo" state for this, not a placeholder image.
 
 ---
 
@@ -231,15 +263,84 @@ I am **not** confident I have the current, exact string, because I could not rea
 
 It's a volunteer receiver network, exactly like the ADS-B feeds. AIS is VHF and line-of-sight, so a shore station reaches ~40–80 km for Class-A vessels in practice, with the 200 km figure being a best case.
 
-**Why Mobile is better than your original "Gulf" framing:** Mobile Bay is a major port with a dense shipping channel, and it is *on the coast*. Coastal traffic within ~100 km of shore is the best-case scenario for this network. Had your AOI been mid-Gulf — the deepwater rig fields 300+ km out — I'd be telling you it was hopeless. As it is, I think it will probably work near Mobile and degrade fast as you pan south.
+### 5.1a MEASURED — and the answer is no
 
-**But "probably" is not verified, and I refuse to build a vessel layer on it sight-unseen.** I have no key, so I could not measure it. Concretely, what I could not verify:
+**Status: measured 2026-07-25 with the owner's key. aisstream.io does not cover Mobile.**
 
-1. Whether any aisstream contributor station actually covers the Alabama/Mississippi/Florida panhandle coast.
-2. The message rate for a Mobile-area bounding box.
-3. How many distinct MMSIs appear per hour, and how many ever send `ShipStaticData`.
+Probe: `scripts/ais_coverage_probe.py`. Raw reports in `docs/measurements/`. Reproduce with the
+commands in that script's docstring.
 
-**Proposed gate before Phase 4:** you register a free key, and I write a ~30-line throwaway script that subscribes to a Mobile-area bbox for 10 minutes and reports distinct MMSIs, message rate, and static-data coverage. If that comes back with real vessels, we build Phase 4. If it comes back near-empty, we know before writing a UI for it — and your options are a paid key or dropping the vessel layer. That script is a measurement tool, not app code, so it doesn't violate the Phase-0 boundary; I'll only write it when you ask.
+| Probe | Box | Duration | Messages | Distinct vessels | Rate | Westernmost fix |
+|---|---|---|---|---|---|---|
+| **Mobile Bay** (run 1) | 30.1–31.0 N, 88.4–87.8 W | 182 s | **0** | **0** | **0.00/s** | — |
+| **Mobile Bay** (run 2) | 30.1–31.0 N, 88.4–87.8 W | 182 s | **0** | **0** | **0.00/s** | — |
+| Mobile region (run 1) | 28.0–31.5 N, 90.0–86.0 W | 606 s | 50 | 23 | 0.08/s | −87.5413 |
+| Mobile region (run 2) | 28.0–31.5 N, 90.0–86.0 W | 427 s | 25 | 13 | 0.06/s | −87.5413 |
+| Gulf of Finland (control 1) | 59.0–60.5 N, 20.0–26.0 E | 122 s | 137 | 102 | 1.12/s | — |
+| **Gulf of Finland (control 2)** | 59.0–60.5 N, 20.0–26.0 E | 121 s | 132 | **106** | **1.09/s** | — |
+
+**Mobile Bay returned literally nothing** — zero messages in three minutes, run twice, hours
+apart. Not sparse. Zero.
+
+The two wide-box runs independently produced a westernmost observed fix of **−87.5413**, agreeing
+to four decimal places. That is not sampling noise; it is the hard edge of one receiver's range.
+
+The control rules out the obvious alternative explanations. Same script, same key, same machine,
+minutes apart: the Gulf of Finland returned **106 distinct vessels in two minutes**. The tooling
+works, the key is valid, the subscription format is correct. The Gulf Coast is simply not covered.
+
+**Where the coverage actually is.** In the wide 4° box, every observed position fell within
+lat 29.23–30.51, lon **−87.54 to −86.33**. Mobile is at −88.04. Not one vessel was seen at or
+west of −87.54, which puts the nearest observed traffic roughly **50 nm east of Mobile**, off
+Pensacola. The whole western half of the box — Mobile Bay, Mississippi Sound, the Louisiana
+coast, the Mississippi delta — produced nothing at all.
+
+That footprint is consistent with **a single volunteer receiver near Pensacola** and no station
+anywhere else on the northern Gulf coast. It is not a bad-luck sampling artifact; it is a hole in
+the network.
+
+Static data is also thin where coverage does exist: only 5 of 23 vessels (22%) ever sent
+`ShipStaticData` during the 10-minute window, and the control showed 9–18% over two minutes. So
+even in covered water, most vessels would render with an em-dash for name, type and destination
+for the first several minutes.
+
+**Verdict: the vessel layer as specified — vessels near your house — cannot be built on
+aisstream.io.** Phase 4 is blocked on a data source, not on code.
+
+### 5.1b Options, ranked
+
+**1. Feed your own AIS receiver.** *Recommended.* AIS is unencrypted VHF on 161.975 and
+162.025 MHz with ~40–75 km line-of-sight range. An RTL-SDR plus a marine-band vertical, fed by
+[AIS-catcher](https://github.com/jvde-github/AIS-catcher) or `rtl_ais`, receives Mobile Bay
+directly. You already build ESP32 ADS-B receivers, so this is squarely in your wheelhouse, and you
+may already own the SDR. Roughly $30 for the dongle and $40 for an antenna, and antenna height
+matters more than either.
+
+This is the only option that gives *good* coverage of your actual AOI rather than adequate
+coverage of someone else's, and it removes the upstream dependency entirely — your own receiver
+feeding your own backend over UDP/NMEA. Feeding [AISHub](https://www.aishub.net/join-us) in return
+grants access to their aggregated global feed, the same reciprocal model as ADS-B feeding, which
+would cover the wider globe view as a bonus.
+
+Architecturally this is *easier* than aisstream, not harder: local NMEA on a UDP port, no
+WebSocket, no key, no rate limit, no terms.
+
+**2. Paid AIS API.** MarineTraffic, VesselFinder, Spire and similar sell satellite+terrestrial
+feeds with real Gulf coverage. Costs real money per month and reintroduces a rate-limited upstream.
+Worth it only if you want global vessel coverage without hardware.
+
+**3. Build Phase 4 anyway, honestly scoped.** aisstream works fine ~50 nm east. The layer would
+function, correctly show nothing over Mobile, and populate when you pan toward Pensacola. Per the
+project's first ground rule that is an *honest* empty state, not a broken one — but it does not
+deliver what you asked for.
+
+**4. Drop the vessel layer.** Phases 1, 2, 3, 5 and 6 do not depend on AIS. Nothing else in the
+project is blocked by this.
+
+**My recommendation: don't decide now.** Phase 4 is the fourth of six phases. Build Phases 1–3 on
+ADS-B, which is verified excellent over Mobile, and decide about AIS when you get there — by
+which time you will know whether you want to put an antenna on the roof. Nothing about Phases 1–3
+forecloses any of these options.
 
 ### 5.2 Regional open feeds — REJECT for your AOI
 
@@ -315,8 +416,8 @@ Values are **metres, negative below sea level**. Land returns positive elevation
 
 Listed plainly, because these are where I could be wrong:
 
-1. **aisstream.io coverage at Mobile.** No key, no measurement. The whole of Phase 4 rests on this. Gate it behind the 10-minute measurement described in §5.1.
-2. **planespotters exact attribution wording.** Cloudflare-gated; my string came from a search extract of their ToU, not from reading the page. Please eyeball it (§4.2).
+1. ~~**aisstream.io coverage at Mobile.**~~ **RESOLVED 2026-07-25 — measured, and the answer was no. See §5.1a.** Caveat on the finding: it is a snapshot of ~20 minutes total observation on one afternoon. A volunteer station could come online tomorrow, and one could have been briefly offline during my window. The zero is reproducible across two separate runs and the control rules out tooling error, so I am confident in the conclusion — but it is a statement about today's network, not a permanent law.
+2. ~~**planespotters exact attribution wording.**~~ **RESOLVED 2026-07-25** — owner supplied the full terms; my guess was wrong and the corrected requirements are in §4.2.
 3. **adsb.fi terms.** Cloudflare-gated. Assumed non-commercial.
 4. **OpenSky licensing/attribution.** Their API docs simply don't state it. Moot given the reject verdict.
 5. **Esri tile-service terms for application use.** Keyless in practice; I did not find a definitive statement blessing unauthenticated app use.

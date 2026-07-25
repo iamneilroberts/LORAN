@@ -1,0 +1,31 @@
+{
+  "name": "Mobile region (4-deg box)",
+  "bbox": [
+    [
+      28.0,
+      -90.0
+    ],
+    [
+      31.5,
+      -86.0
+    ]
+  ],
+  "elapsed_s": 426.7,
+  "total_messages": 25,
+  "msgs_per_sec": 0.059,
+  "message_types": {
+    "StandardClassBPositionReport": 9,
+    "PositionReport": 14,
+    "ShipStaticData": 2
+  },
+  "distinct_vessels_with_position": 13,
+  "distinct_vessels_with_static": 2,
+  "static_coverage_pct": 15.4,
+  "position_extent": {
+    "lat_min": 30.25963833333333,
+    "lat_max": 30.51169666666667,
+    "lon_min": -87.54132666666666,
+    "lon_max": -86.29069833333332
+  },
+  "errors": []
+}

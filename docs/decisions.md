@@ -109,6 +109,101 @@ feature looks good and measures nothing.
 
 ---
 
+### D-012 · aisstream.io rejected for Mobile — measured, not assumed. Phase 4 deferred.
+
+**Context:** D-005 gated Phase 4 on an empirical coverage measurement. The owner supplied a key;
+the measurement ran.
+
+**Result:** Mobile Bay returned **0 messages / 0 vessels in 182 s**, reproduced twice. A
+same-session Gulf of Finland control returned **106 vessels in 121 s**, proving the script, key
+and subscription format all work. In a wide 4° box, no vessel was ever observed west of −87.54;
+Mobile is −88.04. Coverage is a single blob roughly 50 nm east, off Pensacola.
+
+**Decision:** aisstream.io is rejected as the AIS source for this AOI. Phase 4 is deferred, not
+cancelled — it is blocked on a data source, not on code. Phases 1, 2, 3, 5 and 6 have no AIS
+dependency and proceed unaffected.
+
+**Preferred remedy:** the owner feeds their own AIS receiver — RTL-SDR on 161.975/162.025 MHz with
+a marine vertical, decoded by AIS-catcher, delivered to the backend as local NMEA over UDP. This
+fits the owner's existing ESP32/SDR hardware experience, gives genuinely good coverage of the
+actual AOI instead of adequate coverage of someone else's, and is architecturally *simpler* than
+aisstream — no WebSocket, no key, no rate limit, no terms of service. Feeding AISHub in return
+would grant an aggregated global feed for the wide view.
+
+**Why this was worth the 20 minutes:** the alternative was building a vessel UI, a normalizer, a
+dossier and a traffic panel, then discovering at integration that the panel is permanently empty
+over the owner's house. The brief explicitly asked to learn this before building five phases on
+top of it.
+
+**Caveat recorded:** ~20 minutes of observation on one afternoon. Reproducible and controlled, but
+a statement about today's volunteer network, not a permanent law.
+
+---
+
+### D-009 · Planespotters: backend fetches JSON, browser loads images. Never proxy binaries.
+
+**Context:** Owner supplied the full Photo API Terms of Use, which I had previously guessed at and
+got wrong. Clause 5 forbids downloading, storing, or re-hosting image binaries under any
+circumstance; clause 6 forbids rewriting any returned URL.
+
+**Decision:** Backend fetches the JSON with a contact-carrying User-Agent and caches it ≤24 h
+(explicitly permitted). The frontend puts the returned CDN URL straight into an `<img>` so the
+binary loads in the user's browser. Photographer credit renders as visible text beside the image;
+the thumbnail is wrapped in a plain anchor to the returned `link`, with no `rel="nofollow"`.
+
+**Why this rather than browser-direct:** their terms document a browser path requiring an `Origin`
+or `Referer` header, but I tested it and it returns **403**. Their gate is enforced on
+User-Agent, and a request with a valid `Origin` but an ordinary browser UA is rejected. Browsers
+forbid scripts from setting `User-Agent`, so the browser-direct path is unusable regardless of
+what the docs say. The server-side path is therefore forced — and it is also the compliant one.
+
+**Consequence:** this is the one deliberate exception to "the backend proxies upstream feeds."
+For photos the backend proxies *metadata only*, never bytes. Also: our photo endpoint must stay
+private to this single-user app — clause 8 prohibits re-exposing their data through our own API.
+And clause 7 prohibits using photos or metadata for ML/AI training, which reinforces the existing
+no-AI-summarization non-goal.
+
+---
+
+### D-010 · Datum plane supersedes fixed bands as the primary altitude instrument
+
+**Context:** Owner proposed "a toggle for the selected aircraft's altitude plane from a 3d
+perspective," and offered to drop the altitude-shell idea if it wasn't feasible.
+
+**Decision:** Nothing is dropped. The owner's datum-plane idea becomes the *primary* mechanism;
+the spec'd fixed bands are kept as a secondary, separately toggleable context layer. Full design
+in `docs/design-altitude.md`.
+
+**Why:** perspective projection confounds height with distance-from-camera, so drawing aircraft
+at true altitude with static shells looks like an instrument while measuring almost nothing. A
+plane pinned to the *selected* aircraft's altitude converts an absolute judgement into an
+above/below one, which human vision does reliably. Adding relative colouring (amber within the
+±1000 ft separation minimum) and drop-lines to the datum turns it into something that genuinely
+answers "who is near this aircraft."
+
+**Consequence:** this **retires D-006.** The third altitude band is no longer needed, because the
+datum works at any altitude including the observed 43,000 ft ceiling. The two originally spec'd
+bands stand as written.
+
+---
+
+### D-011 · CARTO dark tiles evaluated as a landmass option
+
+**Context:** The owner's prior ESP32 projects (`~/dev/adsb`, `~/dev/adsb-cyd`) reference
+`basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png`.
+
+**Decision:** Offer CARTO `dark_all` as a Phase 1 basemap option alongside Esri World Imagery.
+
+**Why:** the brief asks for a dark technical console, and satellite imagery of land is visually
+busy — it competes with the traffic overlay for attention. A dark vector-style basemap may serve
+the aesthetic better while keeping Esri Ocean Base + GEBCO for the bathymetry the owner
+specifically wants. Not a decision to make on paper; both get rendered in Phase 1 and compared.
+
+**Side note:** those prior projects independently converged on adsb.lol + adsbdb + planespotters,
+which is the same stack this recon recommends. Useful corroboration, arrived at separately.
+
+---
+
 ### D-008 · Reference image treated as vocabulary, not spec
 
 **Decision:** Adopt the reference image's layout, colour and typographic language. Do not

@@ -1,0 +1,31 @@
+{
+  "name": "Gulf of Finland (control)",
+  "bbox": [
+    [
+      59.0,
+      20.0
+    ],
+    [
+      60.5,
+      26.0
+    ]
+  ],
+  "elapsed_s": 121.4,
+  "total_messages": 132,
+  "msgs_per_sec": 1.088,
+  "message_types": {
+    "PositionReport": 91,
+    "StandardClassBPositionReport": 31,
+    "ShipStaticData": 10
+  },
+  "distinct_vessels_with_position": 106,
+  "distinct_vessels_with_static": 10,
+  "static_coverage_pct": 9.4,
+  "position_extent": {
+    "lat_min": 59.402345,
+    "lat_max": 60.44627666666667,
+    "lon_min": 21.367894999999997,
+    "lon_max": 25.835161666666668
+  },
+  "errors": []
+}
