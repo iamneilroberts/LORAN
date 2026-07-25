@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.local
+
+# Archive database (Phase 5)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
