@@ -23,6 +23,10 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173. Vite proxies `/api` to the backend on 8010.
 
+`npm run dev` and `npm run build` both run `npm run cesium:assets` first, which copies
+CesiumJS's `Workers/Assets/Widgets/ThirdParty` out of `node_modules` into `frontend/public/cesium/`.
+Those are build artefacts and are **not** in git — a fresh clone regenerates them automatically.
+
 Copy `.env.example` to `.env` first. The only value you must set is `ADSBVIZ_USER_AGENT` — it
 has to contain a real contact URL or email, because planespotters returns HTTP 403 without one
 and the ADS-B feeds are volunteer-funded and deserve to know who is calling.

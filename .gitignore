@@ -9,15 +9,17 @@ data/
 *.db-shm
 
 # Node
-node_modules/
-dist/
-.vite/
+# No trailing slashes: a trailing slash matches directories only, so it misses the
+# symlinked node_modules / .venv that isolated worktrees use to share deps.
+node_modules
+dist
+.vite
 
 # Python
 __pycache__/
 *.py[cod]
-.venv/
-venv/
+.venv
+venv
 *.egg-info/
 .pytest_cache/
 
@@ -26,6 +28,16 @@ venv/
 .idea/
 .vscode/
 *.swp
+
+# ---------------------------------------------------------------------------
+# Build artefacts — regenerated, never committed
+# ---------------------------------------------------------------------------
+
+# CesiumJS ships Workers/Assets/Widgets/ThirdParty that must be served as static files.
+# `npm run cesium:assets` copies them out of node_modules on every dev/build, so they are
+# pure build output. 389 files, ~7.8 MB — tracked by accident, because the Node section
+# above only covered dist/ and node_modules/.
+frontend/public/cesium/
 
 # Generated mockup artifacts - regenerate with scripts/build_mockup_assets.py
 # (they embed a live-traffic snapshot and go stale; the generator is the durable thing)

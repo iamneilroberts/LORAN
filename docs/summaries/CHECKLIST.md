@@ -19,4 +19,4 @@
 - [ ] Phase 4 — vessels via self-hosted RTL-SDR + AIS-catcher (D-018). NEEDS MARINE-VHF ANTENNA (162 MHz)
 - [ ] Open-source prep: licence + README stating single-user-by-design
 
-_Updated: 2026-07-25 — master_
+_Updated: 2026-07-25 — phase2-dossier_
