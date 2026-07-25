@@ -18,11 +18,10 @@ import {
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
-import { AMBER, clearByPrefix, CYAN, upsertPlane } from "./altitudePlanes";
+import { AMBER, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { createAircraftLayer } from "./aircraftLayer";
-import { distanceNm, FT_TO_M, useStore, type Aircraft } from "../state/store";
+import { FT_TO_M, matchesFilter, useStore, type Aircraft } from "../state/store";
 
-const BAND_PREFIX = "band::";
 const DATUM_PREFIX = "datum::";
 const TRACK_PREFIX = "track::";
 
@@ -143,23 +142,25 @@ export default function Globe() {
         : undefined;
       const datumAltFt = st.showDatum && sel?.alt_ft != null ? sel.alt_ft : null;
 
-      layer.update(st.aircraft, elapsedS, {
+      // Filtering narrows what is DRAWN, never what is counted - the status bar keeps
+      // reporting true totals. The selected contact is always drawn even if the filter
+      // excludes it; hiding the thing the dossier is describing would be incoherent.
+      const visible = st.aircraft.filter(
+        (a) => matchesFilter(a, st.filter) || a.hex === st.selectedHex,
+      );
+
+      layer.update(visible, elapsedS, {
         selectedHex: st.selectedHex,
         showDropLines: st.showDropLines,
         separationFt: st.separationFt,
         datumAltFt,
         dropToAltFt: (a) => {
-          // Drop to the datum when one is active and the contact is inside its radius,
-          // otherwise to the nearest band floor below. Never to the ground: a 35,000 ft
-          // streak to sea level is noise, not information.
-          if (sel && datumAltFt !== null) {
-            const d = distanceNm(a.lat, a.lon, sel.lat, sel.lon);
-            if (d <= st.datumRadiusNm) return datumAltFt;
-          }
-          if (!st.showBands) return null;
-          const alt = a.alt_ft ?? 0;
-          const below = st.bands.filter((b) => b.floorFt <= alt).map((b) => b.floorFt);
-          return below.length ? Math.max(...below) : null;
+          // Drop lines are now SELECTION-ONLY and go all the way to the surface (D-030).
+          // Showing them for every contact is what forced the old "stop at the nearest band
+          // floor" compromise, which left lines hanging in mid-air with nothing to land on.
+          // One line, to the ground, is unambiguous.
+          if (a.hex !== st.selectedHex) return null;
+          return 0;
         },
       });
 
@@ -205,12 +206,8 @@ export default function Globe() {
     const unsub = useStore.subscribe((st) => {
       const sel = st.selectedHex ? st.aircraft.find((a) => a.hex === st.selectedHex) : undefined;
       const key = [
-        st.showBands,
         st.showDatum,
         st.datumRadiusNm,
-        st.home.lat.toFixed(3),
-        st.home.lon.toFixed(3),
-        st.bands.map((b) => `${b.floorFt}-${b.ceilFt}`).join(","),
         sel?.hex ?? "",
         sel?.alt_ft ?? "",
         sel ? `${sel.lat.toFixed(2)},${sel.lon.toFixed(2)}` : "",
@@ -218,25 +215,13 @@ export default function Globe() {
       if (key === lastKey) return;
       lastKey = key;
 
-      // Bands only change when their configuration does, so rebuilding them is cheap and rare.
-      // The DATUM is not cleared here: it moves with the selected contact on every poll, and
-      // destroying its label that often corrupts Cesium's glyph atlas (see upsertPlane). It is
-      // mutated in place below, and only removed when it genuinely should not exist.
-      clearByPrefix(viewer, BAND_PREFIX);
-
-      if (st.showBands) {
-        st.bands.forEach((b, i) =>
-          upsertPlane(viewer, {
-            id: `${BAND_PREFIX}${i}`,
-            lat: st.home.lat,
-            lon: st.home.lon,
-            radiusNm: 95,
-            altFt: b.ceilFt,
-            colour: i === 0 ? CYAN : AMBER,
-            label: b.label,
-          }),
-        );
-      }
+      // The fixed 18k/29k band grids are gone (D-029). They occluded traffic, only answered
+      // "above or below?" when the camera angle cooperated, and D-010 had already demoted
+      // them to secondary context. Altitude now reads off the icon hue ramp; the slice below
+      // remains the on-demand measuring instrument.
+      //
+      // The slice is not cleared and rebuilt: it moves with the selected contact on every
+      // poll, and destroying its label that often corrupts Cesium's glyph atlas (upsertPlane).
       if (!(st.showDatum && sel?.alt_ft != null)) {
         clearByPrefix(viewer, DATUM_PREFIX);
       } else {
@@ -247,7 +232,7 @@ export default function Globe() {
           radiusNm: st.datumRadiusNm,
           altFt: sel.alt_ft,
           colour: AMBER,
-          label: `DATUM ${Math.round(sel.alt_ft).toLocaleString()} FT · ±${st.datumRadiusNm} NM`,
+          label: `SLICE ${Math.round(sel.alt_ft).toLocaleString()} FT · ±${st.datumRadiusNm} NM`,
           emphasis: true,
           // Solid, not grid: a dense wireframe at a shallow viewing angle moires into
           // noise and stops reading as a surface, which is its only job.

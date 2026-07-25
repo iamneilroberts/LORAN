@@ -23,10 +23,13 @@
 ### Owner feedback 2026-07-25 (from live view)
 - [x] Aircraft icons read as diving/climbing — screen-projected track (D-027)
 - [x] Text fuzzy/garbled — 3 defects: Cesium DPI, panel blur, datum label rebuild churn (D-028)
-- [ ] Map markers for airports, military airfields, city names — **needs a data source decision**
-- [ ] Altitude bands / datum toggles give no feedback (datum needs a selection to exist)
-- [ ] Rename "Datum Plane" — **owner to choose the term**
-- [ ] Drop lines to the surface — **reverses the current deliberate design**, needs a decision entry
+- [ ] Map markers for airports, military airfields, city names — OurAirports + Natural Earth approved (D-023)
+- [x] Altitude bands / datum toggles give no feedback — toggles now state "needs a selected contact"
+- [x] Rename "Datum Plane" → ALTITUDE SLICE (D-022)
+- [x] Drop lines to the surface, selection-only (D-030)
+- [x] Fixed altitude bands replaced by icon hue ramp + legend; MIL now magenta (D-029, supersedes D-017)
+- [x] Traffic panel operator rows are click-to-filter; MIL selector added (D-031)
+- [x] Dossier widened to 268px for the photo; camera cluster collapsible and narrowed to 148px
 - [ ] FUTURE: multi-user hosting for friends — **reverses CLAUDE.md non-goals**, see task notes
 
 - [ ] verify_phase1.py click check is intermittent (1 fail / 2 runs, not a regression)

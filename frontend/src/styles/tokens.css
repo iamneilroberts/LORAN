@@ -17,8 +17,12 @@
   --line: #1b2530;
   --line-bright: #243040;
 
-  --amber: #ffb000;      /* alerts, warnings, MILITARY contacts. Nothing else. */
-  --cyan: #5fd7e0;       /* civil / nominal data */
+  /* D-029 supersedes D-017. Amber was carrying both "alert" and "military", which left
+     altitude nothing to be encoded with. Military moved to magenta; amber is now alerts and
+     measuring geometry only; altitude owns the icon hue ramp. */
+  --amber: #ffb000;      /* alerts, warnings, co-altitude, the altitude slice */
+  --mil: #ff4fd8;        /* MILITARY contacts. Nothing else. */
+  --cyan: #5fd7e0;       /* civil / nominal chrome */
   --txt: #c8d6e0;
   --dim: #5a6b7a;
   --off: #3a4652;
@@ -90,6 +94,7 @@ body {
   border-right: 1px solid var(--cyan);
 }
 .panel--alert::before, .panel--alert::after { border-color: var(--amber); }
+.panel--mil::before, .panel--mil::after { border-color: var(--mil); }
 
 .panel-h {
   padding: 7px var(--pad);

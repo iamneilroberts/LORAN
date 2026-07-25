@@ -7,9 +7,10 @@
  */
 import { useEffect, useState } from "react";
 import {
-  useStore,
+  matchesFilter, operatorKey, useStore,
   type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult, type TrackResult,
 } from "../state/store";
+import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
 
 const DASH = "—";
@@ -24,19 +25,34 @@ function fmt(n: number | null | undefined, suffix = ""): string {
 export function TrafficPanel() {
   const aircraft = useStore((s) => s.aircraft);
   const source = useStore((s) => s.source);
+  const filter = useStore((s) => s.filter);
+  const setFilter = useStore((s) => s.setFilter);
 
   const byOperator = new Map<string, number>();
   for (const a of aircraft) {
-    const key = a.military ? "MILITARY" : (a.operator ?? "UNKNOWN");
+    const key = operatorKey(a);
     byOperator.set(key, (byOperator.get(key) ?? 0) + 1);
   }
   const rows = [...byOperator.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7);
   const max = rows.length ? rows[0][1] : 1;
+  const milCount = aircraft.filter((a) => a.military).length;
+  const shown = aircraft.filter((a) => matchesFilter(a, filter)).length;
+  const filtering = filter.operator !== null || filter.militaryOnly;
+
+  // Clicking a row toggles it. Selecting a row clears the MIL-only switch and vice versa -
+  // they are two ways of narrowing the same list, and combining them silently would make the
+  // count impossible to reason about.
+  const pick = (name: string) =>
+    setFilter({
+      operator: filter.operator === name ? null : name,
+      militaryOnly: false,
+    });
 
   return (
     <div className="panel w-[210px] pointer-events-auto">
       <div className="panel-h">
         <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Air traffic</span>
+        {/* Always the TRUE total. A filter narrows what is drawn, never what is reported. */}
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{aircraft.length}</span>
       </div>
 
@@ -46,24 +62,76 @@ export function TrafficPanel() {
             {source ? "No contacts in range" : "Awaiting feed"}
           </div>
         )}
-        {rows.map(([name, n]) => (
-          <div key={name} className="px-[10px] py-[3px]">
-            <div className="flex justify-between" style={{ fontSize: 10, letterSpacing: ".08em" }}>
-              <span style={{ color: name === "MILITARY" ? "var(--amber)" : "var(--dim)" }}>
-                {name.slice(0, 18).toUpperCase()}
-              </span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{n}</span>
-            </div>
-            <div
-              className="bar"
+        {rows.map(([name, n]) => {
+          const isMil = name === "MILITARY";
+          const active = filter.operator === name;
+          const colour = isMil ? "var(--mil)" : "var(--cyan)";
+          return (
+            <button
+              key={name}
+              onClick={() => pick(name)}
+              title={active ? "Show all contacts" : `Show only ${name}`}
+              className="w-full text-left px-[10px] py-[3px]"
               style={{
-                width: `${Math.max(6, (n / max) * 100)}%`,
-                background: name === "MILITARY" ? "var(--amber)" : "var(--cyan)",
+                font: "inherit", background: active ? "rgba(95,215,224,.07)" : "transparent",
+                border: "none", borderLeft: `2px solid ${active ? colour : "transparent"}`,
+                cursor: "pointer", display: "block",
               }}
-            />
-          </div>
-        ))}
+            >
+              <div className="flex justify-between" style={{ fontSize: 10, letterSpacing: ".08em" }}>
+                <span style={{ color: active ? colour : isMil ? "var(--mil)" : "var(--dim)" }}>
+                  {name.slice(0, 18).toUpperCase()}
+                </span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>{n}</span>
+              </div>
+              <div className="bar" style={{
+                width: `${Math.max(6, (n / max) * 100)}%`,
+                background: colour,
+                opacity: active ? 1 : 0.55,
+              }} />
+            </button>
+          );
+        })}
       </div>
+
+      {/* MIL selector: independent of the operator rows, since military spans many operators. */}
+      <div className="px-[10px] pb-2 flex gap-1">
+        <button
+          onClick={() => setFilter({ militaryOnly: !filter.militaryOnly, operator: null })}
+          disabled={milCount === 0}
+          title={milCount === 0 ? "No military contacts in range" : "Show only military contacts"}
+          style={{
+            font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+            padding: "4px 6px", borderRadius: 0, cursor: milCount ? "pointer" : "default",
+            border: `1px solid ${filter.militaryOnly ? "var(--mil)" : "var(--line-bright)"}`,
+            background: filter.militaryOnly ? "rgba(255,79,216,.12)" : "transparent",
+            color: milCount ? "var(--mil)" : "var(--off)", flex: 1,
+          }}
+        >
+          {filter.militaryOnly ? "▪" : "▫"} MIL {milCount}
+        </button>
+        {filtering && (
+          <button
+            onClick={() => setFilter({ operator: null, militaryOnly: false })}
+            title="Clear the filter"
+            style={{
+              font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+              padding: "4px 6px", borderRadius: 0, cursor: "pointer",
+              border: "1px solid var(--line-bright)", background: "transparent",
+              color: "var(--cyan)",
+            }}
+          >
+            All
+          </button>
+        )}
+      </div>
+      {filtering && (
+        // Say plainly that the globe is not showing everything. A filter that hides traffic
+        // without saying so is the same failure mode as inventing data.
+        <div className="px-[10px] pb-2 lbl" style={{ fontSize: 9, color: "var(--amber)" }}>
+          Filtered · {shown} of {aircraft.length} shown
+        </div>
+      )}
 
       {/* Honest empty state. There is no AIS source: measured zero coverage at Mobile. */}
       <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
@@ -108,32 +176,77 @@ export function CursorReadout() {
 /* ---------------- top-right: layer toggles ---------------- */
 
 export function LayerCluster() {
-  const showBands = useStore((s) => s.showBands);
   const showDatum = useStore((s) => s.showDatum);
   const showDropLines = useStore((s) => s.showDropLines);
+  const selected = useStore((s) => s.selectedHex);
   const toggle = useStore((s) => s.toggle);
 
-  const Item = ({ on, label, k }: { on: boolean; label: string; k: Parameters<typeof toggle>[0] }) => (
+  const Item = ({
+    on, label, k, note,
+  }: { on: boolean; label: string; k: Parameters<typeof toggle>[0]; note?: string }) => (
     <button
       onClick={() => toggle(k)}
+      title={note}
       className="w-full text-left"
       style={{
-        font: "inherit", fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase",
-        background: "transparent", cursor: "pointer", padding: "5px 9px",
-        border: "1px solid var(--line-bright)", borderRadius: 0, marginTop: 4,
+        font: "inherit", fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase",
+        background: "transparent", cursor: "pointer", padding: "4px 7px",
+        border: "1px solid var(--line-bright)", borderRadius: 0, marginTop: 3,
         color: on ? "var(--cyan)" : "var(--dim)",
       }}
     >
       {on ? "▪" : "▫"} {label}
+      {note && (
+        <div style={{ fontSize: 8, letterSpacing: ".06em", color: "var(--off)" }}>{note}</div>
+      )}
     </button>
   );
 
+  // Both layers need a selection to exist. Saying so stops the toggles looking broken -
+  // which is exactly how they read before, when clicking them did nothing visible.
+  const needsSel = selected ? undefined : "needs a selected contact";
+
   return (
-    <div className="panel p-[6px] w-[168px] pointer-events-auto">
-      <div className="lbl px-[3px]">Layers</div>
-      <Item on={showBands} label="Altitude bands" k="showBands" />
-      <Item on={showDatum} label="Datum plane" k="showDatum" />
-      <Item on={showDropLines} label="Drop lines" k="showDropLines" />
+    <div className="panel p-[5px] w-[148px] pointer-events-auto">
+      <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
+      <Item on={showDatum} label="Altitude slice" k="showDatum" note={needsSel} />
+      <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
+    </div>
+  );
+}
+
+/* ---------------- altitude colour legend ---------------- */
+
+/**
+ * The key to the icon hue ramp (D-029). Without it the colours are decoration; with it they
+ * are a scale. Swatches are generated from the SAME function the icons use, so the legend
+ * cannot drift out of sync with what is on screen.
+ */
+export function AltitudeLegend() {
+  const stops = [0, 10000, 20000, 30000, 40000];
+  return (
+    <div className="panel pointer-events-auto" style={{ width: 148 }}>
+      <div className="lbl px-[8px] pt-[6px]" style={{ fontSize: 9 }}>Altitude</div>
+      <div className="px-[8px] pt-1 pb-[6px]">
+        {stops.map((ft, i) => (
+          <div key={ft} className="flex items-center gap-2" style={{ padding: "1px 0" }}>
+            <span style={{
+              width: 16, height: 7, background: altitudeColour(ft),
+              display: "inline-block", flex: "none",
+            }} />
+            <span style={{ fontSize: 9, letterSpacing: ".06em", color: "var(--dim)",
+                           fontVariantNumeric: "tabular-nums" }}>
+              {i === stops.length - 1 ? `${(ft / 1000).toFixed(0)}K+` : `${(ft / 1000).toFixed(0)}K`}
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center gap-2" style={{ padding: "3px 0 0",
+             marginTop: 3, borderTop: "1px solid var(--line)" }}>
+          <span style={{ width: 16, height: 7, background: "var(--mil)",
+                         display: "inline-block", flex: "none" }} />
+          <span style={{ fontSize: 9, letterSpacing: ".06em", color: "var(--mil)" }}>MIL</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -376,13 +489,13 @@ export function SelectionPanel() {
 
   return (
     <div
-      className={`panel w-[212px] pointer-events-auto ${a.military ? "panel--alert" : ""}`}
+      className={`panel w-[268px] pointer-events-auto ${a.military ? "panel--mil" : ""}`}
       // minHeight:0 is what actually lets a flex child shrink below its content height;
       // without it the panel refuses to scroll and overflows its container instead.
       style={{ minHeight: 0, overflowY: "auto" }}
     >
       <div className="panel-h">
-        <span style={{ color: a.military ? "var(--amber)" : "var(--cyan)", fontSize: 11, letterSpacing: ".1em" }}>
+        <span style={{ color: a.military ? "var(--mil)" : "var(--cyan)", fontSize: 11, letterSpacing: ".1em" }}>
           {(a.flight || a.hex || DASH).toUpperCase()}
         </span>
         <button onClick={() => select(null)} className="lbl" style={{ background: "none", border: "none", cursor: "pointer" }}>×</button>
@@ -416,13 +529,13 @@ export function SelectionPanel() {
         </div>
         <div className={`row ${model ? "" : "row--dim"}`} title={model ?? undefined}>
           <span>Model</span>
-          <span style={{ fontSize: 10 }}>{model ? model.slice(0, 18) : pending}</span>
+          <span style={{ fontSize: 10 }}>{model ? model.slice(0, 26) : pending}</span>
         </div>
         <div className={`row ${operator ? "" : "row--dim"}`} title={operator ?? undefined}>
           <span>Operator</span>
           {/* 16 chars cut "AMERICAN AIRLINES" to "AMERICAN AIRLINE", which reads as wrong
               data rather than truncated data. Full value is in the hover title. */}
-          <span style={{ fontSize: 10 }}>{operator ? operator.slice(0, 20) : pending}</span>
+          <span style={{ fontSize: 10 }}>{operator ? operator.slice(0, 26) : pending}</span>
         </div>
         <div className={`row ${enRoute?.origin ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.origin)}>
@@ -483,7 +596,7 @@ export function StatusBar() {
       </span>
       <span className="chip"><span className="dot dot--off" />AIS no source</span>
       <span className="chip">{aircraft.length} air</span>
-      <span className="chip" style={{ color: mil ? "var(--amber)" : undefined }}>{mil} mil</span>
+      <span className="chip" style={{ color: mil ? "var(--mil)" : undefined }}>{mil} mil</span>
       <span className="chip">{home.label}</span>
       <span className="ml-auto chip">{fps} FPS · WebGL2</span>
     </div>

@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import Globe from "./globe/Globe";
 import {
-  Attribution, CursorReadout, LayerCluster, SelectionPanel, StatusBar, TrafficPanel,
+  AltitudeLegend, Attribution, CursorReadout, LayerCluster, SelectionPanel, StatusBar,
+  TrafficPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { useStore } from "./state/store";
@@ -54,7 +55,10 @@ export default function App() {
       {/* Chrome floats over the globe and never blocks it. */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute left-3 top-3"><TrafficPanel /></div>
-        <div className="absolute left-3" style={{ bottom: 34 }}><CursorReadout /></div>
+        <div className="absolute left-3 flex flex-col gap-2" style={{ bottom: 34 }}>
+          <AltitudeLegend />
+          <CursorReadout />
+        </div>
         {/* Bounded to the viewport so the dossier - which grew a photo in Phase 2 - scrolls
             inside itself instead of running off the bottom edge behind the status bar. */}
         <div

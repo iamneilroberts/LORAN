@@ -60,13 +60,39 @@ async def main():
                         "return {min:Math.min(...a),max:Math.max(...a),n:a.length};})())")
         check("altitude spread is real", alts and json.loads(alts)["max"] > 20000, alts)
 
-        # 3. band planes exist at exactly the right heights
-        planes = await js(
-            "JSON.stringify(window.__viewer.entities.values"
-            ".filter(e=>String(e.id).startsWith('band::')&&e.rectangle)"
-            ".map(e=>Math.round(e.rectangle.height.getValue()/0.3048)))")
-        check("band planes at true altitude", planes and set(json.loads(planes)) == {18000, 29000},
-              f"{planes} ft")
+        # 3. altitude is encoded in the ICON COLOUR, and the ramp actually varies.
+        #
+        # Replaces the old "band planes at 18k/29k" check: D-029 removed the fixed grids in
+        # favour of a hue ramp on the icon, so that check now guards nothing. This one guards
+        # the thing that replaced it - low and high contacts must not come out the same colour,
+        # which is exactly how the previous luminance-only ramp failed.
+        ramp = await js("""JSON.stringify((()=>{
+          const s = window.__viewer.scene;
+          let bbc=null;
+          for(let i=0;i<s.primitives.length;i++){const p=s.primitives.get(i);
+            if(p&&typeof p.length==='number'&&p.get&&p.length>0&&p.get(0).image!==undefined){bbc=p;break;}}
+          if(!bbc) return {err:'no billboards'};
+          // group icon images by the aircraft altitude they were drawn for
+          const ac = window.__store.getState().aircraft.filter(a=>a.alt_ft!=null && !a.military);
+          if (ac.length < 2) return {err:'too few civil contacts'};
+          const sorted = [...ac].sort((x,y)=>x.alt_ft-y.alt_ft);
+          const lo = sorted[0], hi = sorted[sorted.length-1];
+          const hue = (img) => { const m = decodeURIComponent(img).match(/hsl\\((\\d+)/); return m?+m[1]:null; };
+          let loHue=null, hiHue=null;
+          const ell = s.globe.ellipsoid;
+          for(let i=0;i<bbc.length;i++){
+            const b=bbc.get(i), c=ell.cartesianToCartographic(b.position);
+            const lat=c.latitude*180/Math.PI, lon=c.longitude*180/Math.PI;
+            if(Math.abs(lat-lo.lat)+Math.abs(lon-lo.lon) < 0.05) loHue = hue(b.image);
+            if(Math.abs(lat-hi.lat)+Math.abs(lon-hi.lon) < 0.05) hiHue = hue(b.image);
+          }
+          return {loAlt:lo.alt_ft, hiAlt:hi.alt_ft, loHue, hiHue,
+                  spread: (loHue!=null&&hiHue!=null) ? Math.abs(loHue-hiHue) : null};
+        })())""")
+        r = json.loads(ramp) if ramp else {}
+        check("altitude is encoded in icon hue, and the ramp varies",
+              r.get("spread") is not None and r["spread"] >= 20,
+              f"{r.get('loAlt')}ft hue {r.get('loHue')} vs {r.get('hiAlt')}ft hue {r.get('hiHue')}")
 
         # 4. camera is in perspective, not plan view
         pitch = await js("Math.round(window.__viewer.camera.pitch*180/Math.PI)")

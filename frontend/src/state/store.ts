@@ -152,17 +152,14 @@ export interface FeedStatus {
   consecutive_failures: number;
 }
 
-/** Default bands from the spec. Configurable - see docs/design-altitude.md. */
-export interface Band {
-  label: string;
-  floorFt: number;
-  ceilFt: number;
+/**
+ * Display filter. Both are honest narrowing of what is DRAWN, never of what is counted -
+ * the status bar keeps reporting the true totals so a filter can never hide traffic silently.
+ */
+export interface Filter {
+  operator: string | null;   // matches the TrafficPanel grouping key
+  militaryOnly: boolean;
 }
-
-export const DEFAULT_BANDS: Band[] = [
-  { label: "0–18,000 FT", floorFt: 0, ceilFt: 18000 },
-  { label: "18,000–29,000 FT", floorFt: 18000, ceilFt: 29000 },
-];
 
 interface State {
   aircraft: Aircraft[];
@@ -180,6 +177,7 @@ interface State {
   depthPending: boolean;
 
   selectedHex: string | null;
+  filter: Filter;
   // Carries its own hex so a late reply for a deselected contact can be discarded rather
   // than shown against whatever is selected now.
   enrichment: Enrichment | null;
@@ -188,12 +186,10 @@ interface State {
   photoPending: boolean;
   track: TrackResult | null;
   trackPending: boolean;
-  showBands: boolean;
   showDatum: boolean;
   showDropLines: boolean;
   datumRadiusNm: number;
   separationFt: number;
-  bands: Band[];
 
   fps: number;
 
@@ -207,7 +203,8 @@ interface State {
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
-  toggle: (k: "showBands" | "showDatum" | "showDropLines") => void;
+  toggle: (k: "showDatum" | "showDropLines") => void;
+  setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
 }
 
@@ -227,18 +224,17 @@ export const useStore = create<State>((set) => ({
   depthPending: false,
 
   selectedHex: null,
+  filter: { operator: null, militaryOnly: false },
   enrichment: null,
   enrichPending: false,
   photo: null,
   photoPending: false,
   track: null,
   trackPending: false,
-  showBands: true,
   showDatum: true,
   showDropLines: true,
   datumRadiusNm: 50,
   separationFt: 1000,
-  bands: DEFAULT_BANDS,
 
   fps: 0,
 
@@ -268,10 +264,22 @@ export const useStore = create<State>((set) => ({
   setPhoto: (photo, photoPending) => set({ photo, photoPending }),
   setTrack: (track, trackPending) => set({ track, trackPending }),
   toggle: (k) => set((s) => ({ [k]: !s[k] }) as Pick<State, typeof k>),
+  setFilter: (f) => set((s) => ({ filter: { ...s.filter, ...f } })),
   setFps: (fps) => set({ fps }),
 }));
 
 /* ---- shared helpers ---- */
+
+/** Grouping key. The traffic panel and the filter MUST agree, so both call this. */
+export function operatorKey(a: Aircraft): string {
+  return a.military ? "MILITARY" : (a.operator ?? "UNKNOWN");
+}
+
+export function matchesFilter(a: Aircraft, f: Filter): boolean {
+  if (f.militaryOnly && !a.military) return false;
+  if (f.operator && operatorKey(a) !== f.operator) return false;
+  return true;
+}
 
 export const FT_TO_M = 0.3048;
 export const NM_TO_M = 1852;

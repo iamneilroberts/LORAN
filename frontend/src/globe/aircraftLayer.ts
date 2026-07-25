@@ -30,20 +30,55 @@ import { FT_TO_M, reckon, type Aircraft } from "../state/store";
 
 const STROKE_DARK = "#03181c";
 const AMBER = "#ffb000";
+export const MIL = "#ff4fd8";
 
 /**
- * Altitude -> colour.
+ * Altitude -> icon colour (D-029, supersedes D-017).
  *
- * Amber is reserved EXCLUSIVELY for military. Altitude is therefore a luminance/saturation ramp
- * within cyan rather than a hue shift: a third hue reads as "alert" and would undermine what
- * amber means. To switch to literal per-band hues, change only this function.
+ * Altitude now owns a real HUE ramp rather than a luminance ramp inside cyan. The old scheme
+ * spent the only strong accent (amber) on military, which left altitude with a brightness
+ * difference too subtle to read at icon size - so altitude was effectively not encoded at all.
+ * Moving military to magenta freed the spectrum.
+ *
+ * This is why every other ADS-B viewer colours the icon: colour rides on the contact itself,
+ * never occludes anything, and reads at any camera angle - unlike a grid plane in 3D, which
+ * only answers "above or below?" when the perspective happens to cooperate.
+ *
+ * Stops are interpolated in HSL. Hue descends monotonically 224 -> 52, so there is no wrap.
  */
+const RAMP: { ft: number; h: number; s: number; l: number }[] = [
+  { ft: 0, h: 224, s: 80, l: 56 },       // deep blue    - on the deck
+  { ft: 10000, h: 190, s: 78, l: 55 },   // cyan         - low
+  { ft: 20000, h: 150, s: 68, l: 52 },   // green        - mid
+  { ft: 30000, h: 84, s: 72, l: 58 },    // yellow-green - high
+  { ft: 45000, h: 52, s: 92, l: 68 },    // pale yellow  - top of the observed range
+];
+
+/** The ramp, exposed so the legend renders the same colours the icons use. */
+export function altitudeColour(altFt: number | null): string {
+  const ft = Math.max(0, Math.min(RAMP[RAMP.length - 1].ft, altFt ?? 0));
+  let lo = RAMP[0];
+  let hi = RAMP[RAMP.length - 1];
+  for (let i = 0; i < RAMP.length - 1; i++) {
+    if (ft >= RAMP[i].ft && ft <= RAMP[i + 1].ft) {
+      lo = RAMP[i];
+      hi = RAMP[i + 1];
+      break;
+    }
+  }
+  const span = hi.ft - lo.ft;
+  const t = span === 0 ? 0 : (ft - lo.ft) / span;
+  const h = lo.h + (hi.h - lo.h) * t;
+  const s = lo.s + (hi.s - lo.s) * t;
+  const l = lo.l + (hi.l - lo.l) * t;
+  return `hsl(${h.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%)`;
+}
+
 export function colourFor(a: Aircraft): { fill: string; stroke: string } {
-  if (a.military) return { fill: AMBER, stroke: "#3a2600" };
-  const t = Math.max(0, Math.min(1, (a.alt_ft ?? 0) / 45000));
-  const l = 44 + t * 42;
-  const s = 74 - t * 28;
-  return { fill: `hsl(187 ${s}% ${l}%)`, stroke: STROKE_DARK };
+  // Military overrides the ramp: class matters more than altitude for these contacts, and
+  // magenta collides with nothing else on the display.
+  if (a.military) return { fill: MIL, stroke: "#3d0033" };
+  return { fill: altitudeColour(a.alt_ft), stroke: STROKE_DARK };
 }
 
 /*

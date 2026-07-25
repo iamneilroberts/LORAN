@@ -5,6 +5,7 @@
  * ctrl+left-drag rotates and tilts), but they are undiscoverable. These are explicit controls
  * for the same operations, plus the two view presets that matter for judging altitude.
  */
+import { useState } from "react";
 import { Cartesian3, Math as CMath, type Viewer } from "cesium";
 import { useStore } from "../state/store";
 
@@ -97,11 +98,27 @@ function Btn({
 
 export function CameraCluster() {
   const cell = { display: "grid", gap: 2 } as const;
+  // Collapsible, and narrower than before: the dossier grew a photo and a track block in
+  // Phase 2, and the camera pad was spending 168px of the same column on nine small buttons.
+  const [open, setOpen] = useState(true);
 
   return (
-    <div className="panel p-[6px] w-[168px] pointer-events-auto">
-      <div className="lbl px-[3px] pb-1">Camera</div>
+    <div className="panel p-[5px] w-[148px] pointer-events-auto">
+      <button
+        onClick={() => setOpen(!open)}
+        title={open ? "Collapse camera controls" : "Expand camera controls"}
+        className="lbl w-full text-left px-[3px]"
+        style={{
+          font: "inherit", fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase",
+          background: "transparent", border: "none", cursor: "pointer",
+          color: "var(--dim)", paddingBottom: open ? 4 : 0,
+          display: "flex", justifyContent: "space-between",
+        }}
+      >
+        <span>Camera</span><span>{open ? "▾" : "▸"}</span>
+      </button>
 
+      {!open ? null : <>
       {/* orbit / tilt pad */}
       <div style={{ ...cell, gridTemplateColumns: "repeat(3, 1fr)" }}>
         <span />
@@ -130,6 +147,7 @@ export function CameraCluster() {
           PLAN VIEW
         </Btn>
       </div>
+      </>}
     </div>
   );
 }
