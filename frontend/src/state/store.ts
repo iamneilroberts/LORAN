@@ -210,6 +210,15 @@ interface State {
    * 1 = the tuned default; higher pulls more of the shipped set into view (D-049).
    */
   placeDensity: number;
+  /**
+   * How far from home to ask for traffic, in nautical miles.
+   *
+   * This is a FETCH radius, not a display one: it changes what the upstream feed is asked for,
+   * so raising it costs bandwidth and upstream courtesy, not just frame time. The backend clamps
+   * it to LORAN_ADSB_MAX_RADIUS_NM (250 by default) because that is airplanes.live's own /point
+   * ceiling - asking for more does not return more, so the UI does not offer more.
+   */
+  radiusNm: number;
   datumRadiusNm: number;
   separationFt: number;
   /** Camera pitch in degrees, -90 = straight down. Drives slice suppression (D-034). */
@@ -234,6 +243,7 @@ interface State {
     | "showProjection" | "showDestination" | "showSmallAirports") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
+  setRadiusNm: (nm: number) => void;
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
@@ -251,6 +261,47 @@ interface State {
  * Per browser and not per account on purpose: it is sticky for whoever uses that browser,
  * needs no schema, and does not turn a single-user console into an account system.
  */
+/*
+ * Fetch-radius limits, in nautical miles.
+ *
+ * MAX mirrors the backend's LORAN_ADSB_MAX_RADIUS_NM default, which in turn mirrors
+ * airplanes.live's own /point ceiling (backend/app/feeds/adsb.py clamps to it). Asking for more
+ * does not return more, so the UI does not offer more - an option that silently does nothing is
+ * worse than no option. If a deployment lowers the backend limit, the backend clamp still wins;
+ * this constant only shapes what the buttons offer.
+ *
+ * Presets rather than a slider because the useful question is "which of these can my machine
+ * draw?", and discrete steps make that answerable by trying four things while watching the FPS
+ * readout in the status bar.
+ */
+export const MAX_RADIUS_NM = 250;
+export const RANGE_PRESETS_NM = [60, 120, 180, 250] as const;
+
+/**
+ * Named (rather than inline in the `persist` options below) so it can be unit-tested directly.
+ * zustand's persist middleware builds its localStorage adapter eagerly at store-creation time,
+ * and this project's tests run under vitest's `node` environment - deliberately, see
+ * vitest.config.ts - which has no `window`, so the adapter never attaches and there is no
+ * `useStore.persist` to call through at test time. Calling this function directly is the exact
+ * code persist runs, not a stand-in for it, so nothing is lost by testing it this way.
+ *
+ * Bumped for D-047, then again for D-055. Without a migration step, a browser that already
+ * persisted prefs simply has no `radiusNm` key at all - it would come back `undefined` rather
+ * than the default, not silently inherit it. Steps chain (each `if` builds on what the one
+ * before it produced), so a v1 payload still picks up the v2 fields on its way through, then
+ * the v3 field on top - it does not jump straight from 1 to 3 missing a step.
+ */
+export function migratePrefs(persisted: unknown, from: number): Record<string, unknown> {
+  let p = (persisted ?? {}) as Record<string, unknown>;
+  if (from < 2) {
+    p = { ...p, showDatum: false, showProjection: true, projMinutes: 5, projSpreadDeg: 10 };
+  }
+  if (from < 3) {
+    p = { ...p, radiusNm: 120 };
+  }
+  return p;
+}
+
 export const useStore = create<State>()(persist((set) => ({
   aircraft: [],
   source: null,
@@ -292,6 +343,8 @@ export const useStore = create<State>()(persist((set) => ({
   showDestination: true,
   showSmallAirports: false,
   placeDensity: 1,
+  // The Phase 1 value, kept as the default so nobody's resting view changes underneath them.
+  radiusNm: 120,
   // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
   cameraPitchDeg: -32,
   datumRadiusNm: 50,
@@ -339,19 +392,14 @@ export const useStore = create<State>()(persist((set) => ({
     projSpreadDeg: spreadDeg ?? st.projSpreadDeg,
   })),
   setPlaceDensity: (placeDensity) => set({ placeDensity }),
+  // Clamped here as well as in the backend. The backend clamp is the one that protects the
+  // upstream feed; this one keeps a corrupt or hand-edited localStorage value from putting the
+  // UI into a state none of its buttons can represent.
+  setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  // Bumped for D-047. Without the migration, a browser that already stored showDatum:true
-  // would keep drawing the amber slice the owner asked to be rid of - a changed DEFAULT does
-  // not reach anyone who has already persisted the old value.
-  version: 2,
-  migrate: (persisted, from) => {
-    const p = (persisted ?? {}) as Record<string, unknown>;
-    if (from < 2) {
-      return { ...p, showDatum: false, showProjection: true, projMinutes: 5, projSpreadDeg: 10 };
-    }
-    return p;
-  },
+  version: 3,
+  migrate: migratePrefs,
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
   partialize: (s) => ({
@@ -365,6 +413,7 @@ export const useStore = create<State>()(persist((set) => ({
     showDestination: s.showDestination,
     showSmallAirports: s.showSmallAirports,
     placeDensity: s.placeDensity,
+    radiusNm: s.radiusNm,
     datumRadiusNm: s.datumRadiusNm,
     separationFt: s.separationFt,
     filter: s.filter,

@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  hasSlicePerspective, matchesFilter, operatorKey, useStore,
+  hasSlicePerspective, matchesFilter, operatorKey, RANGE_PRESETS_NM, useStore,
   type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult, type TrackResult,
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
@@ -188,6 +188,8 @@ export function LayerCluster() {
   const setProjection = useStore((s) => s.setProjection);
   const placeDensity = useStore((s) => s.placeDensity);
   const setPlaceDensity = useStore((s) => s.setPlaceDensity);
+  const radiusNm = useStore((s) => s.radiusNm);
+  const setRadiusNm = useStore((s) => s.setRadiusNm);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const toggle = useStore((s) => s.toggle);
@@ -229,6 +231,23 @@ export function LayerCluster() {
     <div className="panel p-[5px] w-[148px] pointer-events-auto"
          style={{ minHeight: 0, overflowY: "auto" }}>
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
+      {/* This is a FETCH-scope control, not a display one - it changes what is asked of the
+          upstream feed, so it costs bandwidth and upstream courtesy, not just frame time
+          (D-055). It has no parent toggle to sit under, unlike Density below, so it carries
+          its own label. */}
+      <div className="lbl px-[3px] mt-[3px]" style={{ fontSize: 9 }}>Range · {radiusNm} nm</div>
+      <div className="flex gap-[2px]">
+        {RANGE_PRESETS_NM.map((nm) => (
+          <button key={nm} onClick={() => setRadiusNm(nm)}
+            title="Changes what is fetched from the upstream feed, not just what is drawn"
+            style={{
+              font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+              background: "transparent", cursor: "pointer", padding: "2px 0",
+              border: "1px solid var(--line-bright)", borderRadius: 0,
+              color: radiusNm === nm ? "var(--amber)" : "var(--off)",
+            }}>{nm}</button>
+        ))}
+      </div>
       {/* The projection envelope is the primary instrument (D-047); the slice is secondary
           context and now defaults off. */}
       <Item on={showProjection} label="Projection" k="showProjection"

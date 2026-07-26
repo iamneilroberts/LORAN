@@ -1573,3 +1573,50 @@ would have squared them off to the widest and misaligned the column.
 
 This makes the collision impossible rather than unlikely. The previous arrangement was only ever
 correct for viewports tall enough, and nothing declared what "tall enough" was.
+
+---
+
+## D-055 — 2026-07-26 — Fetch radius is a preset row, capped at the upstream ceiling, in the preferences store
+
+Owner asked to be able to widen or narrow how far out traffic is polled, instead of it being
+pinned at the Phase 1 constant (`RADIUS_NM = 120` in `App.tsx`).
+
+**Presets (60/120/180/250 nm), not a slider.** The question this control actually answers is "can
+my machine and my link afford to ask for more?", and that is answered by trying a handful of
+discrete values while watching the FPS readout and feed status, not by fine-tuning to an arbitrary
+number in between. A slider also invites values nobody has reasoned about - 143 nm is not a
+meaningfully different question from 140 - where four named steps are each a real choice with a
+real cost. Same reasoning as D-049's DENSITY row, which this control sits next to.
+
+**250 nm is not our ceiling, it is airplanes.live's.** The backend already clamps to
+`LORAN_ADSB_MAX_RADIUS_NM` (`backend/app/config.py`, default 250.0) before calling out
+(`backend/app/feeds/adsb.py:156`), because that is airplanes.live's own `/point` endpoint limit -
+asking for more does not return more. `MAX_RADIUS_NM` in `store.ts` mirrors that default so the
+UI does not offer a step that silently does nothing; `setRadiusNm` clamps to it independently so a
+hand-edited or corrupted `localStorage` value cannot put the UI in a state none of the four buttons
+can represent. The backend's own clamp is still the one that actually protects the upstream feed
+if the two ever disagree.
+
+**This is a FETCH radius, not a display one**, same distinction `placeDensity` already draws for
+places. Raising it changes what is asked of airplanes.live on every poll tick - more bandwidth, and
+more load on a free, non-commercial, no-SLA feed we do not operate - not just more to draw once the
+answer comes back. The control's `title` attribute and the panel copy say so, because "just a
+frame-rate knob" is the wrong mental model and would make widening it look free.
+
+**Persisted, so it needed a version bump.** `radiusNm` joins the `partialize` allow-list and the
+persist version moves from 2 to 3. A browser that already saved prefs under version 2 has no
+`radiusNm` key at all - without a migration step it would load as `undefined`, not quietly inherit
+the new default, and an undefined radius reaching the fetch URL is worse than a wrong one. The
+`migrate` function was pulled out to a named, exported `migratePrefs` so it stays unit-testable
+without spinning up a fake `window.localStorage`: zustand's persist middleware builds its storage
+adapter eagerly, and this project's vitest config runs under the `node` environment on purpose (see
+`vitest.config.ts`), which has no `window` at all.
+
+**The poll loop reads the preference imperatively, not reactively.** `App.tsx`'s poller is a
+self-rescheduling `setTimeout` inside a `useEffect` with an empty dependency array - deliberately,
+so there is exactly one poll chain for the life of the component. Adding `radiusNm` to the
+dependency array would tear the effect down and rebuild it on every preset change, and for the
+instant between the old timeout firing once more and the new effect's first tick, two chains would
+be running concurrently. Reading `useStore.getState().radiusNm` fresh at the top of each `poll()`
+tick - the same pattern the loop already used for `home` - means a new preset takes effect on the
+very next tick with no loop restart at all.

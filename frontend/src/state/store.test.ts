@@ -1,0 +1,61 @@
+/**
+ * Two claims this suite holds `radiusNm` to.
+ *
+ * First: `setRadiusNm` is a real clamp, not a pass-through with the name of one. A corrupt or
+ * hand-edited `localStorage` value must not be able to put the UI into a state none of its
+ * preset buttons can represent - that clamp is what stands between a bad value and a request
+ * the backend has to reject or silently reinterpret. Every value the RANGE_PRESETS_NM buttons
+ * can actually send must survive the clamp unchanged, or a preset could drift outside its own
+ * range and its button would stop reflecting what got stored (the active-state highlight in
+ * Panels.tsx compares by strict equality).
+ *
+ * Second: the persist migration is additive, not a replacement. `from < 3` has to add
+ * `radiusNm` without discarding what the `from < 2` step already did - migrations chain, they
+ * do not each start from a blank slate. A v1 payload run through `migrate` must show fields
+ * from BOTH steps, or a future version bump quietly drops something D-047 already fixed.
+ */
+import { describe, expect, it } from "vitest";
+
+import { MAX_RADIUS_NM, migratePrefs, RANGE_PRESETS_NM, useStore } from "./store";
+
+describe("setRadiusNm", () => {
+  it("clamps a value above the ceiling down to MAX_RADIUS_NM", () => {
+    useStore.getState().setRadiusNm(9999);
+    expect(useStore.getState().radiusNm).toBe(MAX_RADIUS_NM);
+  });
+
+  it("clamps a value below the floor up to 10", () => {
+    useStore.getState().setRadiusNm(1);
+    expect(useStore.getState().radiusNm).toBe(10);
+  });
+
+  it("accepts every shipped preset unchanged", () => {
+    // The one that catches a preset drifting outside the clamp: if RANGE_PRESETS_NM ever
+    // gained a value the clamp does not allow, the corresponding button would light up for a
+    // number the store did not actually store.
+    for (const nm of RANGE_PRESETS_NM) {
+      useStore.getState().setRadiusNm(nm);
+      expect(useStore.getState().radiusNm).toBe(nm);
+    }
+  });
+});
+
+describe("migratePrefs", () => {
+  it("from < 3 adds radiusNm: 120 without touching an already-current payload", () => {
+    const migrated = migratePrefs({ showDatum: false, projMinutes: 5 }, 2);
+    expect(migrated.radiusNm).toBe(120);
+    expect(migrated.showDatum).toBe(false);
+    expect(migrated.projMinutes).toBe(5);
+  });
+
+  it("chains: a v1 payload picks up both the v2 and v3 fields, not just the newest", () => {
+    const migrated = migratePrefs({ showDatum: true }, 1);
+    // v2 step (D-047) - proves the chain did not break when v3 was added on top of it.
+    expect(migrated.showDatum).toBe(false);
+    expect(migrated.showProjection).toBe(true);
+    expect(migrated.projMinutes).toBe(5);
+    expect(migrated.projSpreadDeg).toBe(10);
+    // v3 step (D-055).
+    expect(migrated.radiusNm).toBe(120);
+  });
+});

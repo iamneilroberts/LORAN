@@ -7,9 +7,9 @@ import {
 import { CameraCluster } from "./panels/CameraCluster";
 import { useStore } from "./state/store";
 
-/** Viewport-scoped-ish polling. Phase 1 polls a fixed radius around home; the camera-derived
- *  radius lands with Phase 6's camera cluster. Backend clamps to the 250 nm upstream ceiling. */
-const RADIUS_NM = 120;
+/** Viewport-scoped-ish polling. The radius is a preference (`radiusNm` in the store, D-055),
+ *  not a constant; the camera-derived radius lands with Phase 6's camera cluster. Backend
+ *  clamps to the 250 nm upstream ceiling regardless of what is asked for. */
 const POLL_MS = 2000;
 
 /**
@@ -47,10 +47,14 @@ export default function App() {
     });
 
     async function poll() {
-      const { home } = useStore.getState();
+      // Read fresh each tick rather than closing over a stale value - this effect runs once
+      // (empty deps, below) so the loop must never restart when the preset changes. Reading
+      // imperatively here means a new radius takes effect on the very next tick with no
+      // teardown/recreate of the setTimeout chain.
+      const { home, radiusNm } = useStore.getState();
       try {
         const r = await fetch(
-          `/api/aircraft?lat=${home.lat}&lon=${home.lon}&radius=${RADIUS_NM}`,
+          `/api/aircraft?lat=${home.lat}&lon=${home.lon}&radius=${radiusNm}`,
         );
         // 401 is not a feed failure and must not be reported as one - the feeds are fine,
         // the caller is not authorised.
