@@ -1,119 +1,38 @@
 # Checklist — LORAN
 
-- [x] Phase 0 — recon, `docs/data-sources.md`, sign-off
-- [x] Phase 1 — globe, live aircraft at true altitude, cursor depth readout
-- [x] **Phase 2** — adsbdb enrichment, planespotters photo, track ring buffer, GeoJSON export,
-      error boundary (D-020 … D-026)
-- [x] Owner visual feedback round 1 — icon attitude (D-027), text sharpness (D-028)
-- [x] Owner visual feedback round 2 — altitude hue ramp + magenta MIL (D-029), selection-only
-      drop lines (D-030), traffic filters (D-031), ALTITUDE SLICE rename (D-022)
-- [x] **Place markers** — airfields + city labels, vendored and built at build time (D-023, D-032)
-- [x] Military airfields via a NAME heuristic, false negatives documented (D-033)
-- [x] Legibility pass — large/medium airfields only, cities capped at scalerank 7 (D-037)
-- [x] Airfield markers clickable with an honest detail panel (D-038)
-- [x] Airfield codes cyan/magenta so they can never read as city names (D-039)
-- [x] ALTITUDE SLICE suppressed without camera perspective (D-034); dossier 344px (D-036)
-- [x] **verify_phase1 click check ROOT CAUSED** — the harness was clicking behind a panel, not the
-      slice stealing the pick (D-035). 9/9 across three runs.
-- [x] **One palette** — tokens.css is the source, `styles/palette.ts` reads it back; drift fails
-      the BUILD via `npm run check:palette` (D-042)
-- [x] **Remote access BUILT** — token-per-person → HMAC HttpOnly cookie, `?t=` link login with the
-      token scrubbed from the URL, single-origin `scripts/serve.sh`, prefs per browser (D-041)
-- [x] **Weather radar** — NEXRAD, off by default, self-refreshing while visible (D-040)
-- [x] **Renamed LORAN** (D-043); MIT licence + NOTICE + README with 4 real screenshots (D-044)
-- [x] **Docker** — multi-stage, 175 MB, no secret in any layer, cold-clone install VERIFIED
-      against the real GitHub remote (D-045)
-- [x] **Projection envelope replaces the altitude slice** (D-047) — a stated-assumption what-if,
-      sloped by vertical rate; the slice now defaults off, with a persist migration so browsers
-      that already stored `showDatum:true` actually lose the square
-- [x] FPS measured on real hardware: 27 FPS / 89 contacts before places, 22 / 77 with places
-- [x] Pushed to github.com/iamneilroberts/LORAN — `main` is the project, MIT detected
+_Mirrored from the shared handoff. Source of truth for a resumed session._
 
-## Open — next up
+## Checklist
+- [x] Fix `check_palette.mjs` scoping — **themes are now unblocked**
+- [x] Fix `altitudePlanes.ts` + `projectionCone.ts` mutate-branch colour bugs
+- [x] Range selector (D-055)
+- [x] Prefs pane in the left column (D-058, reverses D-056)
+- [x] Traffic panel auto-collapse, filter warning survives (D-056)
+- [x] Token paste field + throttle + mint helper (D-057)
+- [x] Chrome font-smoothing fix; dossier scrollbar-gutter fix
+- [x] Airfield names stop colliding at MAX (D-059)
+- [x] Identifiers toggle (D-060)
+- [x] Single-file build built, verified from `file://`, and PRESERVED as `71e3edf`
+- [ ] **Outbound links in the dossier** — planespotters page, airplanes.live/ADSBX globe, FAA registry.
+      **OWNER REQUIREMENT: these MUST also land in the single-file build**, where photos are
+      impossible — the link is the honest substitute for the missing photo
+- [ ] **Route relabel + flag** — owner chose "Relabel AND flag" (see Open Questions)
+- [ ] **State + county lines**, toggled in preferences
+- [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light")
+- [ ] **Rebase + merge `worktree-agent-a359546ffb2f19480`** — LAST. Needs D-057 renumber + the
+      duplicate-normalizer decision
+- [ ] Regenerate `loran.html` after the merge so it carries every fix
+- [ ] **Remote access** — create the named tunnel; read the `config.yml` hazard below first
+- [ ] Judge FPS on a QUIET machine — every reading this session was at load ~20 on 4 cores
+- [ ] Judge: identifiers toggle clutter; `pal.dim` vs `pal.txt`; airfield names at MAX; prefs pane
+- [ ] Extend tests: `adsb.py` failover/envelope, `build_places.py`
+- [ ] Fix the HARNESS depth assertion in `verify_phase1.py` (8/9) — do NOT loosen it
+- [ ] Viewport-scoped fetch (Phase 1 debt — fixed radius, ignores the camera)
+- [ ] Add OurAirports / Natural Earth / NEXRAD to `docs/data-sources.md`
+- [ ] Vessels — BLOCKED until the Nooelec SMArt v5 arrives, then the D-018 measure-first gate
+- [ ] Rename working dirs + coord dir from `adsb-viz` to `loran`
+- [ ] Decide what `master` (`375c226`) and `phase2-dossier` (`bb0b589`) are for
+- [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
+- [ ] Phase 6 — status bar, compass, FPS readout
 
-- [x] ~~PUSH~~ — all six commits pushed; main == origin/main == 89206db
-- [ ] **Airport NAMES under airfield codes** — implemented, UNCOMMITTED, unjudged on a real
-      display. Range far/4, trailing "Airport" trimmed. Adds up to 5,275 labels: watch FPS/overlap
-- [ ] **"Origin airport display is not working"** (owner 2026-07-26) — undiagnosed. Dossier ORIGIN
-      renders fine, so likely the MAP; the LAYERS note says "filed route" but only the DESTINATION
-      leg is drawn. A straight origin line would be misread as the flown path (that is the TRACK)
-
-- [x] Dossier squeeze fixed — Camera + Layers moved LEFT, dossier owns the right column (D-048)
-- [x] Map labels no longer the water's colour — new `--map-label` token (D-048)
-- [x] Origin/dest read as places: "San Jose SJC", "Denver DEN" (D-048)
-- [x] ~~BUG: aircraft tracks do not display~~ — **NOT A BUG** (D-049). The whole path was healthy;
-      `TRACK` was just buried below the photo in a long dossier. Owner confirmed it draws fine.
-      Caution recorded: the headless harness is ~1 FPS software GL and renders entity polylines
-      non-deterministically — sound for STATE, worthless for PIXELS.
-- [x] **Track loads on selection**, and re-reads every 5 s so it follows the contact instead of
-      stopping where it was read (D-049). `TRACK` is now a re-read / the way to undo `CLEAR`.
-- [x] **Map labels get a dark halo** — `FILL_AND_OUTLINE`, 2px `--bg` at 0.85. Recolouring alone
-      could not work: a label crosses land, water, relief and radar echo (D-049). Owner: "much
-      better".
-- [x] **Place-label density** — `MAX_CITY_SCALERANK` 7 → 10 (cities 5,527 → 7,342; places.json
-      631 → 687 KB) plus a DENSITY control (STD/MORE/MAX) that scales range, not membership.
-- [x] **Dashed line to the FILED destination** (D-050) — dashed cyan @0.55 vs the solid amber
-      envelope; labelled `FILED <code>`; a LEVEL run + plumb drop, never a straight line to the
-      runway (that would draw a descent profile we have not computed). Nothing drawn when adsbdb
-      has no coordinates. Verified live: FFT1257 -> KLAS.
-- [x] **Map labels near-white** (`--map-label` #9db2c4 -> #e9edf0, D-050). The three previous
-      attempts all changed LIGHTNESS while staying in the water's blue-grey hue family — same
-      attempt three times. NOTE: labels are built once at globe mount, so a full page reload is
-      needed to see any label change.
-- [x] **Small airports — off-by-default toggle, lazily fetched** (D-052). 42,698 rows in a
-      SEPARATE `public/places-small.json` (3.5 MB) so a default load never downloads them.
-      Verified: no fetch until enabled, one fetch on enable, none on re-toggle.
-- [ ] **Judge FPS with SMALL FIELDS on** — the scene then holds ~116,000 primitives. Unmeasured
-      on real hardware; this box is ~1 FPS software GL and cannot judge it.
-- [ ] **Re-measure FPS with the denser place set** on real hardware — 12,617 primitives now
-      (was 10,802). Places already cost ~5 FPS before this change.
-- [ ] **Themes: DARK VARIANTS** (owner decided 2026-07-26; NOT light mode). STEP 1 IS FIXING
-      `scripts/check_palette.mjs` — its token regex is whole-file, not `:root`-scoped, so adding
-      any theme block makes `npm run build` FAIL. Reproduced. Then two real mutate-branch colour
-      bugs (`altitudePlanes.ts` ~:90-98 never reapplies `s.colour`; `projectionCone.ts` ~:221-227
-      never re-sets `label.fillColor`), then `placesLayer.recolour()`, `retheme()`, persist v3.
-- [ ] **Enable and verify remote access.** Built and locally verified; the only blocker is a DNS
-      decision. Quick tunnels DO NOT WORK here (measured twice, 404 at Cloudflare's edge without
-      reaching the origin). Use a NAMED tunnel — `cloudflared` is already authenticated
-      (`~/.cloudflared/cert.pem`). Proposed hostname `adsb.voygent.ai`. See `docs/remote-access.md`.
-- [ ] Fix the HARNESS depth assertion. Owner confirmed the ELEV readout works in a real browser,
-      so the app is fine and `verify_phase1.py` is wrong. Do NOT loosen it — D-035 was the same
-      shape of bug and turned out to be real.
-- [ ] Judge the low end of the altitude ramp on a real display — deep blue over dark ocean
-- [ ] Judge the projection envelope now it is live; tune the default minutes / spread
-
-## Open — engineering
-
-- [x] **Unit tests — vitest + pytest, 69 of them** (D-051). 33 frontend + 36 backend, all
-      mutation-checked (broken the source, confirmed the right test catches it). `bash
-      scripts/test.sh`. Found a real latitude-dependent NaN bug in `levelArc()` an hour after it
-      shipped. Covers coneGeometry, levelArc, altitudeColour, trackToGeoJSON, normalize (adsb),
-      normalize_route, normalize_photo, TrackStore.
-- [ ] Extend coverage: `auth.py` HMAC cookie, `adsb.py` failover/envelope handling
-      (`{"ac":[]}` vs `{"aircraft":[]}`), `build_places.py` filters. None are pure, so they need
-      fixtures or a fake clock first.
-- [ ] Viewport-scoped fetch — still a fixed 120 nm around home, ignores the camera (Phase 1 debt)
-- [ ] Add OurAirports / Natural Earth / NEXRAD to `docs/data-sources.md` in full
-- [ ] Residual label overlap where two airfields and a city coincide (Maxwell / Montgomery)
-- [ ] Dossier vanishes mid-read when the contact leaves the feed payload — keep, or hold last
-      known values behind an explicit LOST banner?
-- [ ] Rename the working dirs + shared coordination dir from `adsb-viz` to `loran`
-- [ ] Decide what `master` and `phase2-dossier` are for now that `main` is the project
-
-## Open — phases
-
-- [ ] Phase 3 — configurable projection / ramp thresholds UI (fixed bands are long gone)
-- [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner before the writer is written**
-- [ ] Phase 6 — status bar polish, compass, FPS readout
-- [ ] Phase 4 — vessels via RTL-SDR + AIS-catcher (D-018). **NEEDS A MARINE-VHF ANTENNA (162 MHz)**
-
-## Open — future
-
-- [ ] FUTURE (owner wants): **single-file build**, no server. MEASURED viable for 4 of 5 upstreams;
-      photos impossible because planespotters gates on User-Agent, a forbidden header (D-046).
-      Owner accepts losing photos. Remaining work is inlining Cesium's runtime assets (~15–20 MB).
-- [x] ~~FUTURE: colour scheme chooser~~ — PROMOTED to the next work plan, see above. Groundwork done
-      (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
-      ramp, and re-derived altitude-ramp lightness.
-
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-themes-remote-access.md; themes=DARK VARIANTS decided; SDR ordered)_
+_Updated: 2026-07-26 — main (handoff pause-2026-07-26-links-boundaries-themes.md; D-053..D-060 shipped; single-file preserved unmerged at 71e3edf)_
