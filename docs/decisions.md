@@ -1956,3 +1956,116 @@ cleanly apart at MAX on an actual GPU. The `/4` ratio (61 nm at density 1) was a
 072dc2f and is still exactly that guess; if two real airfields closer together than Hattiesburg's
 pair still stack at that close range, the next move is tightening the ratio itself, not
 resurrecting density scaling.
+
+---
+
+## D-060 — 2026-07-26 — ALL CALLSIGNS: labels for every contact, dimmed so amber and near-white keep meaning something
+
+**Date:** 2026-07-26
+
+The owner asked whether military craft always transmit a call sign, and from there asked for a
+toggle to show an identifier next to each craft, rather than only the ones the display already
+labels on its own.
+
+**What was already labelled, and why this is an addition, not a change.** `aircraftLayer.ts`
+already put a text label on three kinds of contact unconditionally: the SELECTED contact, any
+contact within `separationFt` of the datum altitude (CO-ALTITUDE, D-047), and every MILITARY
+contact — `military` because a magenta icon (D-029) asking "is this significant?" deserves an
+answer, the other two because they are exactly what the operator is looking at or comparing
+against right now. None of that changes here. The new `showAllLabels` preference (OFF by
+default) only adds a fourth trigger: everyone else, when the operator explicitly asks for it.
+
+**The identifier is callsign-or-hex, and that fallback is not touched.** `(a.flight ||
+a.hex).trim().toUpperCase()` was already the label text before this ships, and it stays exactly
+that. `a.flight` is empty for plenty of real contacts — general aviation squawking a bare
+transponder code, mostly — and readsb never invents one. Falling back to the raw ICAO24 hex is
+the honest answer to "what do we call this contact", not a bug to paper over: ground rule 1 says
+unknown values render as an em-dash or, here, as the one piece of real data the transponder is
+actually sending. Turning the toggle on makes this fallback visible on a lot more contacts at
+once — a mix of `DAL9975` and `AE1234` at wide zoom — and the panel's note says so up front
+rather than letting the owner discover it and wonder if it's broken.
+
+**The design point that actually mattered: colour, not just count.** With the toggle on, roughly
+a hundred-plus contacts can be labelled simultaneously on a loaded display. D-029 spent the only
+two attention-grabbing label colours on purpose — amber for co-altitude/alerts, near-white for
+the selected contact — specifically so those two things pop out of a field of civil traffic
+coloured by the altitude hue ramp. If every one of those hundred-plus new labels read at the same
+near-white prominence, that signal drowns: the operator would have to actually read every label
+to find the one that matters, which is a worse display than not labelling most of them at all.
+So a label that exists ONLY because of the toggle is drawn in `pal.dim` (`--dim`, `#5a6b7a`) —
+the same token `Panels.tsx` already uses for an inactive toggle's label text, i.e. the codebase's
+existing "this is present but not the thing to look at" colour. `pal.txt` (`#c8d6e0`, the
+near-white default text colour) was the other candidate the task raised, and it was rejected:
+it sits close enough to `pal.iconSelected` (`#ffffff`) that a dimmed label and the selected
+contact's label would still read as roughly the same weight from a normal viewing distance,
+which defeats the point. `pal.dim` is dark enough against the near-black background to stay
+legible while unmistakably subordinate to amber and white.
+
+**The colour decision is pulled into a pure function, `labelDecision()`, in `aircraftLayer.ts`** —
+the same move D-056/D-059 made for `trafficPanelSections()` and `airfieldRanges()`, for the same
+reason: vitest's `node` environment (D-051) has no DOM or WebGL and cannot construct a Cesium
+`Label`, but `{selected, coAltitude, military, showAllLabels} -> {show, colourRole}` is data in,
+data out and needs neither. `colourRole` is `"alert" | "selected" | "dim"`, resolved to an actual
+`pal.*` token only in the render loop — the pure function never sees or invents a colour string.
+Priority inside it is alert-first (`coAltitude || military`), then selected, then dim, so a
+contact that happens to be both military and only visible because of the toggle still reads as
+military, not as generic clutter.
+
+**Five new tests in `aircraftLayer.test.ts`, all mutation-checked** (broke the source, confirmed
+the intended test failed and only that one, restored, reran green):
+- *a plain civil contact gets no label off, a dim one on* — caught the default colour role
+  changed from `"dim"` to `"selected"`.
+- *military keeps the alert colour role regardless of the toggle* — caught `|| military` dropped
+  from the `show` expression (this is the regression that would have quietly turned "always
+  labelled" into "labelled only if toggled on or otherwise triggered").
+- *co-altitude keeps the alert colour role regardless of the toggle* — caught `coAltitude`
+  dropped from the alert check.
+- *the selected contact keeps the selected colour role regardless of the toggle* — caught the
+  `selected ? "selected"` branch removed, falling through to `"dim"`.
+- *military wins over selected when a contact is somehow both* — caught the priority order
+  swapped so `selected` was checked ahead of the alert triggers.
+
+**Persist version bumped 3 → 4** (`frontend/src/state/store.ts`), with a chained `if (from < 4)`
+step that adds `showAllLabels: false` on top of what the `from < 2` (D-047) and `from < 3`
+(D-055) steps already produce — verified by extending `store.test.ts` rather than replacing its
+existing migration tests: a new test for the `from < 4` step in isolation, and the existing
+"chains v1 through every later version" test extended to also assert the v4 field, so a future
+version bump that forgets to preserve this one would fail the same way D-047's would. Both were
+mutation-checked: flipping the new step's default to `true` failed both assertions (they share
+the field), and deleting the `if (from < 4)` block entirely turned the field `undefined` rather
+than `false` — a real "this browser's payload predates the toggle" case, not a hypothetical.
+`showAllLabels` was also added to the `partialize` allow-list, which is the one place a persisted
+field is allowed to appear at all (D-041) — anything not named there never reaches
+`localStorage`, toggle included.
+
+**No churn to the label pool, confirmed by reading the surrounding code rather than assumed.**
+`aircraftLayer.ts`'s per-slot `Label` objects are created once, lazily, the first time a contact
+wants one (`if (!slot.label) { slot.label = labels.add(...) }`), then only ever mutated in place
+(`position`, `fillColor`, `text`, `show`) on every later frame — this file's whole reason for
+existing (see its header comment) is that the original version recreated ~120 primitives 30
+times a second and that was the whole reason the frame rate sat at 25-30. This change touches
+only the boolean feeding `label.show` and the branch feeding `label.fillColor`; it does not touch
+slot creation, retirement, or the `labels.remove()` call, which still only fires when a contact
+actually drops out of the feed. Flipping the toggle ON does cause a one-time `labels.add()` for
+every contact that has never been labelled before — unavoidable, since those `Label` objects
+never existed — but each one is created once and reused from then on, including across further
+toggle flips (toggling back off sets `.show = false`, it does not call `labels.remove()`). No
+per-frame create/destroy cycle is introduced, so the glyph-atlas-corruption hazard this codebase
+has already hit elsewhere from repeated label destruction does not apply here.
+
+**UI:** `LayerCluster` in `Panels.tsx` gets one new `Item`, labelled "Identifiers", between
+"Drop line" and "Places" — grouped with the other aircraft-annotation toggles rather than the
+places-related ones below it. Its note reports the live aircraft count either way (`"N contacts ·
+clutters at wide zoom"` off, `"N labelled · callsign or hex"` on) rather than a static or vague
+warning, following the same "say the real cost" pattern as the "Small fields" note (D-052) —
+and the "on" phrasing states the callsign-or-hex mix up front rather than leaving the owner to
+notice the `AE1234`-style labels and wonder if something is broken.
+
+**What the owner still has to judge on a real display.** This box cannot render Cesium (no DOM,
+no WebGL, D-051) and its headless capture path is ~1 FPS software GL and explicitly not a pixel
+oracle (D-049) even where it can run at all — nothing here can confirm that ~100+ dimmed labels
+at once are actually legible rather than merely present, or whether `pal.dim` reads as clearly
+subordinate to amber/white at the owner's actual monitor and viewing distance, or what the real
+FPS cost of ~112 simultaneous labels is on the loaded machine this owner is running at 9-16 FPS
+already. If `pal.dim` proves too faint to read at all rather than merely subordinate, `pal.txt`
+was the documented fallback candidate to try next — not a third, undocumented option.

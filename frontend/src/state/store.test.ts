@@ -48,14 +48,22 @@ describe("migratePrefs", () => {
     expect(migrated.projMinutes).toBe(5);
   });
 
-  it("chains: a v1 payload picks up both the v2 and v3 fields, not just the newest", () => {
+  it("from < 4 adds showAllLabels: false without touching an already-current payload", () => {
+    const migrated = migratePrefs({ radiusNm: 180 }, 3);
+    expect(migrated.showAllLabels).toBe(false);
+    expect(migrated.radiusNm).toBe(180);
+  });
+
+  it("chains: a v1 payload picks up the v2, v3 and v4 fields, not just the newest", () => {
     const migrated = migratePrefs({ showDatum: true }, 1);
-    // v2 step (D-047) - proves the chain did not break when v3 was added on top of it.
+    // v2 step (D-047) - proves the chain did not break when v3 and v4 were added on top of it.
     expect(migrated.showDatum).toBe(false);
     expect(migrated.showProjection).toBe(true);
     expect(migrated.projMinutes).toBe(5);
     expect(migrated.projSpreadDeg).toBe(10);
     // v3 step (D-055).
     expect(migrated.radiusNm).toBe(120);
+    // v4 step (D-060).
+    expect(migrated.showAllLabels).toBe(false);
   });
 });

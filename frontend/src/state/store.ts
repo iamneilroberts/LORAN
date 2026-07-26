@@ -206,6 +206,15 @@ interface State {
    */
   showSmallAirports: boolean;
   /**
+   * Label every contact, not just selected/co-altitude/military (D-060). OFF by default: with
+   * it on, ~100+ labels can be on screen at once, which is exactly the clutter the default
+   * behaviour (label only what matters) was chosen to avoid. See aircraftLayer.ts's
+   * `labelDecision()` for how this combines with the other three label triggers, and why a
+   * label added ONLY because of this toggle gets a subordinate colour rather than the
+   * amber/selected treatment those triggers earn.
+   */
+  showAllLabels: boolean;
+  /**
    * How far out place markers stay drawn, as a multiplier on each row's built-in range.
    * 1 = the tuned default; higher pulls more of the shipped set into view (D-049).
    */
@@ -240,7 +249,7 @@ interface State {
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
-    | "showProjection" | "showDestination" | "showSmallAirports") => void;
+    | "showProjection" | "showDestination" | "showSmallAirports" | "showAllLabels") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
   setRadiusNm: (nm: number) => void;
@@ -285,11 +294,11 @@ export const RANGE_PRESETS_NM = [60, 120, 180, 250] as const;
  * `useStore.persist` to call through at test time. Calling this function directly is the exact
  * code persist runs, not a stand-in for it, so nothing is lost by testing it this way.
  *
- * Bumped for D-047, then again for D-055. Without a migration step, a browser that already
+ * Bumped for D-047, then D-055, then D-060. Without a migration step, a browser that already
  * persisted prefs simply has no `radiusNm` key at all - it would come back `undefined` rather
  * than the default, not silently inherit it. Steps chain (each `if` builds on what the one
  * before it produced), so a v1 payload still picks up the v2 fields on its way through, then
- * the v3 field on top - it does not jump straight from 1 to 3 missing a step.
+ * the v3 field, then the v4 field - it does not jump straight from 1 to 4 missing a step.
  */
 export function migratePrefs(persisted: unknown, from: number): Record<string, unknown> {
   let p = (persisted ?? {}) as Record<string, unknown>;
@@ -298,6 +307,9 @@ export function migratePrefs(persisted: unknown, from: number): Record<string, u
   }
   if (from < 3) {
     p = { ...p, radiusNm: 120 };
+  }
+  if (from < 4) {
+    p = { ...p, showAllLabels: false };
   }
   return p;
 }
@@ -342,6 +354,9 @@ export const useStore = create<State>()(persist((set) => ({
   showRadar: false,
   showDestination: true,
   showSmallAirports: false,
+  // OFF by default (D-060): selected/co-altitude/military are already labelled unconditionally,
+  // and labelling every contact on top of that is a deliberate ask, not the resting display.
+  showAllLabels: false,
   placeDensity: 1,
   // The Phase 1 value, kept as the default so nobody's resting view changes underneath them.
   radiusNm: 120,
@@ -398,7 +413,7 @@ export const useStore = create<State>()(persist((set) => ({
   setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  version: 3,
+  version: 4,
   migrate: migratePrefs,
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
@@ -412,6 +427,7 @@ export const useStore = create<State>()(persist((set) => ({
     showRadar: s.showRadar,
     showDestination: s.showDestination,
     showSmallAirports: s.showSmallAirports,
+    showAllLabels: s.showAllLabels,
     placeDensity: s.placeDensity,
     radiusNm: s.radiusNm,
     datumRadiusNm: s.datumRadiusNm,

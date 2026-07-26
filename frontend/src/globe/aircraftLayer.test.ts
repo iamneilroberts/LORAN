@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { altitudeColour } from "./aircraftLayer";
+import { altitudeColour, labelDecision } from "./aircraftLayer";
 
 function hsl(s: string): { h: number; s: number; l: number } {
   const m = s.match(/^hsl\((-?[\d.]+) ([\d.]+)% ([\d.]+)%\)$/);
@@ -63,5 +63,53 @@ describe("altitudeColour", () => {
       expect(l).toBeGreaterThanOrEqual(50);
       expect(l).toBeLessThanOrEqual(70);
     }
+  });
+});
+
+/**
+ * The ALL CALLSIGNS toggle (D-060) only ADDS a fourth reason to label a contact. These tests
+ * hold the line on the one regression that would quietly undo D-029: a contact that is already
+ * labelled for a real reason (selected, co-altitude, military) must keep its existing colour
+ * role no matter what the toggle is doing, and a label that exists ONLY because of the toggle
+ * must be visually subordinate rather than sharing that prominence.
+ */
+describe("labelDecision", () => {
+  it("a plain civil contact gets no label with the toggle off, a dim one with it on", () => {
+    const off = labelDecision({ selected: false, coAltitude: false, military: false, showAllLabels: false });
+    expect(off.show).toBe(false);
+    const on = labelDecision({ selected: false, coAltitude: false, military: false, showAllLabels: true });
+    expect(on.show).toBe(true);
+    expect(on.colourRole).toBe("dim");
+  });
+
+  it("military keeps the alert colour role whether or not the toggle is on", () => {
+    const toggleOff = labelDecision({ selected: false, coAltitude: false, military: true, showAllLabels: false });
+    const toggleOn = labelDecision({ selected: false, coAltitude: false, military: true, showAllLabels: true });
+    expect(toggleOff.show).toBe(true);
+    expect(toggleOff.colourRole).toBe("alert");
+    expect(toggleOn.show).toBe(true);
+    expect(toggleOn.colourRole).toBe("alert");
+  });
+
+  it("co-altitude keeps the alert colour role whether or not the toggle is on", () => {
+    const toggleOff = labelDecision({ selected: false, coAltitude: true, military: false, showAllLabels: false });
+    const toggleOn = labelDecision({ selected: false, coAltitude: true, military: false, showAllLabels: true });
+    expect(toggleOff.colourRole).toBe("alert");
+    expect(toggleOn.colourRole).toBe("alert");
+  });
+
+  it("the selected contact keeps the selected colour role whether or not the toggle is on", () => {
+    const toggleOff = labelDecision({ selected: true, coAltitude: false, military: false, showAllLabels: false });
+    const toggleOn = labelDecision({ selected: true, coAltitude: false, military: false, showAllLabels: true });
+    expect(toggleOff.colourRole).toBe("selected");
+    expect(toggleOn.colourRole).toBe("selected");
+  });
+
+  it("military wins over selected when a contact is somehow both", () => {
+    // Not a real-world case today (a selected contact is never also flagged co-altitude, and
+    // military is independent of selection) but the priority order matters: alert must not
+    // silently lose to selected just because selection happens to be checked in the render loop.
+    const both = labelDecision({ selected: true, coAltitude: false, military: true, showAllLabels: false });
+    expect(both.colourRole).toBe("alert");
   });
 });

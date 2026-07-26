@@ -186,6 +186,7 @@ export default function Globe() {
         showDropLines: st.showDropLines,
         separationFt: st.separationFt,
         datumAltFt,
+        showAllLabels: st.showAllLabels,
         dropToAltFt: (a) => {
           // Drop lines are now SELECTION-ONLY and go all the way to the surface (D-030).
           // Showing them for every contact is what forced the old "stop at the nearest band

@@ -217,6 +217,8 @@ export function LayerCluster() {
   const showPlaces = useStore((s) => s.showPlaces);
   const showDestination = useStore((s) => s.showDestination);
   const showSmallAirports = useStore((s) => s.showSmallAirports);
+  const showAllLabels = useStore((s) => s.showAllLabels);
+  const aircraftCount = useStore((s) => s.aircraft.length);
   const showRadar = useStore((s) => s.showRadar);
   const showProjection = useStore((s) => s.showProjection);
   const projMinutes = useStore((s) => s.projMinutes);
@@ -320,6 +322,14 @@ export function LayerCluster() {
             note={selected ? "filed route · dashed" : "needs a selected contact"} />
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
+      {/* D-060: selected/co-altitude/military are already labelled unconditionally - this only
+          adds everyone else, dimmed so amber and near-white keep meaning something (D-029). The
+          note gives the real count rather than a vague "clutter" warning, and says up front that
+          a contact with no callsign shows its hex instead - that is correct, not a bug to hide. */}
+      <Item on={showAllLabels} label="Identifiers" k="showAllLabels"
+            note={showAllLabels
+              ? `${aircraftCount} labelled · callsign or hex`
+              : `${aircraftCount} contacts · clutters at wide zoom`} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
       {/* Small strips are OFF by default (D-052): 42,698 markers, and their data is a
           separate 3.5 MB file that is only fetched once this is switched on. The note says so,

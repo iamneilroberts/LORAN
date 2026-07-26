@@ -80,6 +80,46 @@ export function colourFor(a: Aircraft): { fill: string; stroke: string } {
   return { fill: altitudeColour(a.alt_ft), stroke: p.iconStroke };
 }
 
+/** Which colour role a label is drawn in. Resolved to an actual palette token by the caller. */
+export type LabelColourRole = "alert" | "selected" | "dim";
+
+export interface LabelDecisionInput {
+  selected: boolean;
+  coAltitude: boolean;
+  military: boolean;
+  showAllLabels: boolean;
+}
+
+export interface LabelDecision {
+  show: boolean;
+  colourRole: LabelColourRole;
+}
+
+/**
+ * Whether a contact gets an identifier label, and in what colour role (D-060).
+ *
+ * Selected, co-altitude and military contacts were ALREADY labelled unconditionally before the
+ * ALL CALLSIGNS toggle existed - `showAllLabels` only adds a fourth trigger on top of the other
+ * three, it does not change what they do. That is why those three keep the same "alert"
+ * (amber) / "selected" (near-white) colour roles regardless of the toggle: `coAltitude` and
+ * `military` are checked first, so a contact that happens to be both, say, military AND only
+ * visible because of the toggle still reads as military, not as generic clutter.
+ *
+ * A label added for NO reason other than the toggle gets "dim" - deliberately the least
+ * prominent of the three roles. With the toggle on, ~100+ contacts can be labelled
+ * simultaneously (D-029 spent amber and near-white on purpose, to make co-altitude and military
+ * pop against everything else); painting all of them at the same prominence as those signals
+ * would drown the signal in the noise the toggle just added, making the display LESS readable
+ * than before the toggle existed.
+ */
+export function labelDecision(input: LabelDecisionInput): LabelDecision {
+  const { selected, coAltitude, military, showAllLabels } = input;
+  return {
+    show: selected || coAltitude || military || showAllLabels,
+    colourRole: coAltitude || military ? "alert" : selected ? "selected" : "dim",
+  };
+}
+
 /*
  * Icon heading, in SCREEN space rather than compass space.
  *
@@ -115,6 +155,8 @@ export interface UpdateOpts {
   dropToAltFt: (a: Aircraft) => number | null;
   separationFt: number;
   datumAltFt: number | null;
+  /** D-060: label every contact, not just selected/co-altitude/military. */
+  showAllLabels: boolean;
 }
 
 export interface AircraftLayer {
@@ -235,10 +277,16 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
         slot.lastImage = image;
       }
 
-      /* ---- label: selected, co-altitude, or military ---- */
-      const wantLabel = isSel || co || a.military;
+      /* ---- label: selected, co-altitude, military, or (D-060) the ALL CALLSIGNS toggle ---- */
+      const label = labelDecision({
+        selected: isSel, coAltitude: co, military: a.military, showAllLabels: opts.showAllLabels,
+      });
+      // Callsign if the transponder is sending one, otherwise the raw ICAO24 hex. The hex is
+      // real data the contact is actually broadcasting, not a placeholder - falling back to it
+      // is what ground rule 1 (never invent data) demands here, so it stays even though it means
+      // a mix of "DAL9975" and "AE1234" once every contact is labelled.
       const text = (a.flight || a.hex).trim().toUpperCase();
-      if (wantLabel) {
+      if (label.show) {
         if (!slot.label) {
           slot.label = labels.add({
             position: pos,
@@ -254,7 +302,9 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
         }
         slot.label.position = pos;
         slot.label.fillColor = Color.fromCssColorString(
-          co || a.military ? pal.amber : pal.iconSelected,
+          label.colourRole === "alert" ? pal.amber
+            : label.colourRole === "selected" ? pal.iconSelected
+              : pal.dim,
         );
         if (text !== slot.lastText) {
           slot.label.text = text;
