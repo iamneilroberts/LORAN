@@ -175,7 +175,7 @@ This covers the dossier's registration / type / operator / origin / destination 
 
 > `{"error":"Server User-Agent strings must include a contact URL or email so we can reach you, e.g. MyFlightTracker/1.2 (+https://example.com/contact)."}`
 
-With a compliant UA (`loran/0.1 (+mailto:dneilroberts@gmail.com)`) it returns 200. Both `/pub/photos/hex/{hex}` and `/pub/photos/reg/{reg}` work.
+With a compliant UA (`loran/0.1 (+mailto:adsb@voygent.ai)`) it returns 200. Both `/pub/photos/hex/{hex}` and `/pub/photos/reg/{reg}` work.
 
 ```json
 {"photos":[{

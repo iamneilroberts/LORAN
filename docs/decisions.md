@@ -1059,3 +1059,42 @@ and the volunteer ADS-B feeds deserve a real one, so this was quietly impolite a
 dishonest at worst. Now set to a real address; verified planespotters still returns 200 with it.
 It also confirms the handoff's suspicion that their UA gate is looser than documented — a
 placeholder contact was being accepted all along.
+
+---
+
+### D-044 · Open-source prep: MIT, a real contact address, and a README with real screenshots
+
+**Date:** 2026-07-25
+
+The repository is public, so these were no longer optional.
+
+**Licence: MIT** (owner's choice), with an appended **note on data** that the licence does not
+cover. That note matters more than the licence text here: MIT on the software could easily be
+read as permission to do anything with what the software *fetches*, and several upstreams are
+non-commercial (airplanes.live, adsb.fi), share-alike (adsb.lol, ODbL 1.0), or forbid
+re-exposing their API entirely (planespotters clause 8). The note also records that being
+single-user by design is part of what keeps this inside those terms — so a fork that adds
+multi-tenancy is not automatically in the clear.
+
+**Contact address is now `adsb@voygent.ai`**, replacing a personal address that would have been
+published in two tracked files. Verified planespotters still returns 200 with the new UA.
+
+**README screenshots are real captures of live traffic**, produced by `scripts/shoot_readme.py`
+against the running app — ground rule 1 applies to documentation too, and a mocked screenshot is
+exactly the "plausible fake" that rule exists to forbid. The script refuses to write anything if
+the feed returns no contacts, and refuses to write the airfield shot if no airfield panel is
+actually open, because a screenshot of a missing panel misrepresents the feature.
+
+Two things learned writing that script, both fixed in it:
+
+* The first capture clipped the dossier at 950 px, hiding the photo block. A screenshot of a
+  clipped panel makes a dense display look broken, so the viewport is now 1150 px tall.
+* The first attempt selected the *first* contact in the list, which was off-frame — so the
+  altitude slice and drop line it was meant to illustrate were not in the picture. It now picks
+  the contact nearest the centre of the screen. Likewise the airfield click retries several
+  fields and both marker and label, because **aircraft win the pick by design** and an icon
+  sitting over a marker will silently take the click.
+
+The README states plainly what is *not* built (vessels blocked on an antenna, no recorder, no
+Docker, **zero unit tests**) alongside what is. A status section that lists only strengths is the
+documentation equivalent of a fake screen.
