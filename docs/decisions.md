@@ -2069,3 +2069,97 @@ subordinate to amber/white at the owner's actual monitor and viewing distance, o
 FPS cost of ~112 simultaneous labels is on the loaded machine this owner is running at 9-16 FPS
 already. If `pal.dim` proves too faint to read at all rather than merely subordinate, `pal.txt`
 was the documented fallback candidate to try next — not a third, undocumented option.
+
+## D-061 — 2026-07-26 — OUTBOUND LINKS: only links built from identifiers we actually hold, and the one that survives the single-file build
+
+**Date:** 2026-07-26
+
+The dossier tells the operator what a contact is; it had no way to hand them off to a source that
+knows more. The owner asked for outbound links, with one hard requirement attached: **they must
+also work in the single-file build**, where there is no backend, therefore no planespotters proxy,
+therefore no photo — and a link is the honest substitute for a picture that can never load.
+
+**Every URL shape here was verified against a real contact before shipping** — `ad2862` /
+`N947NN` / `AAL1005`, an American Airlines 737-823 pulled live from the local feed rather than
+invented. `globe.airplanes.live/?icao=ad2862` and `globe.adsbexchange.com/?icao=ad2862` return
+200. `registry.faa.gov/AircraftInquiry/Search/NNumberResult?nNumberTxt=947NN` returns 200 with
+`N947NN` and `BOEING` in the body — the 403 the previous session recorded was plain User-Agent
+filtering and goes away with a browser UA.
+
+**The finding that changed the approach: a 403 from the command line proves nothing about
+planespotters.** The previous handoff listed four URLs as "403 to curl only — almost certainly
+UA/bot filtering, needs browser confirmation", which invited treating a 403 as weak evidence of
+breakage. It is not evidence either way. planespotters.net returns 403 to every non-browser
+client regardless of URL validity — including, when tested, the **known-good photo page URL their
+own API returned**, the one the shipped thumbnail has been linking to successfully all along.
+Their `robots.txt` is Cloudflare-managed and their `sitemap.xml` 403s too. flightradar24 and
+jetphotos behave the same way. So the command line cannot validate any route on those hosts, and
+no amount of header-spoofing effort should be spent trying; the only oracle is a real browser.
+
+**So the planespotters route was verified the only way it could be: the owner opened it.**
+`https://www.planespotters.net/hex/AD2862` resolves to a real Mode S page — hex, decimal, octal,
+country, "converts to registration N947NN", the current registration record (MSN 31190, Boeing
+737-800, American Airlines) and the full photo grid. `search?q=N947NN` also works and returns the
+same photos. **`/hex/` was chosen** because it is keyed on the ICAO24, which every contact has,
+where a registration-keyed link would vanish for exactly the general-aviation contacts whose
+registration the feed most often omits. No `/search` fallback was added: there is no case where
+hex is absent but the contact exists, and a fallback for an impossible state is dead code.
+
+**A link is rendered only when the identifier it is built from exists.** This is ground rule 1
+applied to hyperlinks: a link that 404s, or that resolves to a registry's "no records found"
+page, claims we looked something up when we did not. That is invented data wearing a different
+hat. So the three hex-keyed links appear only with a hex, and the FAA link only for a US
+registration, matched by a deliberately strict `/^N[0-9][0-9A-Z]{0,4}$/` — `N` is exclusively a
+US prefix, and the FAA registry holds US airframes only, so a British `G-EUUU` or German
+`D-AIMA` must produce no FAA link rather than one that lands on an empty result. The registry's
+own parameter drops the `N`: `N947NN` is looked up as `947NN`.
+
+**`rel="noreferrer"` is deliberately absent for planespotters and present on the other three.**
+This asymmetry is not an oversight and has a test guarding it against future tidying. D-009 makes
+planespotters attribution a licence condition, and passing the referrer is part of sending them
+the credit their terms ask for — the shipped photo thumbnail already omits `noreferrer` for
+exactly this reason, with a comment saying so. The other three are ordinary third parties with no
+such claim on us, and once the tunnel is live the console's hostname is not theirs to collect.
+The previous handoff's note to "add `rel=noreferrer`" was therefore applied to the new links
+only; **the photo link was left alone**, because changing it would have quietly undone D-009.
+
+**The gating is a pure function in its own module, `frontend/src/panels/externalLinks.ts`** —
+the same move as `trafficPanelSections()` (D-056), `airfieldRanges()` (D-059) and
+`labelDecision()` (D-060), for the same reason and one extra: **no test imports `Panels.tsx`**,
+so any logic left inside that component is untested by construction. `(hex, registration) ->
+ExternalLink[]` is data in, data out and needs no DOM. `Panels.tsx` keeps only the rendering.
+
+**Eight new tests in `externalLinks.test.ts`, mutation-checked** (each mutation applied, the
+intended failure confirmed, source restored, reran green):
+- *loosening `US_TAIL` to `/^.+$/`* — caught by "omits the FAA link for non-US registrations",
+  which walks six real foreign tails (`G-EUUU`, `D-AIMA`, `F-GKXA`, `JA8089`, `VH-OQA`, `C-FGDT`).
+- *giving planespotters `noreferrer` like the others* — caught by the rel-asymmetry test, which
+  exists precisely so a future cleanup pass cannot silently undo D-009.
+- *removing the `if (h)` hex guard* — caught by "renders NO links at all when the hex is missing
+  or blank", which covers `null`, `""` and whitespace.
+
+The URL-shape tests pin the exact verified forms (lower-case hex for both globes, upper-case for
+planespotters, `N` stripped for the FAA) so a well-meaning normalisation cannot drift them away
+from what was actually confirmed to work.
+
+**UI:** chips, not inline text — they match the TRACK / CLEAR / EXPORT vocabulary established two
+blocks up in the same panel, and a 9px inline link is a poor pointer target. The block sits below
+the photo and above the co-altitude readout, under a dim `External` caption, and wraps to a second
+line in the 344px panel. It renders nothing at all rather than an empty bordered box when there
+are no links to show.
+
+**Why this satisfies the single-file requirement without a second implementation.** The
+single-file branch (`71e3edf`) modifies this same `Panels.tsx` rather than vendoring a copy, so
+it inherits `ExternalBlock` on rebase; the only textual conflict is the adjacent import line. In
+that build the hex is always present and the backend never is, so all three hex-keyed chips
+render — including planespotters — directly beneath its "No photos in the single-file build —
+needs a server" note. The FAA chip additionally survives there, because registration arrives from
+adsbdb, which sends `access-control-allow-origin: *` and is one of the two feeds that build can
+still read.
+
+**What the owner still has to judge on a real display.** The logic is under test and the URLs are
+confirmed, but nothing here was seen rendered: this box cannot drive Cesium (no DOM, no WebGL,
+D-051), selection is canvas-picking with no DOM affordance to trigger headlessly, and Chrome would
+not connect for a screenshot. Unjudged: whether four chips wrap acceptably at 344px, whether
+`--line-bright` chip borders read as clickable next to the filled TRACK buttons, and whether
+`External` is the right caption or noise.

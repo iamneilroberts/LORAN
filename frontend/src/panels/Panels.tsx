@@ -12,6 +12,7 @@ import {
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
+import { externalLinks } from "./externalLinks";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
 
 const DASH = "—";
@@ -656,6 +657,38 @@ function PhotoBlock({ result, pending }: { result: PhotoResult | null; pending: 
   );
 }
 
+/**
+ * Outbound reference links. The gating lives in `externalLinks.ts` so it is under test; this
+ * is only the rendering. Chips rather than a row of text: they match the TRACK / CLEAR / EXPORT
+ * vocabulary already established two blocks up, and a 9px inline link is a poor target.
+ */
+function ExternalBlock({ hex, registration }: { hex: string | null; registration: string | null }) {
+  const links = externalLinks(hex, registration);
+  if (!links.length) return null;
+
+  const chip = {
+    font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase" as const,
+    background: "transparent", padding: "4px 6px", textDecoration: "none",
+    border: "1px solid var(--line-bright)", color: "var(--cyan)", display: "inline-block",
+  };
+
+  return (
+    <div className="py-1 px-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="lbl pb-1" style={{ fontSize: 8, color: "var(--dim)" }}>
+        External
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {links.map((l) => (
+          // target=_blank so the console is never navigated away from - it is a live display.
+          <a key={l.href} href={l.href} target="_blank" rel={l.rel} style={chip}>
+            {l.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** "22 MIN" / "47 SEC" - the span actually covered, never the configured window. */
 function spanLabel(s: number): string {
   if (s < 90) return `${Math.round(s)} SEC`;
@@ -845,6 +878,7 @@ export function SelectionPanel() {
         result={photo && photo.hex?.toUpperCase() === a.hex?.toUpperCase() ? photo : null}
         pending={photoPending}
       />
+      <ExternalBlock hex={a.hex ?? null} registration={reg} />
       <div className="py-1" style={{ borderTop: "1px solid var(--line)" }}>
         <div className={`row ${co.length ? "row--mil" : "row--dim"}`}>
           <span>Co-alt ±{sepFt}</span><span>{co.length}</span>
