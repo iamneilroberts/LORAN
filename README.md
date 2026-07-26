@@ -117,8 +117,29 @@ docker compose up --build
 
 Then open http://127.0.0.1:8010. Configuration reaches the container at **run** time via
 `env_file`; `.dockerignore` excludes `.env` from the build context, so no secret can end up in an
-image layer. The container publishes to `127.0.0.1` only and runs unprivileged — put a tunnel or
-reverse proxy in front rather than binding it to `0.0.0.0`.
+image layer.
+
+> **The frontend is BAKED INTO THE IMAGE — `--build` is not optional after a UI change.**
+> There is no bind mount for the built app: `Dockerfile` copies `frontend/dist/` into
+> `/app/static` at build time. So a container started with plain `docker compose up -d` keeps
+> serving whatever bundle its image was built with, however many times you edit `frontend/src`.
+> The Vite dev server on `:5173` and the container on `:8010` are **two different builds of the
+> app**, and a tunnel or reverse proxy points at the container. This is easy to miss for hours:
+> the dev server shows your change, the served site does not. After any frontend change, rebuild:
+>
+> ```
+> docker compose up --build -d
+> ```
+>
+> To confirm which bundle is actually being served — and that it matches what you just built —
+> compare the hashed asset name at both ends:
+>
+> ```
+> curl -s http://127.0.0.1:8010/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js'; ls -1 frontend/dist/assets/*.js
+> ```
+
+The container publishes to `127.0.0.1` only and runs unprivileged — put a tunnel or reverse
+proxy in front rather than binding it to `0.0.0.0`.
 
 By hand, if you prefer:
 

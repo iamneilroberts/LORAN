@@ -371,6 +371,33 @@ serves it. Two consequences for step 3 below:
 
 ---
 
+# ⚠ THE TUNNEL SERVES THE CONTAINER, NOT THE DEV SERVER
+
+`loran.yml` points at `http://127.0.0.1:8010` — the **Docker container**. The Vite dev server on
+`:5173` is a *different build of the app*, and the tunnel never touches it.
+
+The frontend is baked into the image (`Dockerfile` copies `frontend/dist/` to `/app/static`);
+there is no bind mount. So editing `frontend/src` changes what `:5173` shows and changes nothing
+about what anyone reaching the tunnel sees, until the image is rebuilt:
+
+```
+docker compose up --build -d
+```
+
+**This cost a session's worth of confusion on 2026-07-26.** Six features were built and reviewed
+against `:5173` while the tunnel went on serving an image built hours earlier — the give-away was
+a `PREFS` button in the status bar that D-058 had already removed. Verify which bundle is really
+being served rather than assuming:
+
+```
+curl -s https://loran.voygent.app/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js'; ls -1 frontend/dist/assets/*.js
+```
+
+Those two must print the same hash. If they differ, the tunnel is serving a stale build and a
+browser hard-reload will not help.
+
+---
+
 # FIELD NOTES — what actually happened, 2026-07-26
 
 **Remote access is LIVE and verified end to end from a second machine on the home network:
