@@ -232,6 +232,8 @@ export function LayerCluster() {
   const setRadiusNm = useStore((s) => s.setRadiusNm);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
+  const showStates = useStore((s) => s.showStates);
+  const showCounties = useStore((s) => s.showCounties);
   const toggle = useStore((s) => s.toggle);
 
   const Item = ({
@@ -332,6 +334,13 @@ export function LayerCluster() {
             note={showAllLabels
               ? `${aircraftCount} labelled · callsign or hex`
               : `${aircraftCount} contacts · clutters at wide zoom`} />
+      {/* Political boundaries (D-063). States ON by default and cheap; counties OFF and, per
+          Natural Earth, US-only - the note says so outright rather than letting an empty layer
+          over Europe read as a broken toggle. Both thin out by camera distance, so "on" does
+          not mean "always drawn": counties only resolve inside a few hundred km. */}
+      <Item on={showStates} label="State lines" k="showStates" note="858 · worldwide" />
+      <Item on={showCounties} label="County lines" k="showCounties"
+            note={showCounties ? "3,619 · US only · close zoom" : "off · US only"} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
       {/* Small strips are OFF by default (D-052): 42,698 markers, and their data is a
           separate 3.5 MB file that is only fetched once this is switched on. The note says so,

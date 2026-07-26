@@ -2262,3 +2262,99 @@ affordance). Unjudged: whether the three-line amber note is too heavy in a 344px
 will fire on roughly four contacts in ten, whether `Filed orig` / `Filed dest` read clearly
 enough at that size, and whether withdrawing the line silently — the panel explains it, the globe
 just stops drawing — is discoverable or merely confusing.
+
+## D-063 — 2026-07-26 — BOUNDARIES: state lines worldwide, US county lines, both bundled because the measurement said the lazy path was machinery bought for nothing
+
+**Date:** 2026-07-26
+
+The owner asked for state and county lines, toggled in preferences. The prior handoff recommended
+states bundled and counties **lazily fetched**, mirroring D-052, and instructed that the baked
+size be measured before committing to counties. It was measured, and the measurement reversed the
+recommendation.
+
+**What was measured, before any of it was built.** Four Douglas-Peucker tolerances against both
+Natural Earth sources, reporting baked and gzipped bytes:
+
+| Layer | Rings | 0.005° (0.6 km) | **0.01° (1.1 km)** | 0.02° (2.2 km) | 0.05° (5.6 km) |
+|---|---|---|---|---|---|
+| States (50m, worldwide) | 858 | 862 / 292 gz | **734 / 248 gz** | 570 / 193 gz | 279 / 91 gz |
+| Counties (10m, US only) | 3,619 | 1243 / 338 gz | **874 / 242 gz** | 606 / 170 gz | 335 / 85 gz |
+
+(KiB.) For calibration, the already-bundled `places.json` is 671 KiB / **278 KiB gzipped**.
+
+**So counties cost about what places.json costs, and the lazy-fetch recommendation was premised
+on a size problem that does not exist.** D-052's lazy path exists for `places-small.json` — 3,433
+KiB, **1,182 KiB gzipped**, roughly five times this. Adding a second fetch path, a loading state,
+a failure state and a "what is the layer doing" accessor to save ~240 KiB gzipped would be
+machinery bought for nothing, and every one of those states is a thing that can be wrong. **Both
+layers are bundled**; counties simply default off. Owner confirmed after seeing the table.
+
+**The 50m cut for states is deliberate.** `ne_10m_admin_1_states_provinces` is **39.8 MiB** of
+print-scale detail; the 50m version is 2.3 MiB and at the zoom a globe console is actually flown
+at, no detail distinguishes them. Counties are only published at 10m, so there was no choice
+there — which is also why counties (3,619 rings) outnumber states (858) despite covering one
+country.
+
+**Tolerance 0.01° (~1.1 km), owner-chosen from the table.** It keeps river borders — the
+Mississippi, the Ohio — recognisably wiggly rather than polygonised. 0.02° saved ~30% and
+visibly cornered them; 0.005° cost ~40% more for detail not distinguishable on screen.
+Coordinates are rounded to 3 dp (~110 m), an order of magnitude finer than the simplification,
+so the rounding discards nothing the simplifier kept.
+
+**Longitude is scaled by cos(latitude) inside the simplifier.** Without it a degree of longitude
+would count as much as a degree of latitude, and a degree of longitude at 60°N is half the ground
+distance it is at the equator — which would have over-simplified Alaska and the Canadian
+provinces while under-simplifying the tropics. Douglas-Peucker is also **iterative rather than
+recursive**: some coastline rings run to thousands of points and the recursive form overflows
+Python's stack on them.
+
+**Rendering: one `PolylineCollection` per layer, which Cesium batches.** The handoff warned that
+one entity per feature would be brutal, and it is right — 4,477 entities is not a thing to do.
+Counties are built **lazily inside the layer** on first show, so the default-off state costs no
+construction at startup, where the thing that matters is first paint of live traffic.
+
+**Zoom thinning does the work that "on" does not.** `FAR_STATES` is 8,000 km and `FAR_COUNTIES`
+is 900 km, as `DistanceDisplayCondition`s handed to Cesium rather than recomputed per frame
+(the placesLayer pattern). This matters more than the toggle: at full-globe zoom, 4,477 rings
+would be a grey felt mat over the entire display, which is worse than no boundaries at all.
+Counties only resolve into distinguishable shapes inside a few hundred kilometres, so that is
+where they are allowed to draw.
+
+**Colour: states `--dim`, counties `--off`** — the two most subordinate tokens, in that order,
+so a county line never competes with the state line containing it. Both 1 px. These are context,
+not instrumentation: the globe is the subject and the traffic is the point.
+
+**Six tests against the BAKED OUTPUT, which is what actually ships**, all mutation-checked by
+corrupting `boundaries.json` and confirming the intended failure: a ring made odd-length (caught
+by the flat-pairs check — an odd length silently shifts every later point by one through
+`Cartesian3.fromDegreesArray`), a county injected into central Europe (caught by the US-only
+check), and **a ring made to jump the antimeridian** (caught by the dateline check). That last
+one has real teeth: the Aleutians put county vertices at both −179.14 and +179.78, so the data
+genuinely spans the dateline — it just does so in *separate* rings, because Natural Earth splits
+there. A single ring containing a >180° step would be drawn by Cesium as a line straight across
+the globe. Both coordinate sweeps collect offenders and assert once rather than calling `expect`
+110,000 times, which cut the suite's cost from 4.9 s to 154 ms while still naming the offending
+layer, ring and coordinate on failure.
+
+**Persist bumped 4 → 5**, with a chained `if (from < 5)` step adding `showStates: true` and
+`showCounties: false`. Both were added to the `partialize` allow-list, which is the only place a
+persisted field may appear at all (D-041). **Note for the theme work:** the prior handoff
+reserved v5 for themes — themes now take **v6**.
+
+**The defaults, and why they differ.** States **ON**: 858 rings, coarse, cheap, and it is the
+reference that makes "which state is that contact over" answerable at a glance — the same class
+of thing as `showPlaces`, which is also on. Counties **OFF**: dense, and US-only. The toggle note
+says `off · US only` rather than staying silent, so an empty layer over Europe reads as a
+documented limit rather than a broken toggle.
+
+**Measured bundle cost of shipping both:** `dist/assets/index-*.js` went from 4,911 KiB to 6,683
+KiB raw, **gzip 1,967 KiB** — an increase of ~492 KiB gzipped, matching the prediction from the
+table exactly. `data/raw/` is gitignored, so only the 1.6 MiB baked JSON is committed, the same
+arrangement as `places.json`.
+
+**What the owner still has to judge on a real display.** As with D-061 and D-062, nothing here
+was seen rendered — no DOM, no WebGL. Unjudged: whether `--dim` state lines read as context
+rather than competing with the altitude ramp over dark water; whether `--off` counties are
+visible at all at close zoom or too dark to be worth the bytes; whether 8,000 km and 900 km are
+the right thinning thresholds or want tuning; and the FPS cost of 858 state rings drawing by
+default at continental zoom on a machine already sitting at 9–16 FPS.

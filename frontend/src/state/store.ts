@@ -198,6 +198,15 @@ interface State {
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
+  /** State/province lines, worldwide (D-063). ON by default - coarse, cheap, and the reference
+   *  that makes "where is that contact" answerable without hunting. */
+  showStates: boolean;
+  /**
+   * US county lines (D-063). OFF by default: 3,619 rings is dense enough to read as texture
+   * rather than information at anything but close zoom, and Natural Earth publishes no admin_2
+   * layer outside the United States, so the layer is silent everywhere else by nature.
+   */
+  showCounties: boolean;
   /** Dashed line to the FILED destination, when adsbdb gives us coordinates (D-050). */
   showDestination: boolean;
   /**
@@ -249,7 +258,8 @@ interface State {
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
-    | "showProjection" | "showDestination" | "showSmallAirports" | "showAllLabels") => void;
+    | "showProjection" | "showDestination" | "showSmallAirports" | "showAllLabels"
+    | "showStates" | "showCounties") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
   setRadiusNm: (nm: number) => void;
@@ -311,6 +321,12 @@ export function migratePrefs(persisted: unknown, from: number): Record<string, u
   if (from < 4) {
     p = { ...p, showAllLabels: false };
   }
+  if (from < 5) {
+    // States ON, counties OFF - the shipped defaults (D-063). A browser that persisted prefs
+    // before boundaries existed has neither key, so both would come back `undefined` and the
+    // state toggle would render as off while the layer had never been asked for either way.
+    p = { ...p, showStates: true, showCounties: false };
+  }
   return p;
 }
 
@@ -352,6 +368,11 @@ export const useStore = create<State>()(persist((set) => ({
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
+  // Boundaries (D-063). States ON: 858 rings, coarse, and the reference that makes "which
+  // state is that contact over" answerable at a glance. Counties OFF: 3,619 rings reads as
+  // texture rather than information until the camera is close, and it is US-only.
+  showStates: true,
+  showCounties: false,
   showDestination: true,
   showSmallAirports: false,
   // OFF by default (D-060): selected/co-altitude/military are already labelled unconditionally,
@@ -413,7 +434,7 @@ export const useStore = create<State>()(persist((set) => ({
   setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  version: 4,
+  version: 5,
   migrate: migratePrefs,
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
@@ -425,6 +446,8 @@ export const useStore = create<State>()(persist((set) => ({
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
+    showStates: s.showStates,
+    showCounties: s.showCounties,
     showDestination: s.showDestination,
     showSmallAirports: s.showSmallAirports,
     showAllLabels: s.showAllLabels,

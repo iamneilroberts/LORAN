@@ -470,6 +470,7 @@ Also worth knowing: **9 of 95 aircraft were military** — T-6B Texan IIs and TH
 - [aisstream.io documentation](https://aisstream.io/documentation)
 - [aisstream.io coverage](https://aisstream.io/coverage)
 - [Planespotters.net Terms of Use](https://www.planespotters.net/legal/termsofuse)
+- [Natural Earth](https://www.naturalearthdata.com/) — public domain. Used at BUILD TIME only, by `scripts/build_places.py` (populated places) and `scripts/build_boundaries.py` (admin_1 states/provinces worldwide from the **50m** cut; admin_2 counties, **United States only**, 10m — Natural Earth publishes no admin_2 layer for the rest of the world). Baked to `frontend/src/data/boundaries.json` at 0.01° simplification; sizes and the reasoning are in D-063.
 - [MarineCadastre AccessAIS](https://marinecadastre.gov/accessais/)
 - [Cesium Ion reference](https://cesium.com/learn/cesiumjs/ref-doc/Ion.html)
 - [Cesium without Ion — community thread](https://community.cesium.com/t/cesium-without-ion/8980)

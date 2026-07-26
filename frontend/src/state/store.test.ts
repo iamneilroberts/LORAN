@@ -54,7 +54,17 @@ describe("migratePrefs", () => {
     expect(migrated.radiusNm).toBe(180);
   });
 
-  it("chains: a v1 payload picks up the v2, v3 and v4 fields, not just the newest", () => {
+  it("from < 5 adds the boundary toggles without touching an already-current payload", () => {
+    // States ON, counties OFF - the shipped defaults, and they must survive the migration
+    // rather than arriving `undefined`, which would render the toggle as off while the layer
+    // had never actually been asked for either way (D-063).
+    const migrated = migratePrefs({ showAllLabels: true }, 4);
+    expect(migrated.showStates).toBe(true);
+    expect(migrated.showCounties).toBe(false);
+    expect(migrated.showAllLabels).toBe(true);
+  });
+
+  it("chains: a v1 payload picks up the v2, v3, v4 and v5 fields, not just the newest", () => {
     const migrated = migratePrefs({ showDatum: true }, 1);
     // v2 step (D-047) - proves the chain did not break when v3 and v4 were added on top of it.
     expect(migrated.showDatum).toBe(false);
@@ -65,5 +75,8 @@ describe("migratePrefs", () => {
     expect(migrated.radiusNm).toBe(120);
     // v4 step (D-060).
     expect(migrated.showAllLabels).toBe(false);
+    // v5 step (D-063).
+    expect(migrated.showStates).toBe(true);
+    expect(migrated.showCounties).toBe(false);
   });
 });

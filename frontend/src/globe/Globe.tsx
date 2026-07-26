@@ -25,6 +25,7 @@ import { checkFiledRoute } from "../data/routeCheck";
 import { palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
+import { createBoundariesLayer } from "./boundariesLayer";
 import { createRadarLayer } from "./radarLayer";
 import {
   FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
@@ -97,9 +98,13 @@ export default function Globe() {
     // Weather radar builds nothing until it is switched on (D-040), so an off toggle costs
     // no tiles and no upstream requests at all.
     const radar = createRadarLayer(scene);
+    // Boundaries are static too. Counties build lazily inside the layer on first show, so an
+    // off toggle costs nothing but the states it was already going to draw (D-063).
+    const boundaries = createBoundariesLayer(scene);
     const s0 = useStore.getState();
     places.setShow(s0.showPlaces);
     radar.setShow(s0.showRadar);
+    boundaries.setShow(s0.showStates, s0.showCounties);
 
     /* --- open in perspective, not plan view --- */
     camera.setView({
@@ -240,12 +245,19 @@ export default function Globe() {
     let lastShowRadar = s0.showRadar;
     let lastDensity = s0.placeDensity;
     let lastSmall = s0.showSmallAirports;
+    let lastStates = s0.showStates;
+    let lastCounties = s0.showCounties;
     places.setDensity(lastDensity);
     if (lastSmall) places.setSmallAirports(true);
     const unsubPlaces = useStore.subscribe((st) => {
       if (st.showPlaces !== lastShowPlaces) {
         lastShowPlaces = st.showPlaces;
         places.setShow(st.showPlaces);
+      }
+      if (st.showStates !== lastStates || st.showCounties !== lastCounties) {
+        lastStates = st.showStates;
+        lastCounties = st.showCounties;
+        boundaries.setShow(st.showStates, st.showCounties);
       }
       if (st.placeDensity !== lastDensity) {
         lastDensity = st.placeDensity;
@@ -386,6 +398,7 @@ export default function Globe() {
       layer.destroy();
       places.destroy();
       radar.destroy();
+      boundaries.destroy();
       if (!viewer.isDestroyed()) viewer.destroy();
       viewerRef.current = null;
     };
