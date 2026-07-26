@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Globe from "./globe/Globe";
 import {
   AltitudeLegend, Attribution, CursorReadout, PlacePanel, SelectionPanel,
@@ -30,6 +30,125 @@ async function claimSession(): Promise<void> {
   } catch { /* the 401 state below is what tells the user, not a console message */ }
   url.searchParams.delete("t");
   window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+}
+
+/**
+ * The locked state, and the way out of it (D-057).
+ *
+ * TWO different people read this panel. A guest was handed a link and only has to open it. The
+ * owner, sitting at their own console on localhost, was never given a link at all - and the copy
+ * that used to be here told the one person who can actually fix this to do the one thing they
+ * cannot do. It is not a rare state for them either: session cookies are per-hostname, so
+ * `localhost`, `127.0.0.1` and the tunnel hostname are three separate cookie jars, and clearing
+ * cookies or opening a second browser empties whichever one they were using. So the paste field
+ * comes first and the link is mentioned second.
+ *
+ * Lives in its own component so its input state is local to the locked panel: App's own effect
+ * runs once with an empty dependency array and must not be re-run by keystrokes.
+ */
+function LockedPanel() {
+  const [token, setToken] = useState("");
+  // "failed" and "throttled" are separate because they are genuinely different situations and
+  // saying "not recognised" to somebody who is actually rate-limited would be a lie. It leaks
+  // nothing: the 429 is decided before the token is even looked at, so it says nothing about
+  // whether the token was right.
+  const [state, setState] = useState<"idle" | "sending" | "failed" | "throttled">("idle");
+
+  async function submit() {
+    // Trimmed here as well as in the backend so that the disabled check on the button agrees
+    // with what would actually be sent - a field holding only a pasted newline is empty.
+    const t = token.trim();
+    if (!t || state === "sending") return;
+    setState("sending");
+    try {
+      const r = await fetch("/api/session", {
+        // POST, not the `?t=` GET the link path uses. A token typed in here has no reason to
+        // appear in a URL, where uvicorn's access log - and Cloudflare's, once the tunnel is
+        // live - would record it. Same-origin in both the Vite-proxy dev path and the
+        // single-process serve path, so no CORS involvement either way.
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t }),
+      });
+      if (r.status === 429) { setState("throttled"); return; }
+      if (!r.ok) { setState("failed"); return; }
+      // The credential has been spent for a cookie; there is no reason for it to stay in the
+      // DOM afterwards.
+      setToken("");
+      setState("idle");
+      // This is what dismisses the panel. The poll loop is still running on its 5 s locked-out
+      // cadence, so the globe fills in on its next tick with no page reload - up to five
+      // seconds of blank, which is honest: nothing is drawn until real data actually arrives.
+      useStore.getState().setAuthRequired(false);
+    } catch {
+      // A network failure and a rejected token are told apart by nobody here on purpose - both
+      // mean "you are still locked out", and the panel already says the rest.
+      setState("failed");
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center"
+         style={{ background: "rgba(5,7,10,0.86)" }}>
+      <div className="panel pointer-events-auto" style={{ width: 380, padding: "18px 20px" }}>
+        <div className="lbl" style={{ color: "var(--amber)", fontSize: 11 }}>
+          Access token required
+        </div>
+        <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
+          This console is private. Paste your access token below, or open the full link you were
+          given — it carries a <span style={{ color: "var(--cyan)" }}>?t=</span> token that this
+          browser then remembers.
+        </div>
+        <div className="flex gap-[6px]" style={{ marginTop: 12 }}>
+          <input
+            /* A password field, not a text one: this UI gets screenshotted, and a token sitting
+               in plain view of a camera or a shoulder is spent. */
+            type="password"
+            value={token}
+            onChange={(e) => { setToken(e.target.value); setState("idle"); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
+            placeholder="ACCESS TOKEN"
+            /* Never offer to remember it and never send it to a spellcheck service. */
+            autoComplete="off"
+            spellCheck={false}
+            autoFocus
+            className="field flex-1"
+            style={{
+              font: "inherit", fontSize: 12, letterSpacing: "0.08em", padding: "5px 7px",
+              background: "transparent", color: "var(--txt)", borderRadius: 0,
+              border: "1px solid var(--line-bright)", outline: "none", minWidth: 0,
+            }}
+          />
+          <button
+            onClick={() => void submit()}
+            disabled={!token.trim() || state === "sending"}
+            style={{
+              font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+              padding: "4px 10px", borderRadius: 0, background: "transparent",
+              cursor: token.trim() && state !== "sending" ? "pointer" : "default",
+              border: "1px solid var(--line-bright)",
+              color: token.trim() && state !== "sending" ? "var(--cyan)" : "var(--off)",
+            }}
+          >
+            {state === "sending" ? "···" : "Enter"}
+          </button>
+        </div>
+        {state === "failed" && (
+          <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 8 }}>
+            Token not recognised.
+          </div>
+        )}
+        {state === "throttled" && (
+          <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 8 }}>
+            Too many attempts. Wait a minute, then try again.
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--off)", marginTop: 10 }}>
+          Live traffic is not being shown. Nothing on screen is current.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -136,24 +255,7 @@ export default function App() {
       <PreferencesPanel />
       {/* An honest locked state. A blank globe with no explanation is indistinguishable from a
           dead feed, and would send the visitor to the owner asking the wrong question. */}
-      {denied && (
-        <div className="absolute inset-0 flex items-center justify-center"
-             style={{ background: "rgba(5,7,10,0.86)" }}>
-          <div className="panel pointer-events-auto" style={{ width: 380, padding: "18px 20px" }}>
-            <div className="lbl" style={{ color: "var(--amber)", fontSize: 11 }}>
-              Access token required
-            </div>
-            <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
-              This console is private. Open the full link you were given — it carries a
-              one-time <span style={{ color: "var(--cyan)" }}>?t=</span> token that this browser
-              then remembers.
-            </div>
-            <div style={{ fontSize: 11, color: "var(--off)", marginTop: 10 }}>
-              Live traffic is not being shown. Nothing on screen is current.
-            </div>
-          </div>
-        </div>
-      )}
+      {denied && <LockedPanel />}
     </div>
   );
 }

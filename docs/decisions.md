@@ -1683,3 +1683,119 @@ corner border rather than a single seamless one. The task scoped the wrapper's a
 exactly two things - drop the fixed width, drop the scroll pair - and stripping the `panel` class
 as well would have been restructuring beyond that scope on a guess about the visual result. Worth
 a look next time the owner has eyes on it; trivial to remove if it reads as clutter in practice.
+
+---
+
+## D-057 — 2026-07-26 — The locked panel takes a pasted token, over a POST, through one shared cookie helper
+
+The 401 panel said "open the full link you were given". That copy was written for a guest, and it
+told the one person who can actually fix the problem to do the one thing they cannot: the OWNER,
+sitting at their own console on `localhost`, was never *given* a link. They hit this state
+routinely, too — session cookies are scoped per hostname, so `localhost`, `127.0.0.1` and the
+future tunnel hostname are three separate cookie jars, and clearing cookies or opening a second
+browser empties whichever one was in use. The panel now offers a paste field first and mentions
+the link second, and the honest "live traffic is not being shown, nothing on screen is current"
+line stays exactly where it was — that is a ground-rule-1 statement, not decoration.
+
+**A paste field rather than only a better-minted link.** A link is a fine *delivery* mechanism and
+`scripts/mint-link.sh` now prints one per principal, but it is a bad *recovery* mechanism: it
+requires the person who is locked out to already have somewhere to get the link from. The owner
+locked out at their own keyboard has a token in `.env` and no link anywhere, and telling them to
+go generate one is a longer path than a text box. The two paths are complementary and both ship —
+the link is how you hand access to somebody else, the box is how you get yourself back in.
+
+**POST with the token in the body, not a second trip through `?t=`.** Reusing the existing GET
+would have been one line of frontend and no backend change at all, and it would have written a
+live credential into every access log between the browser and the app. The URL is the part of a
+request that gets *written down*: uvicorn logs the query string by default, and once the
+Cloudflare tunnel is live so does Cloudflare. Demonstrated rather than assumed — the same server,
+the same two requests:
+
+```
+INFO:  "POST /api/session HTTP/1.1" 200 OK
+INFO:  "GET /api/session?t=SCRATCH-GUEST-TOKEN HTTP/1.1" 200 OK
+```
+
+The link path has no choice about this, because a link *is* a URL — which is exactly the argument
+for not letting the paste path inherit its exposure. `GET /api/session?t=` is untouched and is
+still how shared links log in (D-041); this is an addition, not a replacement, and
+`TestGetSessionRegression` exists to keep it that way. `OPEN_PATHS` needed no change either: the
+middleware matches on path alone, so the exemption already covered every method — that is now
+stated in a comment and asserted in a test, because it is load-bearing by accident rather than by
+design.
+
+**One `_issue_session` helper, not two `set_cookie` calls.** The real risk in adding a second door
+is not that the new one is wrong today; it is that the two drift. Two copies of a `set_cookie`
+call will eventually disagree about `httponly`, `samesite`, `max_age` or the `secure` derivation,
+and the copy that quietly loses a flag is a security regression that reviews clean, because it
+looks the way the code has always looked. One function makes the divergence impossible instead of
+unlikely, and one test (`test_post_and_get_mint_identical_cookie_flags`) covers both doors. The
+`secure` flag is derived from `x-forwarded-proto` exactly as before, and is the one thing here
+that cannot be exercised locally — there is no real HTTPS in front of a dev box — so it is pinned
+by tests in both directions rather than left to the first production request to discover.
+
+**The throttle, and what it is not.** `/api/session` must stay reachable without a session — it is
+how you *get* a session — and a visible paste box makes it a more obvious thing to poke. The
+tokens are 256 bits, so this is emphatically not what stops a brute force; arithmetic already does
+that. It exists so that a door which cannot be closed does not serve unlimited attempts, and so a
+script hammering it shows up as 429s rather than as work. Five failures per client per minute,
+counted on FAILURES only: a person with a new browser, a cleared cookie or a second hostname
+re-authenticates *successfully* over and over, and locking them out for succeeding would recreate
+the exact lockout this whole change exists to fix. The check runs before the token is looked at,
+so a correct guess cannot walk past a spent limit.
+
+It is **in-process and in-memory**, which is correct for a single-user console served by one
+uvicorn process — a shared store would be a dependency (rule 2) bought for nothing. Two
+consequences, named because they are choices: the counters **reset on restart**, and under more
+than one worker each worker would keep its own, multiplying the effective limit by the worker
+count. The per-client key comes from the first hop of `X-Forwarded-For` when present, because
+behind the tunnel every visitor shares the tunnel's own address and the peer address would be one
+bucket for the entire internet. That header is forgeable in general and is trusted **only** because
+the tunnel is the sole ingress; if this is ever exposed directly the line must be revisited. The
+failure mode is mild either way — forging it buys a fresh throttle bucket and nothing else, never
+a session.
+
+**The request body is parsed by hand, and that is a security decision, not a style one.** The
+obvious FastAPI shape here is a pydantic model with `t: str = Field(max_length=256)`, and it was
+written that way first. Then it was measured:
+
+```
+POST /api/session  {"t": "OVERLONG-TOKEN-AAAA…"}   ->  422
+{"detail":[{"type":"string_too_long", … ,"input":"OVERLONG-TOKEN-AAAA…"}]}
+```
+
+Pydantic v2 puts the offending value in `input`, so a submission that trips any field constraint
+hands the pasted token straight back to the browser — into the DOM, and into anything that logs
+response bodies. That is precisely the leak this change was supposed to close. A 422 would also
+bypass the throttle entirely and tell a caller which *kind* of wrong they were. Ten lines of
+`await request.json()` plus an explicit type-and-length check buy one uniform 401 for every
+malformed, over-long or wrong-typed body, and the two tests that cover it were mutation-checked
+against the pydantic version, which they fail. This is worth remembering the next time a body
+model looks like the tidier option on an endpoint that handles a secret.
+
+**Failures are deliberately indistinguishable.** "No such token", "a token that was removed from
+the config" and "an empty string" all return the same 401 and the same sentence, because telling
+them apart would confirm to a caller which half-remembered string was once real. The submitted
+value is never logged and never echoed into the response, so it cannot reach a log file or the
+DOM; `test_rejection_is_the_same_answer_whatever_was_wrong` holds three different kinds of wrong
+to one identical body. The one failure the UI *does* distinguish is the 429, and that leaks
+nothing: the limit is decided before the token is examined, so "too many attempts" says nothing
+about whether the token was right — and telling a rate-limited person "token not recognised"
+would simply be a lie.
+
+**`backend/app/auth.py` had zero tests before this.** It is the only security-relevant code in the
+project, which made it the wrong file to keep adding to on faith. `backend/tests/test_session.py`
+is 22 tests over the cookie flags, both doors, the rejection surface and the throttle window;
+every one was mutation-checked, and the mutations they caught include a dropped `httponly`, a
+`samesite=none`, a `secure` pinned in each direction, a hand-rolled second `set_cookie` in the GET
+path (the drift this design exists to prevent), a rejection that echoed the token back, a throttle
+that counted successes, a throttle checked after validation instead of before, and an `OPEN_PATHS`
+check narrowed to GET.
+
+**`scripts/mint-link.sh` mints nothing.** There is no token store to mint from — the tokens *are*
+the config — so it reads `LORAN_ACCESS_TOKENS` (environment first, then `.env`, matching
+`config.py`'s own precedence) and formats the link the `?t=` path already expects. Generating a
+new token stays a deliberate manual step, which is what keeps this from becoming a thing that
+quietly creates credentials. It prints to stdout only, never to a file, and leads with a warning
+that each URL is a live credential — a file full of these is a secret on disk that nobody
+remembers to delete, in a directory that happens to be a git repo.

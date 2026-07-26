@@ -152,6 +152,12 @@ body {
 .panel--dossier .row > span:first-child { font-size: 11px; }
 .panel--dossier .row > span:last-child { font-size: 15px; }
 
+/* ---- text field ----
+   Exactly one exists: the locked panel's token box (D-057). The browser default placeholder is
+   a grey from neither of our ramps, and it is the only part of an input that CSS custom
+   properties cannot reach from an inline style. */
+.field::placeholder { color: var(--off); letter-spacing: 0.1em; }
+
 /* ---- status chips ---- */
 .chip { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .dot { width: 5px; height: 5px; background: var(--cyan); }

@@ -20,10 +20,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .auth import COOKIE_NAME, TokenAuth
+from .auth import COOKIE_NAME, FailureThrottle, TokenAuth
 from .config import (
     ACCESS_TOKENS, CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL,
-    PHOTO_GUEST_ACCESS, SESSION_SECRET, SESSION_TTL_S, STATIC_DIR, USER_AGENT,
+    PHOTO_GUEST_ACCESS, SESSION_FAIL_LIMIT, SESSION_FAIL_WINDOW_S, SESSION_SECRET,
+    SESSION_TTL_S, STATIC_DIR, USER_AGENT,
 )
 from .feeds.adsb import client as adsb
 from .feeds.adsbdb import client as adsbdb
@@ -33,8 +34,13 @@ from .feeds.track import store as tracks
 START = time.time()
 
 auth = TokenAuth(ACCESS_TOKENS, OWNER_PRINCIPAL, SESSION_SECRET, SESSION_TTL_S)
+# The price of /api/session being open by necessity. See FailureThrottle's docstring for why
+# this is in-process and what that costs.
+session_throttle = FailureThrottle(SESSION_FAIL_LIMIT, SESSION_FAIL_WINDOW_S)
 
 # Paths reachable without a session. Everything else under /api needs one once auth is on.
+# Matched on the PATH only, so a path listed here is open for every method - which is what
+# lets D-057's POST /api/session through the door alongside the original GET.
 OPEN_PATHS = {"/api/session", "/api/health"}
 
 
@@ -86,32 +92,55 @@ async def require_session(request: Request, call_next):
     return await call_next(request)
 
 
-@app.get("/api/session")
-async def session(request: Request, t: str | None = Query(None, max_length=256)):
+def _client_key(request: Request) -> str:
     """
-    Exchange a token for a signed session cookie, or report the current session.
+    Which bucket to throttle this caller in.
 
-    `?t=` is how a link logs someone in: the frontend calls this once on load, then strips the
-    token out of the address bar so it does not sit in history or get pasted onward by accident.
+    Behind the Cloudflare tunnel every request arrives from the tunnel's own address, so the peer
+    address is a single bucket for the entire internet - the first hop in X-Forwarded-For is the
+    only thing that tells two visitors apart. That header is trivially forgeable in general, and
+    is trusted HERE only because the tunnel is the sole ingress: cloudflared sets it, and the
+    port is not otherwise published. If this service is ever exposed directly, or put behind a
+    second proxy that does not rewrite the header, this line stops being safe and must be
+    revisited. The failure mode is mild either way - forging it buys a fresh throttle bucket and
+    nothing else; it cannot mint a session.
     """
-    if not auth.enabled:
-        return {"auth": False, "principal": auth.owner, "owner": True}
+    first = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    if first:
+        return first
+    return request.client.host if request.client else "unknown"
 
-    if t is None:
-        who = auth.verify(request.cookies.get(COOKIE_NAME))
-        if not who:
-            return JSONResponse({"auth": True, "principal": None, "owner": False},
-                                status_code=401)
-        return {"auth": True, "principal": who, "owner": who == auth.owner}
 
-    who = auth.principal_for_token(t)
-    if not who:
-        # Deliberately vague, and deliberately not logged with the token value.
-        return JSONResponse({"auth": True, "principal": None, "owner": False,
-                             "detail": "invalid token"}, status_code=401)
+def _rejected() -> JSONResponse:
+    """
+    One answer for every kind of token failure.
 
-    body = {"auth": True, "principal": who, "owner": who == auth.owner}
-    resp = JSONResponse(body)
+    "No such token", "a token that was removed from the config" and "an empty string" are the
+    same sentence deliberately: telling them apart would confirm to a caller which half-
+    remembered string was once real. The submitted value is never logged and never echoed back
+    into the response, so it cannot reach a log file or the DOM.
+    """
+    return JSONResponse({"auth": True, "principal": None, "owner": False,
+                         "detail": "token not recognised"}, status_code=401)
+
+
+def _throttled() -> JSONResponse:
+    return JSONResponse({"auth": True, "principal": None, "owner": False,
+                         "detail": "too many attempts"}, status_code=429)
+
+
+def _issue_session(request: Request, who: str) -> JSONResponse:
+    """
+    The ONE place a session cookie is minted. Both the `?t=` link path and the pasted-token
+    POST path go through here.
+
+    Factored out rather than written twice because drift is the actual risk: two copies of a
+    `set_cookie` call will eventually disagree about `httponly`, `samesite`, `max_age` or the
+    `secure` derivation, and the copy that quietly loses a flag is a security regression that
+    reviews clean - it looks the way the code has always looked. One function means the two
+    doors cannot differ, and one test on the flags covers both of them.
+    """
+    resp = JSONResponse({"auth": True, "principal": who, "owner": who == auth.owner})
     resp.set_cookie(
         COOKIE_NAME, auth.issue(who),
         max_age=int(SESSION_TTL_S), httponly=True, samesite="lax",
@@ -120,6 +149,89 @@ async def session(request: Request, t: str | None = Query(None, max_length=256))
         secure=request.headers.get("x-forwarded-proto", request.url.scheme) == "https",
     )
     return resp
+
+
+def _exchange(request: Request, token: str) -> JSONResponse:
+    """
+    Token in, cookie out - the half that both /api/session handlers share.
+
+    The throttle is checked BEFORE the token is looked at, so a caller already over the limit
+    costs nothing, and is recorded only on a failure, so re-authenticating successfully from a
+    new browser or a second hostname can never lock anybody out.
+
+    Pasted and pasted-into-a-link tokens routinely carry surrounding whitespace - a trailing
+    newline out of a terminal or a chat client is the common one - so it is trimmed here rather
+    than in each caller.
+    """
+    client = _client_key(request)
+    if not session_throttle.allowed(client):
+        return _throttled()
+    who = auth.principal_for_token(token.strip())
+    if not who:
+        session_throttle.record_failure(client)
+        return _rejected()
+    return _issue_session(request, who)
+
+
+@app.get("/api/session")
+async def session(request: Request, t: str | None = Query(None, max_length=256)):
+    """
+    Exchange a token for a signed session cookie, or report the current session.
+
+    `?t=` is how a link logs someone in: the frontend calls this once on load, then strips the
+    token out of the address bar so it does not sit in history or get pasted onward by accident.
+    Unchanged by D-057 apart from sharing its cookie and rejection code with the POST below -
+    this is the path shared links depend on (D-041) and it keeps working exactly as before.
+    """
+    if not auth.enabled:
+        return {"auth": False, "principal": auth.owner, "owner": True}
+
+    if t is None:
+        # Asking "am I logged in?" is not a token attempt and is never throttled - the frontend
+        # may do it on every load, and no secret was offered to be wrong about.
+        who = auth.verify(request.cookies.get(COOKIE_NAME))
+        if not who:
+            return JSONResponse({"auth": True, "principal": None, "owner": False},
+                                status_code=401)
+        return {"auth": True, "principal": who, "owner": who == auth.owner}
+
+    return _exchange(request, t)
+
+
+@app.post("/api/session")
+async def session_post(request: Request):
+    """
+    Exchange a PASTED token for a signed session cookie (D-057).
+
+    A POST with the token in the body, deliberately, rather than a second trip through `?t=`.
+    A token somebody typed into the console has no reason to ever appear in a URL, and the URL
+    is the part of a request that gets written down: uvicorn's access log records the query
+    string, and once the Cloudflare tunnel is live so does Cloudflare. The link path has no
+    choice about that - a link IS a URL - which is exactly why the paste path should not inherit
+    its exposure.
+
+    Reachable without a session because "/api/session" is in OPEN_PATHS, which the middleware
+    matches on path alone and therefore for every method.
+    """
+    if not auth.enabled:
+        return {"auth": False, "principal": auth.owner, "owner": True}
+
+    # The body is parsed by hand rather than declared as a pydantic model, and that is NOT a
+    # style preference. FastAPI answers a model-validation failure with a 422 whose body echoes
+    # the offending input straight back - measured here, not assumed - so an over-length or
+    # wrong-typed submission would return the pasted token to the browser, putting it in the DOM
+    # and in anything that logs responses. A 422 would also skip the throttle and tell a caller
+    # which flavour of wrong they were. Ten boring lines buy one uniform 401 instead.
+    try:
+        body = await request.json()
+    except Exception:                                    # noqa: BLE001 - malformed is just invalid
+        return _rejected()
+    token = body.get("t") if isinstance(body, dict) else None
+    # 256 mirrors the length cap the `?t=` query parameter has always had. Nothing that long can
+    # match a configured token anyway; the cap is there so an enormous body is cheap to refuse.
+    if not isinstance(token, str) or len(token) > 256:
+        return _rejected()
+    return _exchange(request, token)
 
 
 @app.get("/api/config")

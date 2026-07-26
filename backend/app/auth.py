@@ -110,3 +110,57 @@ class TokenAuth:
         if principal not in set(self.principals.values()):
             return None
         return principal
+
+
+class FailureThrottle:
+    """
+    A per-client cap on FAILED token submissions (D-057).
+
+    `/api/session` is the one door on the API that must stay reachable without a session - it is
+    how you GET a session - and D-057 put a visible paste box in front of it, which makes it a
+    more obvious thing to poke at. This is not what stops a brute force: the tokens are 256 bits
+    and arithmetic already stops that. It exists so that an endpoint which cannot be closed does
+    not serve unlimited attempts, and so a script hammering it shows up as 429s instead of work.
+
+    In-process and in-memory on purpose. This is a single-user console served by one uvicorn
+    process, so a dict IS the correct implementation here, and a shared store would be a
+    dependency (rule 2) bought for nothing. Two limitations, named out loud because they are
+    choices and not oversights: the counters RESET ON RESTART, and if this were ever run with
+    more than one worker each worker would keep its own counters, so the effective limit would
+    multiply by the worker count.
+
+    Only FAILURES are recorded. A legitimate user re-authenticating - a new browser, a cleared
+    cookie, a second hostname - must never be locked out for succeeding repeatedly.
+    """
+
+    # Above this many tracked clients, sweep the whole table. Only failures create an entry and
+    # every entry expires within the window, but nothing sweeps a client that simply stops
+    # coming back, so a source rotating addresses could otherwise grow this dict without bound.
+    _SWEEP_AT = 1024
+
+    def __init__(self, limit: int, window_s: float) -> None:
+        self.limit = limit
+        self.window_s = window_s
+        self._fails: dict[str, list[float]] = {}
+
+    def _recent(self, client: str, now: float) -> list[float]:
+        """Failures for `client` still inside the window, pruning the expired ones as we go."""
+        kept = [t for t in self._fails.get(client, ()) if t > now - self.window_s]
+        if kept:
+            self._fails[client] = kept
+        else:
+            self._fails.pop(client, None)
+        return kept
+
+    def allowed(self, client: str, now: float | None = None) -> bool:
+        now = time.time() if now is None else now
+        return len(self._recent(client, now)) < self.limit
+
+    def record_failure(self, client: str, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        kept = self._recent(client, now)
+        kept.append(now)
+        self._fails[client] = kept
+        if len(self._fails) > self._SWEEP_AT:
+            for key in list(self._fails):
+                self._recent(key, now)

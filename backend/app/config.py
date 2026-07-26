@@ -89,6 +89,12 @@ OWNER_PRINCIPAL = os.environ.get("LORAN_OWNER_PRINCIPAL", "owner")
 # sessions survive restarts and rotating a token revokes its sessions.
 SESSION_SECRET = os.environ.get("LORAN_SESSION_SECRET", "")
 SESSION_TTL_S = _f("LORAN_SESSION_TTL_SECONDS", 30 * 24 * 3600.0)
+# Failed token submissions allowed per client per window before /api/session answers 429
+# (D-057). Failures only - succeeding repeatedly is what a person with a new browser does,
+# and must never lock them out. Five is generous for a human retyping a token and useless
+# to a script.
+SESSION_FAIL_LIMIT = int(_f("LORAN_SESSION_FAIL_LIMIT", 5))
+SESSION_FAIL_WINDOW_S = _f("LORAN_SESSION_FAIL_WINDOW_SECONDS", 60.0)
 
 # planespotters clause 8 forbids re-exposing their API, and docs/data-sources.md
 # records the mitigation as "never expose it publicly". So the DEFAULT here is
