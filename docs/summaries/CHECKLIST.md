@@ -31,6 +31,17 @@
 
 ## Open — next up
 
+- [x] Dossier squeeze fixed — Camera + Layers moved LEFT, dossier owns the right column (D-048)
+- [x] Map labels no longer the water's colour — new `--map-label` token (D-048)
+- [x] Origin/dest read as places: "San Jose SJC", "Denver DEN" (D-048)
+- [ ] **BUG: aircraft tracks do not display.** Backend RULED OUT (`/api/track` returns 254 points
+      over 1789 s; hex case is irrelevant — tested, do NOT "fix" the `toUpperCase`). The fault is
+      the `track::` polyline path in `Globe.tsx`.
+- [ ] **Dotted line to the known destination** — adsbdb already supplies destination lat/lon. Must
+      read as the FILED destination, distinct from the projection envelope, absent when unknown.
+- [ ] **Place-label density toggle** — owner says the set is too thin. D-037 dropped the extra rows
+      at BUILD time, so `build_places.py` has to emit them before a runtime toggle can show them.
+- [ ] **Themes / colour chooser — PROMOTED out of FUTURE by the owner**, alongside remote access.
 - [ ] **Enable and verify remote access.** Built and locally verified; the only blocker is a DNS
       decision. Quick tunnels DO NOT WORK here (measured twice, 404 at Cloudflare's edge without
       reaching the origin). Use a NAMED tunnel — `cloudflared` is already authenticated
@@ -67,7 +78,8 @@
 - [ ] FUTURE (owner wants): **single-file build**, no server. MEASURED viable for 4 of 5 upstreams;
       photos impossible because planespotters gates on User-Agent, a forbidden header (D-046).
       Owner accepts losing photos. Remaining work is inlining Cesium's runtime assets (~15–20 MB).
-- [ ] FUTURE: colour scheme chooser incl. light mode. Groundwork done (D-042); the real cost is a
-      second ramp in `DarkBathymetryProvider` and re-derived altitude-ramp lightness.
+- [x] ~~FUTURE: colour scheme chooser~~ — PROMOTED to the next work plan, see above. Groundwork done
+      (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
+      ramp, and re-derived altitude-ramp lightness.
 
 _Updated: 2026-07-25 — main_
