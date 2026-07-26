@@ -3,21 +3,27 @@
 _Mirrored from the shared handoff. Source of truth for a resumed session._
 
 ## Checklist
-- [ ] Rebase `worktree-agent-a359546ffb2f19480` onto `main` (4 conflicting files)
-- [ ] Renumber the branch's D-057 → **D-068**
+- [ ] Geocoding recon → `docs/data-sources.md` entry with a real verdict (endpoint, limit, terms, UA)
+- [ ] Decide proxied-vs-direct, and what the single-file build does instead
+- [ ] Build address entry into `HomeChooser`; ends at the existing `setHomeOverride`
+- [ ] Handle ambiguity explicitly — candidate list or refuse, never silently first-hit
+- [ ] New decision entry, including **why a geocoded name is allowed where D-068 forbids one**
+- [ ] Attribution component updated if the terms require it
+- [ ] Rebase the single-file branch onto `main` (4 conflicting files)
+- [ ] Renumber the branch's D-057 across **all five** files
 - [ ] Decide the duplicate-normalizer question (owner input)
-- [ ] Merge to `main`, run `bash scripts/test.sh` + `cd frontend && npx tsc --noEmit`
-- [ ] Regenerate `loran.html`, verify from `file://` on real hardware
-- [ ] `docker compose up --build -d` if anything frontend changed, and check the served asset hash
-- [ ] Decide `docs/summaries/` — gitignore or scrub `/home/neil`
+- [ ] Merge; `bash scripts/test.sh` + `cd frontend && npx tsc --noEmit`
+- [ ] Regenerate `loran.html`; verify from `file://` on real hardware
+- [ ] `docker compose up --build -d` and confirm the served asset hash changed
+- [ ] Decide `docs/summaries/` — gitignore or scrub
 - [ ] Sweep `adsb.voygent.ai` → `loran.voygent.app` in `docs/remote-access.md`
-- [ ] Update `README.md` / `CLAUDE.md` to match reality
-- [ ] **Push `main`** (25 commits)
+- [ ] Update `CLAUDE.md` and `README.md` to match reality
+- [ ] **Push `main`** (27 commits)
 - [ ] Delete 3 stale `voygent.ai` DNS records: `adsb`, `loran`, `loran.voygent.app` (malformed)
-- [ ] Make the tunnel survive a reboot — own systemd unit, **NOT** `cloudflared service install`
-- [ ] Judgement pass on a real display: themes, declutter priorities, boundary colours, route note
-- [ ] Judge FPS on a QUIET machine (24 FPS was a laptop; 4 FPS was the old bundle on a busy box)
-- [ ] Decide `LORAN_SESSION_SECRET` (Open Question 2 — the fix is worse than the problem)
+- [ ] Tunnel survives reboot — own systemd unit, **NOT** `cloudflared service install`
+- [ ] Judgement pass on a real display: themes, declutter priorities, boundaries, route note, Centre block
+- [ ] Judge FPS on a QUIET machine
+- [ ] Decide `LORAN_SESSION_SECRET` (the fix is worse than the problem)
 - [ ] Extend tests: `adsb.py` failover/envelope, `build_places.py`
 - [ ] Fix the HARNESS depth assertion in `verify_phase1.py` (8/9) — do NOT loosen it
 - [ ] Viewport-scoped fetch (Phase 1 debt — fixed radius, ignores the camera)
@@ -28,4 +34,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-single-file-merge-and-push.md; D-061..D-067 shipped, remote access LIVE at loran.voygent.app, 111 FE + 60 BE tests. NEXT: merge the single-file branch, clean up, push — 25 commits unpushed.)_
+_Updated: 2026-07-26 — main (handoff pause-2026-07-26-geocoding-merge-push.md; D-061..D-068 shipped, remote access LIVE at loran.voygent.app, 132 FE + 60 BE tests, persist v7. NEXT: geocoding feed (recon first), then the single-file merge, cleanup and push — 27 unpushed.)_
