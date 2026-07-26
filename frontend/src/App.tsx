@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import Globe from "./globe/Globe";
 import {
-  AltitudeLegend, Attribution, CursorReadout, LayerCluster, PlacePanel, SelectionPanel,
+  AltitudeLegend, Attribution, CursorReadout, PlacePanel, SelectionPanel,
   StatusBar, TrafficPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
+import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { useStore } from "./state/store";
 
 /** Viewport-scoped-ish polling. The radius is a preference (`radiusNm` in the store, D-055),
@@ -90,9 +91,11 @@ export default function App() {
       <Globe />
       {/* Chrome floats over the globe and never blocks it. */}
       <div className="absolute inset-0 pointer-events-none">
-        {/* Camera and Layers live on the LEFT with the other controls (owner's call). They used
-            to sit above the dossier and stole its height, which is why the photo fell below the
-            fold. The right column is now the dossier's alone.
+        {/* Camera lives on the LEFT with the other controls (owner's call). It used to sit above
+            the dossier and stole its height, which is why the photo fell below the fold. The
+            right column is now the dossier's alone. LAYERS moved out of this column entirely
+            into the PREFS overlay (D-056) - it is a panel someone visits, not one worth reading
+            at a glance, so it does not need a standing slot in the column's height budget.
 
             ONE column spanning the viewport, not two opposing stacks. This used to be a `top-3`
             stack growing down and a `bottom-34` stack growing up, neither aware of the other, so
@@ -110,7 +113,6 @@ export default function App() {
         >
           <TrafficPanel />
           <CameraCluster />
-          <LayerCluster />
           {/* Holds the legend and readout at the bottom, and collapses first when height is
               tight, so the controls above keep their natural size for as long as possible. */}
           <div className="flex-1" />
@@ -131,6 +133,7 @@ export default function App() {
       </div>
       <Attribution />
       <StatusBar />
+      <PreferencesPanel />
       {/* An honest locked state. A blank globe with no explanation is indistinguishable from a
           dead feed, and would send the visitor to the owner asking the wrong question. */}
       {denied && (

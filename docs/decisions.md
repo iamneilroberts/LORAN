@@ -1620,3 +1620,66 @@ instant between the old timeout firing once more and the new effect's first tick
 be running concurrently. Reading `useStore.getState().radiusNm` fresh at the top of each `poll()`
 tick - the same pattern the loop already used for `home` - means a new preset takes effect on the
 very next tick with no loop restart at all.
+
+---
+
+## D-056 — 2026-07-26 — LAYERS moves into a preferences overlay; air traffic auto-collapses on a timer, never on data
+
+Two owner-approved UI changes landed together: `LayerCluster` came out of the docked left column
+into a new `PreferencesPanel` overlay, and `TrafficPanel` now auto-collapses after a period of no
+hover.
+
+**Overlay, not a docked panel, and not a resize of the existing one.** The left column only just
+got a single shared height budget (D-054), and LAYERS is the tallest, most variable-height thing
+in it - the projection presets, small-fields toggle and density row are all conditional, so it is
+tallest exactly when the most is switched on. Shrinking it further wasn't on the table; the ask
+was to stop it costing column height at all. A **docked** panel, however it is sized, always
+reclaims some fixed slice of that budget whether anyone is looking at it or not - that is what
+"docked" means. Only an overlay can cost zero column height while closed, so it was the only shape
+that actually satisfies the request. `LayerCluster` itself is untouched and still exported from
+Panels.tsx; `PreferencesPanel.tsx` renders it rather than reimplementing its toggles, so there is
+exactly one copy of that logic to keep in sync with the store. Its wrapper dropped the fixed
+148px width and the `minHeight: 0` / `overflowY: auto` pair it needed to scroll inside the old
+column - the overlay now owns both the max height and the scrolling.
+
+**`prefsOpen` is deliberately NOT in the `partialize` allow-list.** That list is the store's one
+safety property (its own comment says so): only knobs a person deliberately *sets* belong there.
+Whether the overlay happened to be open at the moment the tab was closed is not a preference, it
+is transient UI state, and persisting it would mean the panel could pop open unprompted on the
+next visit - reading as a bug, not a memory. Same reasoning `authRequired` already uses. Because
+it never joins `partialize`, no persist version bump was needed either.
+
+**The traffic-panel collapse is TIME-based, never DATA-based, and that boundary is enforced by a
+pure function, not by convention.** `trafficCollapse.ts` exports `trafficPanelSections`, which
+takes `{ collapsed, filtering, hasContacts }` and returns which of the panel's sections should
+render. `hasContacts` feeds only the honest empty-state text; nothing in the function - and
+nothing in the `useEffect` timer that drives `collapsed` in `TrafficPanel` - reads `aircraft.length`
+or the operator-row count. A panel that tidied itself away because the contact list emptied out
+would make a dead feed look exactly like a clean, quiet UI, which is the same failure class ground
+rule 1 already forbids for invented data: a plausible-looking screen standing in for the truth.
+Collapsing on a plain 8-second no-hover timer, re-armed on every hover change, means the collapse
+state can never be explained by what the feed is doing, only by how long the mouse has been away -
+and that's exactly the property the "never collapses because of contact count" test in
+`trafficCollapse.test.ts` holds it to (it asserts `hasContacts: false` does not force a collapse).
+
+**The filter warning and the empty state both survive collapse - non-negotiable, per the owner.**
+`Filtered · N of M shown` already existed to stop a filter from hiding traffic silently (its
+comment predates this change); letting the collapse hide *that warning* would recreate the exact
+failure it exists to prevent, just one layer up - the globe under-reporting traffic with nothing
+on screen saying so. The empty state (`No contacts in range` / `Awaiting feed`) gets the same
+treatment for the mirror-image reason: a collapsed panel must never make "no data" read as "tidied
+away". Both are wired independently of `sections.controls`/`sections.seaTraffic` in the JSX, and
+the "filter warning visible whether collapsed or expanded" test is the one explicitly called out
+as most likely to regress - it was mutation-checked against a version that gated the warning on
+`!collapsed`, and failed exactly as expected.
+
+**250ms hover-to-expand delay.** Without it, the panel pops open every time the cursor sweeps
+toward an aircraft rendered on the left side of the globe - a routine mouse path, not an edge
+case, given the panel sits in the same left column the globe is under.
+
+**Judgment call left as literally specified rather than second-guessed:** `LayerCluster`'s wrapper
+kept its own `panel` class inside the overlay's `panel`, producing a (harmless) nested bracket-
+corner border rather than a single seamless one. The task scoped the wrapper's adjustment to
+exactly two things - drop the fixed width, drop the scroll pair - and stripping the `panel` class
+as well would have been restructuring beyond that scope on a guess about the visual result. Worth
+a look next time the owner has eyes on it; trivial to remove if it reads as clutter in practice.

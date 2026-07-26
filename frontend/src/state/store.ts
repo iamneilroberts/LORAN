@@ -227,6 +227,13 @@ interface State {
   fps: number;
   /** The API answered 401: a token is needed. Deliberately NOT persisted (D-041). */
   authRequired: boolean;
+  /**
+   * Preferences overlay open/closed (D-056). Deliberately NOT in `partialize` below, for the
+   * same reason `authRequired` is not: reopening to a panel the operator had open when they
+   * last closed the tab is not a preference, it is a stale UI state, and it would read as the
+   * overlay popping open unprompted on the next visit.
+   */
+  prefsOpen: boolean;
 
   setAircraft: (a: Aircraft[], source: string | null, degraded: boolean, errors: string[]) => void;
   setFetchFailed: (errors: string[]) => void;
@@ -248,6 +255,7 @@ interface State {
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
   setAuthRequired: (b: boolean) => void;
+  setPrefsOpen: (b: boolean) => void;
 }
 
 /*
@@ -352,6 +360,7 @@ export const useStore = create<State>()(persist((set) => ({
 
   fps: 0,
   authRequired: false,
+  prefsOpen: false,
 
   setAircraft: (aircraft, source, degraded, errors) =>
     set((s) => ({
@@ -387,6 +396,7 @@ export const useStore = create<State>()(persist((set) => ({
   setFps: (fps) => set({ fps }),
   setCameraPitch: (cameraPitchDeg) => set({ cameraPitchDeg }),
   setAuthRequired: (authRequired) => set({ authRequired }),
+  setPrefsOpen: (prefsOpen) => set({ prefsOpen }),
   setProjection: ({ minutes, spreadDeg }) => set((st) => ({
     projMinutes: minutes ?? st.projMinutes,
     projSpreadDeg: spreadDeg ?? st.projSpreadDeg,

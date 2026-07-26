@@ -12,6 +12,7 @@ import {
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
+import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
 
 const DASH = "—";
 
@@ -28,6 +29,24 @@ export function TrafficPanel() {
   const filter = useStore((s) => s.filter);
   const setFilter = useStore((s) => s.setFilter);
 
+  const [collapsed, setCollapsed] = useState(false);
+  const [hovering, setHovering] = useState(false);
+
+  // Auto-collapse (D-056): a single timer, re-armed on every hover change. Hovering true starts
+  // the (delayed) expand; hovering false re-arms the collapse. Each run's cleanup clears the
+  // timer THAT run started, so a quick enter/leave never leaves a stale timeout to fire late -
+  // and unmounting the panel clears it too, the same cleanup path. This is deliberately time-
+  // based only: nothing here reads `aircraft.length` or `rows`, because a panel that tidied
+  // itself away when the feed went quiet would make a dead feed look like a clean UI - the same
+  // failure mode ground rule 1 forbids for invented data. See trafficCollapse.ts.
+  useEffect(() => {
+    const id = window.setTimeout(
+      () => setCollapsed(!hovering),
+      hovering ? HOVER_EXPAND_DELAY_MS : COLLAPSE_AFTER_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [hovering]);
+
   const byOperator = new Map<string, number>();
   for (const a of aircraft) {
     const key = operatorKey(a);
@@ -38,6 +57,7 @@ export function TrafficPanel() {
   const milCount = aircraft.filter((a) => a.military).length;
   const shown = aircraft.filter((a) => matchesFilter(a, filter)).length;
   const filtering = filter.operator !== null || filter.militaryOnly;
+  const sections = trafficPanelSections({ collapsed, filtering, hasContacts: rows.length > 0 });
 
   // Clicking a row toggles it. Selecting a row clears the MIL-only switch and vice versa -
   // they are two ways of narrowing the same list, and combining them silently would make the
@@ -49,20 +69,26 @@ export function TrafficPanel() {
     });
 
   return (
-    <div className="panel w-[210px] pointer-events-auto">
+    <div
+      className="panel w-[210px] pointer-events-auto"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
       <div className="panel-h">
         <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Air traffic</span>
-        {/* Always the TRUE total. A filter narrows what is drawn, never what is reported. */}
+        {/* Always the TRUE total. A filter narrows what is drawn, never what is reported.
+            Stays visible collapsed or not - the whole point of the count is that it does not
+            depend on how much of the panel is open. */}
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{aircraft.length}</span>
       </div>
 
       <div className="py-1">
-        {rows.length === 0 && (
+        {sections.emptyState && (
           <div className="px-[10px] py-2 lbl">
             {source ? "No contacts in range" : "Awaiting feed"}
           </div>
         )}
-        {rows.map(([name, n]) => {
+        {sections.controls && rows.map(([name, n]) => {
           const isMil = name === "MILITARY";
           const active = filter.operator === name;
           const colour = isMil ? "var(--mil)" : "var(--cyan)";
@@ -94,53 +120,63 @@ export function TrafficPanel() {
         })}
       </div>
 
-      {/* MIL selector: independent of the operator rows, since military spans many operators. */}
-      <div className="px-[10px] pb-2 flex gap-1">
-        <button
-          onClick={() => setFilter({ militaryOnly: !filter.militaryOnly, operator: null })}
-          disabled={milCount === 0}
-          title={milCount === 0 ? "No military contacts in range" : "Show only military contacts"}
-          style={{
-            font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
-            padding: "4px 6px", borderRadius: 0, cursor: milCount ? "pointer" : "default",
-            border: `1px solid ${filter.militaryOnly ? "var(--mil)" : "var(--line-bright)"}`,
-            background: filter.militaryOnly ? "rgba(255,79,216,.12)" : "transparent",
-            color: milCount ? "var(--mil)" : "var(--off)", flex: 1,
-          }}
-        >
-          {filter.militaryOnly ? "▪" : "▫"} MIL {milCount}
-        </button>
-        {filtering && (
+      {/* MIL selector: independent of the operator rows, since military spans many operators.
+          Collapses with the rows above it - it is a control for narrowing what is drawn, not
+          information the operator needs while the panel is tucked away. */}
+      {sections.controls && (
+        <div className="px-[10px] pb-2 flex gap-1">
           <button
-            onClick={() => setFilter({ operator: null, militaryOnly: false })}
-            title="Clear the filter"
+            onClick={() => setFilter({ militaryOnly: !filter.militaryOnly, operator: null })}
+            disabled={milCount === 0}
+            title={milCount === 0 ? "No military contacts in range" : "Show only military contacts"}
             style={{
               font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
-              padding: "4px 6px", borderRadius: 0, cursor: "pointer",
-              border: "1px solid var(--line-bright)", background: "transparent",
-              color: "var(--cyan)",
+              padding: "4px 6px", borderRadius: 0, cursor: milCount ? "pointer" : "default",
+              border: `1px solid ${filter.militaryOnly ? "var(--mil)" : "var(--line-bright)"}`,
+              background: filter.militaryOnly ? "rgba(255,79,216,.12)" : "transparent",
+              color: milCount ? "var(--mil)" : "var(--off)", flex: 1,
             }}
           >
-            All
+            {filter.militaryOnly ? "▪" : "▫"} MIL {milCount}
           </button>
-        )}
-      </div>
-      {filtering && (
+          {filtering && (
+            <button
+              onClick={() => setFilter({ operator: null, militaryOnly: false })}
+              title="Clear the filter"
+              style={{
+                font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+                padding: "4px 6px", borderRadius: 0, cursor: "pointer",
+                border: "1px solid var(--line-bright)", background: "transparent",
+                color: "var(--cyan)",
+              }}
+            >
+              All
+            </button>
+          )}
+        </div>
+      )}
+      {sections.filterWarning && (
         // Say plainly that the globe is not showing everything. A filter that hides traffic
-        // without saying so is the same failure mode as inventing data.
+        // without saying so is the same failure mode as inventing data - which is also why this
+        // is NOT gated on `sections.controls`: it must stay visible through the collapse too,
+        // per the owner's explicit call (D-056).
         <div className="px-[10px] pb-2 lbl" style={{ fontSize: 9, color: "var(--amber)" }}>
           Filtered · {shown} of {aircraft.length} shown
         </div>
       )}
 
-      {/* Honest empty state. There is no AIS source: measured zero coverage at Mobile. */}
-      <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
-        <span className="lbl">▸ Sea traffic</span>
-        <span style={{ color: "var(--dim)" }}>{DASH}</span>
-      </div>
-      <div className="px-[10px] pb-2">
-        <div className="lbl" style={{ color: "var(--amber)", fontSize: 9 }}>No AIS source</div>
-      </div>
+      {sections.seaTraffic && (
+        <>
+          {/* Honest empty state. There is no AIS source: measured zero coverage at Mobile. */}
+          <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
+            <span className="lbl">▸ Sea traffic</span>
+            <span style={{ color: "var(--dim)" }}>{DASH}</span>
+          </div>
+          <div className="px-[10px] pb-2">
+            <div className="lbl" style={{ color: "var(--amber)", fontSize: 9 }}>No AIS source</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -223,13 +259,16 @@ export function LayerCluster() {
   const sliceNote = needsSel ?? (hasSlicePerspective(pitchDeg) ? undefined : "needs a tilted view");
 
   return (
-    /* The one panel in the left column that GROWS: the projection presets, the small-fields
-       toggle and the density row all appear conditionally, so its height depends on what is
-       switched on. It is therefore the one allowed to scroll when the column runs short.
-       `minHeight: 0` is load-bearing - a flex item defaults to `min-height: auto` and refuses
-       to shrink below its content, overflowing its container instead (same fix as the dossier). */
-    <div className="panel p-[5px] w-[148px] pointer-events-auto"
-         style={{ minHeight: 0, overflowY: "auto" }}>
+    /* D-056: this used to be the one panel in the left column that GROWS and therefore the one
+       allowed to scroll when the column ran short (`minHeight: 0` + `overflowY: auto`, same fix
+       as the dossier). It now renders inside PreferencesPanel's overlay instead, which owns both
+       the max height and the scrolling, so neither is needed here - and the fixed 148px width
+       existed only to hold a column slot that no longer applies.
+
+       Nor is it `.panel` any more: `.panel` draws bracket corners via ::before/::after, so
+       keeping it stacked a second set of corners inside the overlay's own. The overlay owns
+       the frame; this is a section within it. */
+    <div className="p-[5px]">
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
       {/* This is a FETCH-scope control, not a display one - it changes what is asked of the
           upstream feed, so it costs bandwidth and upstream courtesy, not just frame time
@@ -817,6 +856,7 @@ export function StatusBar() {
   const aircraft = useStore((s) => s.aircraft);
   const fps = useStore((s) => s.fps);
   const home = useStore((s) => s.home);
+  const setPrefsOpen = useStore((s) => s.setPrefsOpen);
 
   const mil = aircraft.filter((a) => a.military).length;
 
@@ -836,6 +876,20 @@ export function StatusBar() {
       <span className="chip">{aircraft.length} air</span>
       <span className="chip" style={{ color: mil ? "var(--mil)" : undefined }}>{mil} mil</span>
       <span className="chip">{home.label}</span>
+      {/* The bar sits outside App.tsx's `pointer-events-none` chrome wrapper already, but every
+          other clickable element in this file states `pointer-events: auto` explicitly rather
+          than relying on an ancestor not overriding it - same belt-and-braces here. */}
+      <button
+        onClick={() => setPrefsOpen(true)}
+        className="chip"
+        style={{
+          font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: "var(--cyan)", pointerEvents: "auto",
+        }}
+      >
+        Prefs
+      </button>
       <span className="ml-auto chip">{fps} FPS · WebGL2</span>
     </div>
   );
