@@ -2358,3 +2358,68 @@ rather than competing with the altitude ramp over dark water; whether `--off` co
 visible at all at close zoom or too dark to be worth the bytes; whether 8,000 km and 900 km are
 the right thinning thresholds or want tuning; and the FPS cost of 858 state rings drawing by
 default at continental zoom on a machine already sitting at 9–16 FPS.
+
+## D-064 — 2026-07-26 — CRASH: one shared Cesium Material across 858 polylines took the whole display down on first load
+
+**Date:** 2026-07-26
+
+D-063 shipped with a crash that halted the console on **every page load in development**. The
+owner hit it immediately: `DeveloperError: This object was destroyed, i.e., destroy() was called.`
+
+**The mechanism.** `boundariesLayer.ts` built ONE `Material` per layer and handed the same object
+to every polyline in the collection — an obvious-looking economy, 858 rings sharing one colour.
+But Cesium's `Polyline.prototype._destroy` is:
+
+```js
+Polyline.prototype._destroy = function() {
+  this._pickId = this._pickId && this._pickId.destroy();
+  this._material = this._material && this._material.destroy();
+  this._polylineCollection = void 0;
+};
+```
+
+**Every polyline destroys the material it holds.** The first polyline destroyed the shared
+Material; the second called `.destroy()` on an already-destroyed object and threw. Cesium's
+`destroy()` contract is to throw on a second call, so this failed loudly rather than silently —
+the only good thing about it.
+
+**Why it fired on the first load rather than on some rare unmount.** `main.tsx` renders under
+React 18 `<StrictMode>`, which deliberately runs **mount → cleanup → mount** in development to
+surface exactly this class of bug. So `Globe.tsx`'s cleanup ran within milliseconds of the first
+mount, called `boundaries.destroy()`, and tore the collections down while the page was still
+loading. Reloading could not help: the sequence is deterministic. StrictMode did its job.
+
+**Why nothing else in the codebase had hit this.** No other layer shares a `Material`.
+`placesLayer` uses `BillboardCollection` and `LabelCollection`, which have no material at all;
+`destinationLine` uses entities, which own their own. `boundariesLayer` is the first
+`PolylineCollection` in the project, so it is the first code to meet this contract.
+
+**The fix** is one line: `Material.fromType("Color", { color })` inside the loop rather than
+above it. A material per polyline is the Cesium-idiomatic arrangement — the collection still
+batches by shader, so the cost is objects, not draw calls.
+
+**`DistanceDisplayCondition` is still shared, and that is deliberate, not an oversight left
+behind.** It has no `destroy()`, Cesium's `Polyline` constructor stores the reference as given,
+and nothing here ever mutates it. The distinction between the two is now stated in the code, so
+the next reader neither "fixes" the safe one nor re-breaks the unsafe one.
+
+**Five tests in `boundariesLayer.test.ts`, and the important one is a genuine broken-arm check:**
+the shared-material version was reintroduced and confirmed to fail `gives every polyline its OWN
+material instance`, then reverted and confirmed green. The assertion is on **identity**
+(`new Set(materials).size === materials.length`), not equality — equality would pass on the
+broken version, since every shared reference is trivially equal to itself.
+
+Cesium cannot run in this box (no DOM, no WebGL, D-051), so the module is tested with `cesium`,
+`../styles/palette` and `../data/boundaries.json` all mocked, and a fake `PolylineCollection`
+that records what it was handed. That is enough to assert the invariant that actually caused the
+crash — and note that **"the layer builds without throwing" would have passed on the broken
+version too**, which is precisely why that was not the test written.
+
+**The lesson worth keeping.** Every previous entry in this file closes with "not yet judged on a
+real display", and three features shipped that way in a row. This one was not a judgement call
+about colour or density — it was a hard crash that any single load of the page would have caught.
+The gap is not that the tests were weak; `tsc`, 87 tests and a production build all passed. It is
+that **nothing in the loop ever loaded the page**, and a layer that constructs Cesium primitives
+cannot be signed off by a suite that cannot construct Cesium primitives. Until there is a smoke
+check that actually boots the app, new globe-layer code should be loaded in a browser once before
+it is called done.
