@@ -61,8 +61,9 @@ function addRings(
   scene: Scene, rings: Ring[], colour: Color, far: number,
 ): PolylineCollection {
   const collection = scene.primitives.add(new PolylineCollection()) as PolylineCollection;
+  // SAFE to share: DistanceDisplayCondition has no destroy(), and nothing here ever mutates it.
+  // Cesium's Polyline constructor stores the reference as given, so one object serves every ring.
   const distance = new DistanceDisplayCondition(0.0, far);
-  const material = Material.fromType("Color", { color: colour });
 
   for (const ring of rings) {
     // A ring needs at least two points to be a line. The build script already drops shorter
@@ -71,7 +72,15 @@ function addRings(
     collection.add({
       positions: Cartesian3.fromDegreesArray(ring),
       width: LINE_WIDTH,
-      material,
+      // NOT safe to share, and this cost an afternoon: Cesium's `Polyline.prototype._destroy`
+      // does `this._material = this._material && this._material.destroy()`, so EVERY polyline
+      // destroys the material it holds. One shared Material across 858 rings means the first
+      // polyline destroys it and the second throws "This object was destroyed, i.e., destroy()
+      // was called" - which under React 18 StrictMode fires on the very first page load, because
+      // StrictMode runs mount -> cleanup -> mount and the cleanup tears these collections down.
+      // A material per polyline is the Cesium-idiomatic arrangement; the collection still batches
+      // by shader, so this costs objects, not draw calls.
+      material: Material.fromType("Color", { color: colour }),
       distanceDisplayCondition: distance,
     });
   }
