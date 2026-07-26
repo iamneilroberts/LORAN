@@ -31,7 +31,7 @@
 
 ## Open — next up
 
-- [ ] **PUSH: 3 commits unpushed** (b4a887e, e307ae2, c23afb6) — origin/main still at 9441961
+- [x] ~~PUSH~~ — all six commits pushed; main == origin/main == 89206db
 - [ ] **Airport NAMES under airfield codes** — implemented, UNCOMMITTED, unjudged on a real
       display. Range far/4, trailing "Airport" trimmed. Adds up to 5,275 labels: watch FPS/overlap
 - [ ] **"Origin airport display is not working"** (owner 2026-07-26) — undiagnosed. Dossier ORIGIN
@@ -67,7 +67,11 @@
       on real hardware; this box is ~1 FPS software GL and cannot judge it.
 - [ ] **Re-measure FPS with the denser place set** on real hardware — 12,617 primitives now
       (was 10,802). Places already cost ~5 FPS before this change.
-- [ ] **Themes / colour chooser — PROMOTED out of FUTURE by the owner**, alongside remote access.
+- [ ] **Themes: DARK VARIANTS** (owner decided 2026-07-26; NOT light mode). STEP 1 IS FIXING
+      `scripts/check_palette.mjs` — its token regex is whole-file, not `:root`-scoped, so adding
+      any theme block makes `npm run build` FAIL. Reproduced. Then two real mutate-branch colour
+      bugs (`altitudePlanes.ts` ~:90-98 never reapplies `s.colour`; `projectionCone.ts` ~:221-227
+      never re-sets `label.fillColor`), then `placesLayer.recolour()`, `retheme()`, persist v3.
 - [ ] **Enable and verify remote access.** Built and locally verified; the only blocker is a DNS
       decision. Quick tunnels DO NOT WORK here (measured twice, 404 at Cloudflare's edge without
       reaching the origin). Use a NAMED tunnel — `cloudflared` is already authenticated
@@ -112,4 +116,4 @@
       (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
       ramp, and re-derived altitude-ramp lightness.
 
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-finish-board-vessels.md written; airport names uncommitted)_
+_Updated: 2026-07-26 — main (handoff pause-2026-07-26-themes-remote-access.md; themes=DARK VARIANTS decided; SDR ordered)_
