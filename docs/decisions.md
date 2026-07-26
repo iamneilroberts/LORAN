@@ -1145,3 +1145,46 @@ with an explanation of exactly that failure mode.
 Verified running: healthcheck reports healthy, `/` 200, `/api/aircraft` 401 without a token, 200
 with the owner token and 41 live contacts, photos returning, and the Vite dev server on 5173
 proxying to the container so the normal development URL keeps working against one API process.
+
+---
+
+### D-046 · Measured: four of five upstreams allow browser-direct calls. A single-file build is viable if photos go.
+
+**Date:** 2026-07-25
+
+Owner asked whether the whole thing could run as one self-contained HTML page, given it needs no
+API keys. Measured rather than guessed, with `Origin: https://example.com`:
+
+| Upstream | Status | `Access-Control-Allow-Origin` |
+|---|---|---|
+| airplanes.live | 200 | `*` |
+| adsbdb | 200 | `*` |
+| GEBCO WMS | 200 | `*` |
+| NEXRAD (Iowa State Mesonet) | 200 | `*` |
+| **planespotters** | **403** | `*` |
+
+GEBCO having `*` is the load-bearing surprise: `DarkBathymetryProvider` reads tile pixels on a
+canvas to remap depth, which taints without CORS. It has CORS, so the dark basemap works
+client-only.
+
+**planespotters cannot be fixed from a browser.** Their gate is on `User-Agent`, and `User-Agent`
+is a *forbidden header* in the fetch spec — script cannot set it, so the request goes out with the
+browser's own UA and returns 403. No proxy-free workaround exists. This also settles the open
+question from the previous handoff about their gate behaving inconsistently: it is the UA, and a
+browser simply cannot present a compliant one.
+
+**Owner's ruling:** losing photos is an acceptable price for a true "download one file and open
+it" build, even at a large total download.
+
+**Logged as FUTURE, not started.** What remains is a packaging problem rather than an API one:
+Cesium fetches `Workers/`, `Assets/` and `ThirdParty/` at runtime from `CESIUM_BASE_URL` —
+hundreds of files — so a genuine single file needs them inlined as data or blob URLs, landing
+somewhere around 15–20 MB of HTML. Also lost: the shared upstream cache (each open page polls for
+itself), the server-side track ring buffer, the Phase 5 recorder, and the token door.
+
+Note it is never *offline* either way: the app code would be self-contained, the data and map
+tiles still come from the network. "Self-contained" here means no server to run, not no network.
+
+A middle option worth remembering: keep a minimal backend for photos only and let the browser call
+everything else directly. That removes most of the server's reason to exist while retaining the
+one thing it is genuinely required for.

@@ -77,6 +77,12 @@
       run `scripts/serve.sh`, and start `cloudflared`. See `docs/remote-access.md`.
       Owner ruled: serve photos to both people, so set `LORAN_PHOTO_GUEST_ACCESS=true` in the
       LOCAL `.env` only — the repo default stays compliant.
+- [ ] FUTURE (owner wants this): **single-file build** — one self-contained HTML page, no server.
+      MEASURED viable for 4 of 5 upstreams (airplanes.live, adsbdb, GEBCO, NEXRAD all send
+      `ACAO: *`); **photos are impossible** because planespotters gates on User-Agent and script
+      cannot set it (403). Owner accepts losing photos, and accepts a large download. Remaining
+      work is packaging Cesium's runtime Workers/Assets inline (~15-20 MB). Also forfeits the
+      shared upstream cache, the track buffer and the Phase 5 recorder. See D-046.
 - [ ] FUTURE (parked, owner's call): colour scheme chooser incl. light mode. Groundwork is DONE
       (D-042 — one palette, `refreshPalette()` hook exists and is unused). Remaining real cost:
       a second ramp in `DarkBathymetryProvider` (its GEBCO remap is held in parity with
