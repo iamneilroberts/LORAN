@@ -21,6 +21,7 @@ import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { upsertCone } from "./projectionCone";
 import { clearDestination, upsertDestination } from "./destinationLine";
+import { checkFiledRoute } from "../data/routeCheck";
 import { palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
@@ -326,9 +327,20 @@ export default function Globe() {
       // adsbdb knows the route for some flights and not others, and knows coordinates for
       // fewer still. No coordinates means nothing is drawn - never a guessed airport.
       const dest = st.enrichment?.route?.destination ?? null;
+      // D-062: withdraw the line when the observed track grossly disagrees with the filed
+      // destination. Drawing a confident dashed arc to an airport the contact is demonstrably
+      // not flying to is the most emphatic way this display could assert something false - the
+      // panel says why in words, and the globe stops claiming it in geometry.
+      const routeVerdict = sel
+        ? checkFiledRoute({
+            lat: sel.lat, lon: sel.lon, trackDeg: sel.track_deg, altFt: sel.alt_ft,
+            destLat: dest?.lat ?? null, destLon: dest?.lon ?? null,
+          })
+        : null;
       const destOk = st.showDestination && sel?.alt_ft != null
         && st.enrichment?.hex?.toUpperCase() === sel?.hex?.toUpperCase()
-        && dest?.lat != null && dest?.lon != null;
+        && dest?.lat != null && dest?.lon != null
+        && routeVerdict?.state !== "disagrees";
       if (!destOk) {
         clearDestination(viewer);
       } else {

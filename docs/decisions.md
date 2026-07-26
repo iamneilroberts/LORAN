@@ -2163,3 +2163,102 @@ D-051), selection is canvas-picking with no DOM affordance to trigger headlessly
 not connect for a screenshot. Unjudged: whether four chips wrap acceptably at 344px, whether
 `--line-bright` chip borders read as clickable next to the filled TRACK buttons, and whether
 `External` is the right caption or noise.
+
+## D-062 — 2026-07-26 — FILED ROUTE: say it is a schedule lookup, cross-check it against the observed track, and measure how often it is wrong
+
+**Date:** 2026-07-26
+
+The owner observed DAL9975 presented as flying AMS → MSP while it was actually flying ATL → MSY,
+127.7 degrees off the direct bearing at 31,975 ft, and asked for both remedies rather than either:
+**relabel AND flag.** This entry does both, and — because the cross-check made it cheap to ask —
+measures how often adsbdb's route is actually wrong. The answer turned out to be the most
+important thing in this entry.
+
+**Why the route is a different KIND of claim from everything above it in the dossier.** Speed,
+altitude, heading and position are observations: the transponder said so a few seconds ago.
+adsbdb's route is a **schedule lookup keyed on the callsign** — a database answer to "where does
+a flight with this callsign usually go", not an observation of this airframe today. A recycled
+callsign, a return leg sharing a flight number, or a stale record yields another flight's route.
+Before this change that sat under a bare `Origin` / `Dest` label, in the same type, in the same
+column, with exactly the same authority as the live telemetry two rows above. The label now
+carries the caveat — `Filed orig` / `Filed dest`, with `Filed schedule · adsbdb · not live`
+beneath — because a caveat that only exists in a tooltip is a caveat the operator will not see.
+
+**The cross-check, and why the bar for it is deliberately high.** `checkFiledRoute()` compares the
+initial great-circle bearing to the filed destination against the observed ground track. A
+cruising aircraft legitimately tracks well off the direct bearing — airway doglegs, weather
+deviations, oceanic tracks, ATC vectors — so crying wolf on a correctly filed route would be
+worse than staying silent: the only thing that makes the flag worth having is that it can be
+trusted when it appears. Three guards, all of which earn their place:
+
+- **`CRUISE_FLOOR_FT` (18,000).** Class A airspace begins at FL180 in the US; above it a contact
+  is en route on an assigned routing rather than manoeuvring in a terminal area. Below it, a
+  departure turning onto course points anywhere at all, entirely correctly.
+- **`NEAR_DEST_NM` (60).** Inside this radius the contact is being vectored onto a downwind or
+  base leg and may be flying directly away from the field on purpose. The direct bearing stops
+  being a meaningful expectation, so the check is *withheld*, not failed.
+- **`DISAGREE_DEG` (90).** Not a "slightly off course" threshold and not meant to be one. At a
+  right angle there is no component of motion towards the filed field at all, which no routing,
+  wind correction or weather deviation explains.
+
+**`unchecked` is a third state, and it is never rendered as reassurance.** Missing coordinates, no
+observed track, below cruise or inside the terminal area all produce `unchecked` with a stated
+reason, distinct from `ok`. The panel shows a note **only** for a measured `disagrees` — a line
+saying nothing is wrong when nothing was actually tested is precisely the false confidence this
+whole change exists to remove.
+
+**The measurement, and it is worse than expected.** The real `checkFiledRoute` was run over live
+traffic within 250 nm of Mobile: **50 contacts, 24 with a filed destination, 21 checkable — and
+9 of those 21 disagreed. Roughly four in ten.** That rate was high enough to suspect the check
+rather than the data, so every flagged flight was re-tested with **completely independent
+geometry**: signed cross-track distance from the filed origin→destination great circle, which
+shares no code path with the bearing comparison. All nine were **193 to 634 nm off their filed
+route**:
+
+| Flight | Filed | Leg | Off route |
+|---|---|---|---|
+| DAL2823 | SLC → SEA | 598 nm | **634 nm** |
+| SWA440 | DAL → MCI | 401 nm | **522 nm** |
+| AAL2097 | ORD → PHX | 1249 nm | 604 nm |
+| AAL1288 | PVR → DFW | 855 nm | 429 nm |
+| AAY342 | MYR → SYR | 582 nm | 415 nm |
+| SWA1401 | PIT → MCO | 726 nm | 282 nm |
+| AAL1796 | EWR → DFW | 1190 nm | 265 nm |
+| DAL2730 | ATL → STL | 421 nm | 243 nm |
+| SWA165 | SAN → AUS | 1010 nm | 193 nm |
+
+DAL2823 and SWA440 are the clearest: each is further from its filed route than that route is
+long. **Zero false positives in the sample**, confirmed by maths independent of the check itself.
+Four contacts sharing a track of 104 degrees at FL350 were also checked directly against the feed
+before trusting any of this — they are four genuinely distinct aircraft in a conga line on the
+same eastbound airway across southern Mississippi, not a data-pairing bug in the probe.
+
+**What that measurement means for the display.** The amber note will appear often, because the
+underlying data really is wrong that often near this receiver. That is information, not noise,
+and it is the strongest possible argument for the relabel: a source that is wrong for ~40% of
+checkable contacts must not be presented in the same voice as the transponder. It also means
+`DISAGREE_DEG` should **not** be tuned down on the strength of this one sample — 90 degrees
+produced no false positives and there is no evidence inviting a more sensitive tripwire.
+
+**The globe withdraws the line, using the same verdict object as the panel.** `Globe.tsx` calls
+`checkFiledRoute` and adds `state !== "disagrees"` to the existing `destOk` condition, so the
+dashed arc (D-050) cannot claim in geometry what the panel is simultaneously disputing in words.
+No cache-key change was needed: the verdict is a pure function of position, track, altitude and
+destination coordinates, all of which were already in that key.
+
+**Eleven tests in `routeCheck.test.ts`, and one of them exists because mutation testing caught a
+hole in an earlier version of itself.** The first threshold test asserted relative to
+`DISAGREE_DEG` (`brg - (DISAGREE_DEG - 1)` etc.) — which slides with the constant and pins
+nothing: **tightening the threshold from 90 to 30 passed the entire suite.** It is now asserted
+absolutely: a 45- and 80-degree deviation must stay silent, 120 and 180 must flag, and
+`DISAGREE_DEG` is pinned to 90 outright. Mutations confirmed caught: altitude guard removed
+(departure test fails), terminal-area guard removed (arrival test fails), `angularDiffDeg`
+wraparound dropped (359-vs-001 reads as 358 rather than 2, which would flag every northbound
+contact), threshold moved in *either* direction, and `unchecked` reported as `ok`.
+
+**What the owner still has to judge on a real display.** Nothing here was seen rendered — the
+same constraint as D-061 (no DOM, no WebGL, selection is canvas-picking with no headless
+affordance). Unjudged: whether the three-line amber note is too heavy in a 344px panel given it
+will fire on roughly four contacts in ten, whether `Filed orig` / `Filed dest` read clearly
+enough at that size, and whether withdrawing the line silently — the panel explains it, the globe
+just stops drawing — is discoverable or merely confusing.

@@ -169,6 +169,10 @@ No key, no observed rate limit, `api_version 0.6.5`, uptime 550,661 s at probe t
 
 This covers the dossier's registration / type / operator / origin / destination fields completely. It also gives us lat/lon for origin and destination airports, which we could draw later if you want great-circle route lines — not in scope, just noting it's free if you ask.
 
+**MEASURED 2026-07-26 — the route lookup is wrong for roughly four contacts in ten, and must not be presented as observation (D-062).** `/v0/callsign/` is a *schedule* lookup: it answers "where does a flight with this callsign usually go", not "where is this airframe going today". Recycled callsigns, return legs sharing a flight number and stale records all yield another flight's route. Measured over live traffic within 250 nm of Mobile: **50 contacts, 24 carrying a filed destination, 21 checkable, 9 disagreeing with the observed ground track.** Each of the nine was then re-checked with independent geometry — signed cross-track distance from the filed origin→destination great circle — and all nine sat **193 to 634 nm off their filed route**; DAL2823 (filed SLC→SEA) and SWA440 (filed DAL→MCI) were each *further from their filed route than that route is long*. Zero false positives in the sample.
+
+Consequences, both already shipped: the dossier labels these rows `Filed orig` / `Filed dest` with a `Filed schedule · adsbdb · not live` caption rather than a bare `Origin` / `Dest`, and a gross disagreement is called out in amber while the dashed destination line is withdrawn. **The aircraft-by-hex endpoint is unaffected** — registration, type and operator are properties of the airframe and stay trustworthy. This caveat is specific to the callsign→route endpoint.
+
 ### 4.2 planespotters — USE, with a hard UA requirement
 
 **This one has a gotcha that will bite silently.** With a default User-Agent it returns **HTTP 403**:

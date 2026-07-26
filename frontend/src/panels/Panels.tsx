@@ -13,6 +13,7 @@ import {
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
 import { externalLinks } from "./externalLinks";
+import { checkFiledRoute } from "../data/routeCheck";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
 
 const DASH = "—";
@@ -801,6 +802,17 @@ export function SelectionPanel() {
     ? `Highest observed since this contact came into range (${peakMins} min ago). Not the airframe's limit.`
     : undefined;
 
+  // The same verdict Globe.tsx uses to decide whether to draw the dashed line, so the panel and
+  // the globe can never disagree about whether the filed route is trustworthy (D-062).
+  const routeVerdict = checkFiledRoute({
+    lat: a.lat,
+    lon: a.lon,
+    trackDeg: a.track_deg,
+    altFt: a.alt_ft,
+    destLat: enRoute?.destination?.lat ?? null,
+    destLon: enRoute?.destination?.lon ?? null,
+  });
+
   const co = aircraft.filter(
     (o) => o.hex !== a.hex && o.alt_ft !== null && a.alt_ft !== null &&
       Math.abs(o.alt_ft - a.alt_ft) <= sepFt,
@@ -856,16 +868,35 @@ export function SelectionPanel() {
               data rather than truncated data. Full value is in the hover title. */}
           <span style={{ fontSize: 12 }}>{operator ? operator.slice(0, 32) : pending}</span>
         </div>
+        {/* FILED, not observed. adsbdb looks the route up from the callsign against a schedule,
+            so a recycled or stale callsign yields another flight's route - and before D-062 this
+            sat under a bare "Origin"/"Dest" label, reading with exactly the same authority as the
+            live telemetry above it. The label carries the caveat now, not a tooltip. */}
         <div className={`row ${enRoute?.origin ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.origin)}>
-          <span>Origin</span>
+          <span>Filed orig</span>
           <span style={{ fontSize: 12 }}>{enRoute ? airportPlace(enRoute.origin) : pending}</span>
         </div>
         <div className={`row ${enRoute?.destination ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.destination)}>
-          <span>Dest</span>
+          <span>Filed dest</span>
           <span style={{ fontSize: 12 }}>{enRoute ? airportPlace(enRoute.destination) : pending}</span>
         </div>
+        {enRoute && (enRoute.origin || enRoute.destination) && (
+          <div className="px-[10px] pt-[2px] lbl" style={{ fontSize: 8, color: "var(--dim)" }}>
+            Filed schedule · adsbdb · not live
+          </div>
+        )}
+        {/* The cross-check. Only ever shown for a measured disagreement - "unchecked" is silent
+            here rather than reassuring, because a note saying nothing is wrong when nothing was
+            actually tested is the same false confidence this whole block exists to remove. */}
+        {routeVerdict.state === "disagrees" && (
+          <div className="px-[10px] pt-1 lbl" style={{ color: "var(--amber)", fontSize: 9 }}>
+            Track {Math.round(a.track_deg ?? 0)}° vs {Math.round(routeVerdict.bearingDeg ?? 0)}° to
+            filed dest — {Math.round(routeVerdict.offByDeg ?? 0)}° off at cruise.
+            Filed route looks stale; line withdrawn.
+          </div>
+        )}
         {/* "Could not ask" is a different claim from "not known". Say which one it is. */}
         {enrichFailed && (
           <div className="px-[10px] pt-1 lbl" style={{ color: "var(--amber)", fontSize: 9 }}>
