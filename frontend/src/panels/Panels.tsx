@@ -180,6 +180,7 @@ export function LayerCluster() {
   const showDropLines = useStore((s) => s.showDropLines);
   const showPlaces = useStore((s) => s.showPlaces);
   const showDestination = useStore((s) => s.showDestination);
+  const showSmallAirports = useStore((s) => s.showSmallAirports);
   const showRadar = useStore((s) => s.showRadar);
   const showProjection = useStore((s) => s.showProjection);
   const projMinutes = useStore((s) => s.projMinutes);
@@ -255,6 +256,13 @@ export function LayerCluster() {
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
+      {/* Small strips are OFF by default (D-052): 42,698 markers, and their data is a
+          separate 3.5 MB file that is only fetched once this is switched on. The note says so,
+          because a several-second first load would otherwise look like a broken toggle. */}
+      {showPlaces && (
+        <Item on={showSmallAirports} label="Small fields" k="showSmallAirports"
+              note={showSmallAirports ? "42,698 · loads on first use" : "off · +3.5 MB to enable"} />
+      )}
       {/* Density scales how far out each place stays drawn. It cannot add places that were
           never built into places.json, so the labels are ranges, not counts. */}
       {showPlaces && (

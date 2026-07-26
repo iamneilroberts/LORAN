@@ -60,9 +60,11 @@
       attempts all changed LIGHTNESS while staying in the water's blue-grey hue family — same
       attempt three times. NOTE: labels are built once at globe mount, so a full page reload is
       needed to see any label change.
-- [ ] **Small airports: include them?** The next density lever and a big one — **+42,698 rows**
-      worldwide (2,154 within 6° of Mobile), ~8× the airport rows, ~3 MB JSON. D-037's rationale
-      for excluding them still stands; reversing it is an owner call (D-049).
+- [x] **Small airports — off-by-default toggle, lazily fetched** (D-052). 42,698 rows in a
+      SEPARATE `public/places-small.json` (3.5 MB) so a default load never downloads them.
+      Verified: no fetch until enabled, one fetch on enable, none on re-toggle.
+- [ ] **Judge FPS with SMALL FIELDS on** — the scene then holds ~116,000 primitives. Unmeasured
+      on real hardware; this box is ~1 FPS software GL and cannot judge it.
 - [ ] **Re-measure FPS with the denser place set** on real hardware — 12,617 primitives now
       (was 10,802). Places already cost ~5 FPS before this change.
 - [ ] **Themes / colour chooser — PROMOTED out of FUTURE by the owner**, alongside remote access.

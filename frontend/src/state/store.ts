@@ -201,6 +201,11 @@ interface State {
   /** Dashed line to the FILED destination, when adsbdb gives us coordinates (D-050). */
   showDestination: boolean;
   /**
+   * Small-airport tier (D-052). OFF by default and deliberately so: it is ~42,700 extra
+   * markers, and its data is a separate 3.5 MB file fetched only when this first turns true.
+   */
+  showSmallAirports: boolean;
+  /**
    * How far out place markers stay drawn, as a multiplier on each row's built-in range.
    * 1 = the tuned default; higher pulls more of the shipped set into view (D-049).
    */
@@ -226,7 +231,7 @@ interface State {
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
-    | "showProjection" | "showDestination") => void;
+    | "showProjection" | "showDestination" | "showSmallAirports") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
   setFilter: (f: Partial<Filter>) => void;
@@ -285,6 +290,7 @@ export const useStore = create<State>()(persist((set) => ({
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
   showDestination: true,
+  showSmallAirports: false,
   placeDensity: 1,
   // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
   cameraPitchDeg: -32,
@@ -357,6 +363,7 @@ export const useStore = create<State>()(persist((set) => ({
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
     showDestination: s.showDestination,
+    showSmallAirports: s.showSmallAirports,
     placeDensity: s.placeDensity,
     datumRadiusNm: s.datumRadiusNm,
     separationFt: s.separationFt,

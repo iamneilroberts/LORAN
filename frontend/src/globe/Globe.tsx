@@ -237,7 +237,9 @@ export default function Globe() {
     let lastShowPlaces = s0.showPlaces;
     let lastShowRadar = s0.showRadar;
     let lastDensity = s0.placeDensity;
+    let lastSmall = s0.showSmallAirports;
     places.setDensity(lastDensity);
+    if (lastSmall) places.setSmallAirports(true);
     const unsubPlaces = useStore.subscribe((st) => {
       if (st.showPlaces !== lastShowPlaces) {
         lastShowPlaces = st.showPlaces;
@@ -246,6 +248,10 @@ export default function Globe() {
       if (st.placeDensity !== lastDensity) {
         lastDensity = st.placeDensity;
         places.setDensity(st.placeDensity);
+      }
+      if (st.showSmallAirports !== lastSmall) {
+        lastSmall = st.showSmallAirports;
+        places.setSmallAirports(st.showSmallAirports);
       }
       if (st.showRadar !== lastShowRadar) {
         lastShowRadar = st.showRadar;

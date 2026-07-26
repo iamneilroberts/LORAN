@@ -33,7 +33,8 @@ import type { PlaceInfo } from "../state/store";
 
 /**
  * [lat, lon, code, kind, name, municipality, region, country, elevation_ft, iata]
- * kind 0 large, 1 medium, 2 military. Generated, see build_places.py.
+ * kind 0 large, 1 medium, 2 military, 3 small. Generated, see build_places.py.
+ * Kind 3 lives in the separate, lazily fetched `places-small.json` (D-052).
  */
 type AirportRow = [
   number, number, string, number,
@@ -58,6 +59,8 @@ const KIND_MILITARY = 2;
 const FAR_LARGE = 2_500_000;
 const FAR_MILITARY = 900_000;
 const FAR_MEDIUM = 450_000;
+// Small strips are local context only: visible when you are effectively over the county.
+const FAR_SMALL = 120_000;
 
 /**
  * Cities thin by Natural Earth's scalerank, which is what the rank exists for.
@@ -127,6 +130,13 @@ export interface PlacesLayer {
   setShow: (on: boolean) => void;
   /** Scale every place's visible range. 1 is the built-in tuning (D-049). */
   setDensity: (mult: number) => void;
+  /**
+   * Show or hide the small-airport tier (D-052). Off by default; the first `true` fetches
+   * `places-small.json` (3.5 MB) and builds ~85,000 primitives, so it is deliberately async.
+   */
+  setSmallAirports: (on: boolean) => void;
+  /** What the small-airport tier is doing, so the UI can be honest about a slow first load. */
+  smallAirportState: () => "off" | "loading" | "ready" | "failed";
   /** The airfield under the cursor, or null. Marker AND label are both hit targets. */
   pick: (scene: Scene, pos: Cartesian2) => PlaceInfo | null;
   destroy: () => void;
@@ -284,6 +294,71 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
 
   let density = 1;
 
+  /* ---- small airports (D-052): off by default, fetched and built on first enable ---- */
+  //
+  // Their own collections, so showing/hiding is one `.show` flag rather than 85,000 property
+  // writes. They are NOT bundled - `places-small.json` is 3.5 MB and lives in public/, so a
+  // visitor who never turns this on never downloads it.
+  let smallBillboards: BillboardCollection | null = null;
+  let smallLabels: LabelCollection | null = null;
+  let smallState: "off" | "loading" | "ready" | "failed" = "off";
+  const smallRanged: typeof ranged = [];
+
+  async function buildSmall(): Promise<void> {
+    smallState = "loading";
+    let rows: AirportRow[];
+    try {
+      const r = await fetch("places-small.json");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      rows = (await r.json()).airports as AirportRow[];
+    } catch {
+      // An honest failure: the layer stays empty and reports it rather than silently
+      // showing nothing, which is indistinguishable from "no small airfields near you".
+      smallState = "failed";
+      return;
+    }
+
+    smallBillboards = scene.primitives.add(
+      new BillboardCollection({ scene }),
+    ) as BillboardCollection;
+    smallLabels = scene.primitives.add(new LabelCollection({ scene })) as LabelCollection;
+
+    // Deliberately dimmer and shorter-ranged than a medium field, and NO name label: 42,698
+    // of these already cost ~85,000 primitives, and the point of the tier is "there is a strip
+    // here", not "read me from across the state".
+    const smallCyan = palette().cyan;
+    const marker = squareUri(smallCyan, false);
+    for (const row of rows) {
+      const [lat, lon, code, , name, municipality, region, country, elevationFt, iata] = row;
+      const position = Cartesian3.fromDegrees(lon, lat, 0);
+      const ddc = new DistanceDisplayCondition(0, FAR_SMALL * density);
+      const info: PlaceInfo = {
+        ident: code, name, municipality, region, country, elevationFt, iata,
+        military: false, large: false, lat, lon,
+      };
+      const m = smallBillboards.add({
+        position, image: marker, width: 7, height: 7, distanceDisplayCondition: ddc,
+      });
+      const l = smallLabels.add({
+        position,
+        text: code,
+        font: "400 9px 'JetBrains Mono', ui-monospace, monospace",
+        style: LabelStyle.FILL_AND_OUTLINE,
+        fillColor: Color.fromCssColorString(smallCyan).withAlpha(0.62),
+        outlineColor: halo,
+        outlineWidth: 2,
+        horizontalOrigin: HorizontalOrigin.LEFT,
+        verticalOrigin: VerticalOrigin.CENTER,
+        pixelOffset: new Cartesian2(6, 0),
+        distanceDisplayCondition: ddc,
+      });
+      placeOf.set(m, info);
+      placeOf.set(l, info);
+      smallRanged.push({ prim: m, far: FAR_SMALL }, { prim: l, far: FAR_SMALL });
+    }
+    smallState = "ready";
+  }
+
   return {
     setShow: (on: boolean) => {
       billboards.show = on;
@@ -299,10 +374,25 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     setDensity: (mult: number) => {
       if (mult === density) return;
       density = mult;
-      for (const r of ranged) {
+      for (const r of [...ranged, ...smallRanged]) {
         r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, r.far * mult);
       }
     },
+    setSmallAirports: (on: boolean) => {
+      if (on && smallState === "off") {
+        // Fire and forget: the collections appear when the fetch lands. Nothing else in the
+        // layer depends on them existing.
+        void buildSmall().then(() => {
+          if (smallBillboards) smallBillboards.show = true;
+          if (smallLabels) smallLabels.show = true;
+        });
+        return;
+      }
+      if (smallBillboards) smallBillboards.show = on;
+      if (smallLabels) smallLabels.show = on;
+    },
+    smallAirportState: () => smallState,
+
     // Drilled for the same reason aircraft picks are (D-035): the frontmost primitive over an
     // airfield is often its own label, or another marker crowding it.
     pick: (s: Scene, pos: Cartesian2) => {

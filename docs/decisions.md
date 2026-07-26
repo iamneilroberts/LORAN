@@ -1450,3 +1450,52 @@ Not covered, and deliberately: anything needing a network, a GPU or a Cesium vie
 with `scripts/verify_phase1.py` against live traffic. Note also that the headless capture harness
 renders entity polylines non-deterministically at ~1 FPS on software GL (D-049) — it is not an
 oracle, and unit tests are the answer to that, not more screenshots.
+
+---
+
+## D-052 — Small airports behind an off-by-default toggle, in their own lazily-fetched file.
+
+**Date:** 2026-07-26
+
+Owner asked for small airports "as an option toggle, default off". The toggle is the easy half;
+where the data lives is the part worth recording.
+
+**They are NOT in `places.json`.** Adding 42,698 rows would take the bundled file from 687 KB to
+~4.2 MB, and every visitor would download it whether or not they ever switched the layer on — over
+a home tunnel, for a feature that is off by default. So `build_places.py` now writes a **second**
+file, `frontend/public/places-small.json` (3,515,829 bytes), which Vite copies through untouched
+and the frontend `fetch`es **the first time the toggle goes true**. Verified: on a default load the
+file is never requested; enabling it fetches once; toggling off again re-fetches nothing.
+
+This is the general principle for any future optional layer: **an off-by-default feature must not
+cost anything to the people who leave it off.**
+
+**D-037's reasoning is not overturned.** Large and medium airports remain the default because they
+are where the traffic ADS-B actually shows us operates. What changed is only that the display no
+longer decides for the operator.
+
+**What is still excluded, deliberately:** heliports (23,135), seaplane bases, balloonports, and
+`closed` fields. Nobody asked for them, and `closed` in particular would put markers on airfields
+that **no longer exist** — inventing a place rather than revealing one.
+
+**The military NAME heuristic (D-033) is deliberately NOT applied to the small tier.** It was
+calibrated against large/medium fields; running it across 42,700 small strips would assert military
+significance far beyond what it was ever measured on.
+
+Small fields are drawn dimmer, smaller, at a much shorter range (`FAR_SMALL = 120_000` m, vs
+450,000 for medium), and with **no name label** — the tier's job is "there is a strip here", not
+"read me from across the state".
+
+**Cost, measured, and it is not small:** with the layer on, the scene holds **~116,000 primitives**
+(12,617 place markers + 17,892 place labels + 85,396 small-airport markers and labels). The first
+enable also builds all of those synchronously. `smallAirportState()` exposes
+`off | loading | ready | failed` so the UI can be honest about a slow first load rather than
+looking like a dead toggle, and a failed fetch reports failure instead of rendering an empty layer
+that is indistinguishable from "no small airfields near you". **FPS with this on has not been
+measured on real hardware** and is the owner's call to judge.
+
+**Airport names under airfield codes** (same session, `072dc2f`) landed for the large/medium tier:
+the name sits below the code at a quarter of the code's range, because the code is the identifier
+you scan for at a distance and the name is what you want once you have found it. The trailing
+"Airport" is trimmed for width (4,292 of 5,275 carry it); the full name is still shown verbatim in
+the click-through panel (D-038).
