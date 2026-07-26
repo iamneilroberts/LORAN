@@ -89,10 +89,17 @@ def fetch(url: str, dest: Path, refresh: bool) -> Path:
 
 KIND_BY_TYPE = {"large_airport": KIND_LARGE, "medium_airport": KIND_MEDIUM}
 
-# Natural Earth scalerank: 0 = world city, 10 = minor. Anything above this is dropped (D-037).
-# Around Mobile this keeps Montgomery, Mobile, Pensacola, Biloxi, Selma, Gulfport and
-# Hattiesburg, and drops the Slidell / Crestview / Laurel tier that was filling in the gaps.
-MAX_CITY_SCALERANK = 7
+# Natural Earth scalerank: 0 = world city, 10 = minor.
+#
+# D-037 capped this at 7 to stop the Slidell / Crestview / Laurel tier filling in the gaps.
+# That was the wrong instrument: those cities are the landmarks that tell you WHERE a contact
+# is, and cutting them left large stretches of the map with nothing named on it (D-049). The
+# clutter that cap was aiming at is a ZOOM problem, and zoom thinning already solves it - every
+# city carries a DistanceDisplayCondition keyed on its rank, so a minor town appears only when
+# the camera is close enough for it to be worth naming.
+#
+# So: ship the full range and let range decide. Costs ~1,800 rows worldwide (~60 KB).
+MAX_CITY_SCALERANK = 10
 
 
 def build_airports(csv_path: Path) -> list[list]:

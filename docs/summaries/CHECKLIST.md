@@ -34,13 +34,24 @@
 - [x] Dossier squeeze fixed — Camera + Layers moved LEFT, dossier owns the right column (D-048)
 - [x] Map labels no longer the water's colour — new `--map-label` token (D-048)
 - [x] Origin/dest read as places: "San Jose SJC", "Denver DEN" (D-048)
-- [ ] **BUG: aircraft tracks do not display.** Backend RULED OUT (`/api/track` returns 254 points
-      over 1789 s; hex case is irrelevant — tested, do NOT "fix" the `toUpperCase`). The fault is
-      the `track::` polyline path in `Globe.tsx`.
+- [x] ~~BUG: aircraft tracks do not display~~ — **NOT A BUG** (D-049). The whole path was healthy;
+      `TRACK` was just buried below the photo in a long dossier. Owner confirmed it draws fine.
+      Caution recorded: the headless harness is ~1 FPS software GL and renders entity polylines
+      non-deterministically — sound for STATE, worthless for PIXELS.
+- [x] **Track loads on selection**, and re-reads every 5 s so it follows the contact instead of
+      stopping where it was read (D-049). `TRACK` is now a re-read / the way to undo `CLEAR`.
+- [x] **Map labels get a dark halo** — `FILL_AND_OUTLINE`, 2px `--bg` at 0.85. Recolouring alone
+      could not work: a label crosses land, water, relief and radar echo (D-049). Owner: "much
+      better".
+- [x] **Place-label density** — `MAX_CITY_SCALERANK` 7 → 10 (cities 5,527 → 7,342; places.json
+      631 → 687 KB) plus a DENSITY control (STD/MORE/MAX) that scales range, not membership.
 - [ ] **Dotted line to the known destination** — adsbdb already supplies destination lat/lon. Must
       read as the FILED destination, distinct from the projection envelope, absent when unknown.
-- [ ] **Place-label density toggle** — owner says the set is too thin. D-037 dropped the extra rows
-      at BUILD time, so `build_places.py` has to emit them before a runtime toggle can show them.
+- [ ] **Small airports: include them?** The next density lever and a big one — **+42,698 rows**
+      worldwide (2,154 within 6° of Mobile), ~8× the airport rows, ~3 MB JSON. D-037's rationale
+      for excluding them still stands; reversing it is an owner call (D-049).
+- [ ] **Re-measure FPS with the denser place set** on real hardware — 12,617 primitives now
+      (was 10,802). Places already cost ~5 FPS before this change.
 - [ ] **Themes / colour chooser — PROMOTED out of FUTURE by the owner**, alongside remote access.
 - [ ] **Enable and verify remote access.** Built and locally verified; the only blocker is a DNS
       decision. Quick tunnels DO NOT WORK here (measured twice, 404 at Cloudflare's edge without
@@ -82,4 +93,4 @@
       (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
       ramp, and re-derived altitude-ramp lightness.
 
-_Updated: 2026-07-25 — main_
+_Updated: 2026-07-25 — main (D-049: track auto-load + refresh, label halo, denser places)_

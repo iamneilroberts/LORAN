@@ -68,7 +68,11 @@ function cityFar(scalerank: number): number {
   if (scalerank <= 2) return 9_000_000;
   if (scalerank <= 4) return 3_000_000;
   if (scalerank <= 6) return 1_000_000;
-  return 400_000;
+  if (scalerank <= 7) return 400_000;
+  // Ranks 8-10 arrived with D-049. They are minor towns, so they name the map only when the
+  // camera is close enough that a minor town is the most useful thing to name.
+  if (scalerank <= 8) return 250_000;
+  return 150_000;
 }
 
 /* ---- marker glyphs: 3 airfield shapes and a city dot, so 4 data URIs in total ---- */
@@ -121,6 +125,8 @@ function airportStyles(): Record<number, AirportStyle> {
 
 export interface PlacesLayer {
   setShow: (on: boolean) => void;
+  /** Scale every place's visible range. 1 is the built-in tuning (D-049). */
+  setDensity: (mult: number) => void;
   /** The airfield under the cursor, or null. Marker AND label are both hit targets. */
   pick: (scene: Scene, pos: Cartesian2) => PlaceInfo | null;
   destroy: () => void;
@@ -143,8 +149,24 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
 
   const styles = airportStyles();
   // Map labels use --map-label, not --dim: dim is panel-chrome grey and vanished into water.
-  const { mapLabel: cityLabel, off: cityDot } = palette();
+  const { mapLabel: cityLabel, off: cityDot, bg } = palette();
   const cityMarker = dotUri(cityDot);
+
+  // Recolouring alone could not fix legibility, because the thing a map label sits on is not
+  // one colour: the same name crosses dark land, lit water, terrain relief and radar echo.
+  // A dark halo makes the text readable against all of them instead of tuning for one, and it
+  // is the standard cartographic answer rather than a decoration - no glow, no filled box.
+  const halo = Color.fromCssColorString(bg).withAlpha(0.85);
+
+  /**
+   * Every marker and label, with the range it is visible to at density 1.
+   *
+   * DENSITY rescales these rather than adding or removing primitives: the set that ships is
+   * fixed at build time, so the only honest thing a runtime control can do is decide how far
+   * out each row is worth drawing. Rebuilding the collections on every change would also cost
+   * a visible stall at ~21,000 primitives.
+   */
+  const ranged: { prim: { distanceDisplayCondition?: DistanceDisplayCondition }; far: number }[] = [];
 
   for (const row of airports) {
     const [lat, lon, code, kind, name, municipality, region, country, elevationFt, iata] = row;
@@ -183,13 +205,16 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       position,
       text: code,
       font: `500 ${style.font}px 'JetBrains Mono', ui-monospace, monospace`,
-      style: LabelStyle.FILL,
+      style: LabelStyle.FILL_AND_OUTLINE,
       fillColor: Color.fromCssColorString(style.label),
+      outlineColor: halo,
+      outlineWidth: 2,
       horizontalOrigin: HorizontalOrigin.LEFT,
       verticalOrigin: VerticalOrigin.CENTER,
       pixelOffset: new Cartesian2(Math.round(style.size / 2) + 3, 0),
       distanceDisplayCondition: ddc,
     });
+    ranged.push({ prim: marker, far }, { prim: label, far });
     // Both are hit targets: the code is a bigger, easier thing to hit than a 10px square.
     placeOf.set(marker, info);
     placeOf.set(label, info);
@@ -197,22 +222,25 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
 
   for (const [lat, lon, name, scalerank] of cities) {
     const position = Cartesian3.fromDegrees(lon, lat, 0);
-    const ddc = new DistanceDisplayCondition(0, cityFar(scalerank));
+    const far = cityFar(scalerank);
+    const ddc = new DistanceDisplayCondition(0, far);
 
-    billboards.add({
+    const cityDotPrim = billboards.add({
       position,
       image: cityMarker,
       width: 8,
       height: 8,
       distanceDisplayCondition: ddc,
     });
-    labels.add({
+    const cityLabelPrim = labels.add({
       position,
       // Uppercase at small sizes, per the project's visual direction.
       text: name.toUpperCase(),
       font: "400 10px 'JetBrains Mono', ui-monospace, monospace",
-      style: LabelStyle.FILL,
+      style: LabelStyle.FILL_AND_OUTLINE,
       fillColor: Color.fromCssColorString(cityLabel),
+      outlineColor: halo,
+      outlineWidth: 2,
       // City names go BELOW their dot, centred; airfield codes go to the RIGHT of their
       // square. A city and its airport sit within a few km of each other, so sharing an
       // anchor made pairs like KMGM/MONTGOMERY and KBIX/BILOXI overprint into mush.
@@ -221,12 +249,29 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       pixelOffset: new Cartesian2(0, 6),
       distanceDisplayCondition: ddc,
     });
+    ranged.push({ prim: cityDotPrim, far }, { prim: cityLabelPrim, far });
   }
+
+  let density = 1;
 
   return {
     setShow: (on: boolean) => {
       billboards.show = on;
       labels.show = on;
+    },
+    /**
+     * Scale how far out every place stays drawn. 1 is the built-in tuning; higher values pull
+     * more of the shipped set into view at any given camera height.
+     *
+     * This cannot invent places. If a row was never built into `places.json` no density will
+     * show it - which is why D-049 had to widen the BUILD before this control was worth having.
+     */
+    setDensity: (mult: number) => {
+      if (mult === density) return;
+      density = mult;
+      for (const r of ranged) {
+        r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, r.far * mult);
+      }
     },
     // Drilled for the same reason aircraft picks are (D-035): the frontmost primitive over an
     // airfield is often its own label, or another marker crowding it.

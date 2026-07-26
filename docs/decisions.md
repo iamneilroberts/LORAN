@@ -1276,3 +1276,67 @@ buried in a hover title. Origin and destination now read `San Jose SJC` / `Denve
 to the bare code when adsbdb has no place name, and to an em-dash when it knows nothing — never an
 invented city. `airportCode()` became dead when `airportPlace()` replaced it and was removed, since
 this change is what orphaned it.
+
+---
+
+## D-049 — Tracks were never broken; they were one-shot and hard to find. Denser place labels.
+
+**Date:** 2026-07-25
+
+**"Aircraft tracks do not display" was not a bug.** The previous session logged it as one and left
+a half-diagnosis behind. It is worth recording what it actually was, because the investigation
+cost real time and the wrong conclusion was already written down twice.
+
+Instrumenting the live app showed the whole path was healthy: the `track::` subscriber fired, the
+entity was created with 166 real positions, `isShowing: true`, cyan at the right width and alpha,
+and every point projected inside the viewport. The owner then confirmed on their own display that
+the track draws fine. The fault was **discoverability** — `TRACK` sits near the bottom of a long
+dossier, below the photo, and was simply not found.
+
+Two cautions this leaves behind. First, the previous session's "candidate causes worth ruling out"
+list did not include "it works" — the bug report was taken as given. Second, the headless capture
+harness on this box runs at **~1 FPS on software GL and renders entity polylines
+non-deterministically**: across identical runs, a width-6 line painted once and vanished the next.
+It is sound for reading STATE and worthless for judging PIXELS. Do not conclude "invisible" from a
+headless screenshot; that nearly produced a third wrong theory here.
+
+**The track now loads on selection** and `TRACK` becomes an explicit re-read (and the way to undo
+`CLEAR`). Selecting a contact is already the gesture that means "tell me about this one".
+
+**The track also has to keep up.** As shipped it was read once, so the line stopped where the
+contact was when it was read and the aircraft flew away from its own history — which reads as if
+it stopped there, exactly the plausible-looking wrong picture ground rule 1 exists to prevent. It
+now re-reads every 5 s while selected. The **backend ring buffer stays the single source**: we
+re-read it rather than appending live fixes client-side, so the drawn path and what `EXPORT`
+writes can never disagree. 5 s is the buffer's own `sample_s`, so asking faster could return
+nothing new. A failed refresh keeps the last good track — a feed hiccup is not evidence that the
+history already read was wrong. `CLEAR` is re-checked when a refresh lands, not only when it is
+sent, because a reply in flight would otherwise undo it.
+
+**Map labels get a dark halo, not another colour.** D-048 lifted city labels to `--map-label` and
+the owner reported the problem persisted. Recolouring could not fix it, because what a map label
+sits on is not one colour: the same name crosses dark land, lit shelf water, terrain relief and
+radar echo. Every label in the app was `LabelStyle.FILL`. Place labels are now
+`FILL_AND_OUTLINE` with a 2px `--bg` halo at 0.85 alpha — the standard cartographic answer, and
+instrumentation rather than decoration: no glow, no filled box, no new token, so the palette guard
+stays at 12 colours. Aircraft labels still use `FILL` and were left alone.
+
+**D-037's city cap was the wrong instrument, and is reversed.** It dropped everything above Natural
+Earth scalerank 7 at BUILD time to control clutter. But clutter is a ZOOM problem, and zoom
+thinning already solves it — every city carries a `DistanceDisplayCondition` keyed on its rank.
+Capping the build instead threw away the minor towns that tell an operator *where* a contact is,
+leaving wide stretches of map with nothing named. `MAX_CITY_SCALERANK` goes 7 → 10: cities
+**5,527 → 7,342**, `places.json` 631 KB → 687 KB. Ranks 8–10 are given short ranges (250 km, then
+150 km) so they name the map only when the camera is close enough for a minor town to be the most
+useful thing to name.
+
+**DENSITY (STD / MORE / MAX) scales range, not membership.** It multiplies every place's visible
+range by 1, 2 or 4, rescaling the existing primitives rather than rebuilding ~25,000 of them. It
+**cannot invent places**: a row not built into `places.json` can never appear, which is why the
+build had to widen first. Persisted per browser via the allow-list.
+
+**Small airports remain excluded, deliberately.** Adding them is the next available lever and it is
+a big one: **+42,698 rows worldwide** (2,154 within 6° of Mobile), roughly 8× the airport rows and
+~3 MB of JSON. D-037's reasoning for excluding them — large and medium airports are where the
+traffic ADS-B actually shows us operates — still stands, and overturning it is the owner's call,
+not a side effect of a density change.

@@ -198,6 +198,11 @@ interface State {
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
+  /**
+   * How far out place markers stay drawn, as a multiplier on each row's built-in range.
+   * 1 = the tuned default; higher pulls more of the shipped set into view (D-049).
+   */
+  placeDensity: number;
   datumRadiusNm: number;
   separationFt: number;
   /** Camera pitch in degrees, -90 = straight down. Drives slice suppression (D-034). */
@@ -221,6 +226,7 @@ interface State {
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
     | "showProjection") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
+  setPlaceDensity: (mult: number) => void;
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
@@ -276,6 +282,7 @@ export const useStore = create<State>()(persist((set) => ({
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
+  placeDensity: 1,
   // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
   cameraPitchDeg: -32,
   datumRadiusNm: 50,
@@ -322,6 +329,7 @@ export const useStore = create<State>()(persist((set) => ({
     projMinutes: minutes ?? st.projMinutes,
     projSpreadDeg: spreadDeg ?? st.projSpreadDeg,
   })),
+  setPlaceDensity: (placeDensity) => set({ placeDensity }),
 }), {
   name: "loran.prefs",
   // Bumped for D-047. Without the migration, a browser that already stored showDatum:true
@@ -345,6 +353,7 @@ export const useStore = create<State>()(persist((set) => ({
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
+    placeDensity: s.placeDensity,
     datumRadiusNm: s.datumRadiusNm,
     separationFt: s.separationFt,
     filter: s.filter,

@@ -184,6 +184,8 @@ export function LayerCluster() {
   const projMinutes = useStore((s) => s.projMinutes);
   const projSpreadDeg = useStore((s) => s.projSpreadDeg);
   const setProjection = useStore((s) => s.setProjection);
+  const placeDensity = useStore((s) => s.placeDensity);
+  const setPlaceDensity = useStore((s) => s.setPlaceDensity);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const toggle = useStore((s) => s.toggle);
@@ -248,6 +250,22 @@ export function LayerCluster() {
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />
+      {/* Density scales how far out each place stays drawn. It cannot add places that were
+          never built into places.json, so the labels are ranges, not counts. */}
+      {showPlaces && (
+        <div className="flex gap-[2px] mt-[3px]">
+          {([[1, "STD"], [2, "MORE"], [4, "MAX"]] as const).map(([m, lab]) => (
+            <button key={m} onClick={() => setPlaceDensity(m)}
+              title={`place labels drawn to ${m}× their normal range`}
+              style={{
+                font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+                background: "transparent", cursor: "pointer", padding: "2px 0",
+                border: "1px solid var(--line-bright)", borderRadius: 0,
+                color: placeDensity === m ? "var(--amber)" : "var(--off)",
+              }}>{lab}</button>
+          ))}
+        </div>
+      )}
       {/* The note is not decoration: it says the coverage is US-only and the frame is minutes
           old, so an empty layer reads as "no echo" or "outside coverage", never as broken. */}
       <Item on={showRadar} label="Weather radar" k="showRadar" note="NEXRAD · US · ~5 min old" />
@@ -416,6 +434,63 @@ function useEnrichment(hex: string | null, callsign: string | null) {
   }, [hex, callsign]);
 }
 
+/** Shared by the automatic load on selection and the explicit TRACK re-fetch. */
+function fetchTrack(hex: string, quiet = false): Promise<TrackResult | null> {
+  // A refresh is quiet: flipping the panel back to "…" every few seconds would make a track
+  // that is working look like one that keeps failing.
+  if (!quiet) useStore.getState().setTrack(null, true);
+  return fetch(`/api/track?hex=${hex.toUpperCase()}`)
+    .then((r) => (r.ok
+      ? (r.json() as Promise<TrackResult>)
+      : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .catch(() => null);
+}
+
+/**
+ * Load the selected contact's track, then keep it current.
+ *
+ * Selecting a contact loads the track: it is the reason most selections happen, and the TRACK
+ * button sits far enough down a long dossier to be missed. TRACK remains an explicit re-read
+ * and CLEAR still removes it - clearing does not re-run this, because the hex has not changed.
+ *
+ * The refresh matters as much as the auto-load. A track drawn once stops at the position the
+ * contact held when it was read, so as the aircraft flies on, the line is left behind and
+ * reads as though it stopped there - a plausible-looking wrong picture, which is exactly what
+ * ground rule 1 exists to prevent.
+ *
+ * The backend ring buffer stays the single source. Re-reading it keeps the drawn path
+ * identical to what EXPORT writes; appending live fixes client-side would quietly let the
+ * picture and the export disagree. 5 s is the buffer's own sample interval (`sample_s`), so
+ * asking faster could not return anything new.
+ */
+function useTrack(hex: string | null) {
+  useEffect(() => {
+    if (!hex) return;
+    let cancelled = false;
+
+    fetchTrack(hex).then((d) => { if (!cancelled) useStore.getState().setTrack(d, false); });
+
+    const id = window.setInterval(() => {
+      const st = useStore.getState();
+      // CLEAR sets the track to null, and that has to stick until the operator asks again.
+      // Reading the store rather than holding a flag means CLEAR needs no extra state.
+      if (!st.track || st.track.hex.toLowerCase() !== hex.toLowerCase()) return;
+      fetchTrack(hex, true).then((d) => {
+        // A failed refresh keeps the last good track. A feed hiccup is not evidence that the
+        // history we already read was wrong.
+        if (cancelled || !d) return;
+        // Re-check on the way back in, not just on the way out: CLEAR can land while this
+        // request is in flight, and applying the reply then would undo it.
+        const cur = useStore.getState().track;
+        if (!cur || cur.hex.toLowerCase() !== hex.toLowerCase()) return;
+        useStore.getState().setTrack(d, false);
+      });
+    }, 5000);
+
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [hex]);
+}
+
 /**
  * Fetch photo METADATA for the selected contact.
  *
@@ -509,12 +584,10 @@ function TrackBlock({ hex, label }: { hex: string; label: string }) {
   const pending = useStore((s) => s.trackPending);
   const mine = track && track.hex.toLowerCase() === hex.toLowerCase() ? track : null;
 
+  // The track now loads on selection, so this is a re-read rather than the only way in. It
+  // still earns its place: it is how CLEAR is undone.
   const load = () => {
-    useStore.getState().setTrack(null, true);
-    fetch(`/api/track?hex=${hex.toUpperCase()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d: TrackResult) => useStore.getState().setTrack(d, false))
-      .catch(() => useStore.getState().setTrack(null, false));
+    fetchTrack(hex).then((d) => useStore.getState().setTrack(d, false));
   };
 
   const btn = {
@@ -584,6 +657,9 @@ export function SelectionPanel() {
   // ordering violation.
   useEnrichment(a?.hex ?? null, a?.flight ?? null);
   usePhoto(a?.hex ?? null, a?.registration ?? en?.aircraft?.registration ?? null);
+  // Keyed on the SELECTED hex, not the feed object: a contact missing from one poll payload
+  // must not tear the track down and reload it.
+  useTrack(hex);
   if (!a) return null;
   const enAc = en?.aircraft ?? null;
   const enRoute = en?.route ?? null;

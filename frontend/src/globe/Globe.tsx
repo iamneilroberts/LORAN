@@ -235,10 +235,16 @@ export default function Globe() {
     /* --- places: static, so only ever shown or hidden --- */
     let lastShowPlaces = s0.showPlaces;
     let lastShowRadar = s0.showRadar;
+    let lastDensity = s0.placeDensity;
+    places.setDensity(lastDensity);
     const unsubPlaces = useStore.subscribe((st) => {
       if (st.showPlaces !== lastShowPlaces) {
         lastShowPlaces = st.showPlaces;
         places.setShow(st.showPlaces);
+      }
+      if (st.placeDensity !== lastDensity) {
+        lastDensity = st.placeDensity;
+        places.setDensity(st.placeDensity);
       }
       if (st.showRadar !== lastShowRadar) {
         lastShowRadar = st.showRadar;
