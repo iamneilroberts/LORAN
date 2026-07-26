@@ -1,0 +1,4 @@
+# Test-only dependencies. Deliberately NOT in requirements.txt: the Docker image installs
+# that file and has no reason to carry a test runner into production.
+-r requirements.txt
+pytest==9.0.2

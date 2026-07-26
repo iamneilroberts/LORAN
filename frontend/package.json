@@ -8,7 +8,9 @@
     "dev": "npm run cesium:assets && vite",
     "build": "npm run cesium:assets && npm run check:palette && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "check:palette": "node ../scripts/check_palette.mjs"
+    "check:palette": "node ../scripts/check_palette.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "cesium": "^1.124.0",
@@ -24,6 +26,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^2.1.9"
   }
 }

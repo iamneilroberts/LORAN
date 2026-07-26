@@ -71,10 +71,14 @@
 
 ## Open — engineering
 
-- [ ] **Unit tests. Still ZERO.** `coneGeometry()` (D-047) was written pure specifically to be one
-      of the first, alongside `normalize_aircraft`, `normalize_route`, `normalize_photo`,
-      `altitudeColour`, `trackToGeoJSON` and the track ring buffer. Needs a framework decision:
-      neither vitest nor pytest is in the CLAUDE.md stack, so rule 2 says ask first.
+- [x] **Unit tests — vitest + pytest, 69 of them** (D-051). 33 frontend + 36 backend, all
+      mutation-checked (broken the source, confirmed the right test catches it). `bash
+      scripts/test.sh`. Found a real latitude-dependent NaN bug in `levelArc()` an hour after it
+      shipped. Covers coneGeometry, levelArc, altitudeColour, trackToGeoJSON, normalize (adsb),
+      normalize_route, normalize_photo, TrackStore.
+- [ ] Extend coverage: `auth.py` HMAC cookie, `adsb.py` failover/envelope handling
+      (`{"ac":[]}` vs `{"aircraft":[]}`), `build_places.py` filters. None are pure, so they need
+      fixtures or a fake clock first.
 - [ ] Viewport-scoped fetch — still a fixed 120 nm around home, ignores the camera (Phase 1 debt)
 - [ ] Add OurAirports / Natural Earth / NEXRAD to `docs/data-sources.md` in full
 - [ ] Residual label overlap where two airfields and a city coincide (Maxwell / Montgomery)
@@ -99,4 +103,4 @@
       (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
       ramp, and re-derived altitude-ramp lightness.
 
-_Updated: 2026-07-25 — main (D-049 track/labels/density; D-050 destination line + near-white labels)_
+_Updated: 2026-07-26 — main (D-051 vitest+pytest, 69 tests; D-050 destination line; D-049 track/labels/density)_

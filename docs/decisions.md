@@ -1398,3 +1398,55 @@ airport. Verified live on FFT1257 → KLAS: the level run held 12,367 m end to e
 The destination inputs had to enter the render subscriber's key. The enrichment reply lands well
 after the selection does, so without it the line would never appear for a contact whose route
 arrives a moment later — which is all of them.
+
+---
+
+## D-051 — vitest + pytest. 69 unit tests, and the first one found a real bug.
+
+**Date:** 2026-07-26
+
+Owner approved both frameworks, satisfying ground rule 2. This was the project's largest
+engineering gap: every check was end to end against live traffic, which is honest but goes red at
+3 a.m., on a feed hiccup, or when no military contact happens to be in range — all for reasons
+unrelated to the code.
+
+**33 frontend (vitest) + 36 backend (pytest).** `bash scripts/test.sh` runs both. pytest lives in
+`requirements-dev.txt`, deliberately not `requirements.txt`, so the Docker image does not carry a
+test runner into production.
+
+**Every test was mutation-checked.** A passing test proves nothing until it has been seen to fail,
+so each suite was run against deliberately broken source and confirmed to catch it by the right
+test. Frontend: dropping the never-below-ground clamp, ignoring vertical rate, letting a negative
+ground speed reverse the cone, doubling the envelope half-width. Backend: treating `alt_baro`
+`"ground"` as an ordinary value, reading `dbFlags` as equality instead of a bitfield, preferring
+barometric over geometric altitude, and — the two that matter most — reporting the configured
+window as the span, and never reporting truncation. Those last two are the **D-016 lie** stated as
+code, and they are exactly the failure this suite exists to catch: a track that quietly claims
+coverage it never had looks identical to a correct one.
+
+**`levelArc()` had a real bug, one hour old, and the test found it.** The degenerate-case guard
+for "origin and destination are the same airport" was `δ === 0`. For two identical points the dot
+product lands a hair under 1.0 in floating point, so `acos` returns a small non-zero angle and the
+guard never fires — leaving a division by a near-zero `sin(δ)` that becomes `NaN` once it
+underflows. Measured: **1.49e-8 rad (~9.5 cm) at lat 30.69, but exactly 0 at lat 0, 45, 60.5 and
+−33.9.** The fault was **latitude-dependent**, so in production it would have fired intermittently,
+on some airports and not others, and been miserable to diagnose. Now guarded by a distance-shaped
+tolerance (`1e-6` rad ≈ 6.4 m — below that, two airports are the same airport), written
+`!(δ > TOL)` so a `NaN` takes the branch too.
+
+**One test was wrong and the code was right**, which is worth recording because the temptation is
+always to "fix" the code. `test_a_parked_contact_does_not_evict_its_own_history` parked a contact
+for `MAX_POINTS * 2` samples and expected the earlier fixes to survive. They did not — because
+3,610 s exceeds the 1,800 s window, so they had aged out correctly. `MAX_POINTS` is sized to cover
+exactly `TRACK_WINDOW_S`, so a parked run long enough to overflow the deque has necessarily also
+left the window. The test now asserts the property that actually matters: 200 stationary samples
+cost **one** point, not two hundred.
+
+Tests are NOT wired into `npm run build`. The palette guard is (D-042) because colour drift is
+silent and instant; a test suite is neither, and the Docker build has no dev dependencies. Run
+`scripts/test.sh`, or `npm test` / `pytest` per side.
+
+Not covered, and deliberately: anything needing a network, a GPU or a Cesium viewer. Those stay
+with `scripts/verify_phase1.py` against live traffic. Note also that the headless capture harness
+renders entity polylines non-deterministically at ~1 FPS on software GL (D-049) — it is not an
+oracle, and unit tests are the answer to that, not more screenshots.

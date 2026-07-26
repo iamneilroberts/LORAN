@@ -74,7 +74,14 @@ export function levelArc(
     Math.min(1, Math.max(-1, sinφ1 * sinφ2 + cosφ1 * cosφ2 * Math.cos(dλ))),
   );
   const out: Cartesian3[] = [];
-  if (δ === 0) return [Cartesian3.fromDegrees(lon1, lat1, heightM)];
+  // Tolerance, not equality, and the tolerance is a DISTANCE. For two identical points the dot
+  // product lands a hair under 1.0 in floating point, so acos returns a small non-zero angle and
+  // an `=== 0` guard never fires - leaving a division by a near-zero sin(δ) that degenerates to
+  // NaN once it underflows. Measured: 1.49e-8 rad (~9.5 cm) at lat 30.69, but exactly 0 at lat
+  // 0/45/60.5/-33.9, so the fault is LATITUDE-DEPENDENT and would have surfaced intermittently.
+  // 1e-6 rad is ~6.4 m on the ellipsoid: below that, two airports are the same airport.
+  // Written `!(δ > TOL)` so a NaN δ takes this branch too rather than falling through.
+  if (!(δ > 1e-6)) return [Cartesian3.fromDegrees(lon1, lat1, heightM)];
 
   const sinδ = Math.sin(δ);
   for (let i = 0; i <= steps; i++) {
