@@ -198,6 +198,8 @@ interface State {
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
+  /** Dashed line to the FILED destination, when adsbdb gives us coordinates (D-050). */
+  showDestination: boolean;
   /**
    * How far out place markers stay drawn, as a multiplier on each row's built-in range.
    * 1 = the tuned default; higher pulls more of the shipped set into view (D-049).
@@ -224,7 +226,7 @@ interface State {
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
-    | "showProjection") => void;
+    | "showProjection" | "showDestination") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
   setFilter: (f: Partial<Filter>) => void;
@@ -282,6 +284,7 @@ export const useStore = create<State>()(persist((set) => ({
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
+  showDestination: true,
   placeDensity: 1,
   // Matches the opening camera in Globe.tsx, so the slice is not briefly suppressed on load.
   cameraPitchDeg: -32,
@@ -353,6 +356,7 @@ export const useStore = create<State>()(persist((set) => ({
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
+    showDestination: s.showDestination,
     placeDensity: s.placeDensity,
     datumRadiusNm: s.datumRadiusNm,
     separationFt: s.separationFt,

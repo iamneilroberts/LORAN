@@ -36,10 +36,13 @@
   --icon-stroke-mil: #3d0033;  /* outline under a magenta military icon */
   --icon-stroke-alert: #3a2600; /* outline under an amber co-altitude icon */
   --icon-selected: #ffffff;    /* the selected contact: brightest thing on the display */
-  /* City labels sat on --dim (#5a6b7a), which is nearly the colour of the shelf water they are
-     drawn over - unreadable by accident rather than by design. Map labels get their own token,
-     lifted clear of both the water and the land ramp. */
-  --map-label: #9db2c4;
+  /* City labels sat on --dim (#5a6b7a), then on #9db2c4 (D-048). Both were reported as "the
+     same colour as the water", because both were BLUE-GREY - the water's own hue family, just
+     at a different lightness. Lightness alone was never going to fix it: the label has to leave
+     the family. Near-white is the aeronautical-chart answer and cannot be mistaken for sea,
+     land or radar echo, and it stays clear of the cyan/magenta that D-039 reserved for airfield
+     codes so a city can still never read as an airfield. Paired with a --bg halo (D-049). */
+  --map-label: #e9edf0;
 
   --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 

@@ -1340,3 +1340,61 @@ a big one: **+42,698 rows worldwide** (2,154 within 6° of Mobile), roughly 8× 
 ~3 MB of JSON. D-037's reasoning for excluding them — large and medium airports are where the
 traffic ADS-B actually shows us operates — still stands, and overturning it is the owner's call,
 not a side effect of a density change.
+
+---
+
+## D-050 — Dashed line to the FILED destination. Map labels leave the water's hue family.
+
+**Date:** 2026-07-25
+
+**Map labels are near-white now, and the reason the last two attempts failed is the point.**
+D-032 used `--dim` (`#5a6b7a`). D-048 called that a mistake and moved to `--map-label`
+(`#9db2c4`). D-049 added a dark halo. The owner reported the same fault after every one of them:
+*"text the same color as the ocean."* All three fixes changed **lightness while staying inside the
+water's own hue family** — blue-grey text on blue-grey sea. Lightness was never the variable that
+mattered. `--map-label` is now `#e9edf0`, effectively white: it cannot be mistaken for sea, land
+or radar echo, it is what aeronautical charts use for place names, and it stays clear of the
+cyan/magenta D-039 reserved for airfield codes, so a city still cannot read as an airfield. The
+halo stays — it is what keeps the label readable over a bright radar cell.
+
+Worth recording for whoever fixes the next legibility complaint: **changing a colour's lightness
+three times is not three attempts, it is the same attempt three times.**
+
+Note for testing this class of change: `placesLayer` builds its ~12,600 labels **once**, when the
+globe mounts. Vite HMR reloads the module without rebuilding them, so a label change does not
+appear until a full page reload — which can look exactly like "the fix did not work".
+
+**The destination line is dashed, level, and says FILED.** adsbdb already carried `lat`/`lon` for
+both ends of the route; we were drawing neither.
+
+It must not look like the projection envelope, and the difference is not cosmetic. The envelope is
+a **kinematic what-if we compute** — where the contact reaches if it holds this speed and track
+(D-047). The destination is a **fact reported about the flight plan**, which the aircraft is under
+no obligation to honour. So the envelope stays solid amber (amber is the colour of instruments we
+derive) and the destination is dashed cyan at 0.55 alpha (cyan is reported civil data), dimmer
+than the solid cyan track because "where it has been" is a stronger claim than "where it says it
+is going". The label reads `FILED KLAS`, not `KLAS`, so the operator never has to remember which
+line is which.
+
+**It is drawn as a level run plus a plumb drop, and that shape is the honest part.** The obvious
+implementation — one straight line from the aircraft down to the runway — would render a **descent
+profile we have not computed and have no source for**, exactly the plausible-looking invention
+ground rule 1 forbids. Instead: a great-circle run held at the contact's current altitude, ending
+above the airfield, then a vertical plumb line down to the ground. That claims only what we know —
+this bearing, this distance, and the destination is on the ground beneath that point. The plumb
+line reuses the idiom DROP LINE already established, so it reads as "the ground is below here"
+rather than as a flight path.
+
+`levelArc()` interpolates the great circle itself rather than handing Cesium two points and
+`ArcType.GEODESIC`, because Cesium arcs across the *surface*: the intermediate points have to carry
+the aircraft's altitude or a long leg sags through the terrain. It is pure and exported, so it is
+another candidate for the first unit test alongside `coneGeometry()`.
+
+**No coordinates means no line.** adsbdb knows the route for some flights, and coordinates for
+fewer; when it does not, nothing is drawn and the dossier's em-dash stands. Never a guessed
+airport. Verified live on FFT1257 → KLAS: the level run held 12,367 m end to end against a
+40,575 ft contact, the plumb dropped 12,367 m → 0, and the toggle removed all three entities.
+
+The destination inputs had to enter the render subscriber's key. The enrichment reply lands well
+after the selection does, so without it the line would never appear for a contact whose route
+arrives a moment later — which is all of them.

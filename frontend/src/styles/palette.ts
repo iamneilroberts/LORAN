@@ -33,7 +33,7 @@ const FALLBACK: Record<string, string> = {
   "--icon-stroke-mil": "#3d0033",
   "--icon-stroke-alert": "#3a2600",
   "--icon-selected": "#ffffff",
-  "--map-label": "#9db2c4",
+  "--map-label": "#e9edf0",
 };
 
 export interface Palette {

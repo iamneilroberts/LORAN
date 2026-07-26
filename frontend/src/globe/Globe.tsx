@@ -20,6 +20,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { upsertCone } from "./projectionCone";
+import { clearDestination, upsertDestination } from "./destinationLine";
 import { palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
@@ -274,6 +275,12 @@ export default function Globe() {
         sel?.gs_kt == null ? "" : Math.round(sel.gs_kt / 5),
         Math.round((sel?.geom_rate_fpm ?? sel?.baro_rate_fpm ?? 0) / 100),
         sel ? `${sel.lat.toFixed(2)},${sel.lon.toFixed(2)}` : "",
+        // The destination line depends on the enrichment reply, which lands well after the
+        // selection does. Without it in the key the line would never appear for a contact
+        // whose route arrives a moment later - which is all of them.
+        st.showDestination,
+        st.enrichment?.route?.destination?.lat ?? "",
+        st.enrichment?.route?.destination?.lon ?? "",
       ].join("|");
       if (key === lastKey) return;
       lastKey = key;
@@ -305,6 +312,26 @@ export default function Globe() {
           // Solid, not grid: a dense wireframe at a shallow viewing angle moires into
           // noise and stops reading as a surface, which is its only job.
           fill: "solid",
+        });
+      }
+
+      /* --- dashed line to the FILED destination (D-050) --- */
+      // adsbdb knows the route for some flights and not others, and knows coordinates for
+      // fewer still. No coordinates means nothing is drawn - never a guessed airport.
+      const dest = st.enrichment?.route?.destination ?? null;
+      const destOk = st.showDestination && sel?.alt_ft != null
+        && st.enrichment?.hex?.toUpperCase() === sel?.hex?.toUpperCase()
+        && dest?.lat != null && dest?.lon != null;
+      if (!destOk) {
+        clearDestination(viewer);
+      } else {
+        upsertDestination(viewer, {
+          lat: sel.lat,
+          lon: sel.lon,
+          altFt: sel.alt_ft as number,
+          destLat: dest.lat as number,
+          destLon: dest.lon as number,
+          code: dest.icao ?? dest.iata ?? "—",
         });
       }
 

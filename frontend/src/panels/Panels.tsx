@@ -179,6 +179,7 @@ export function LayerCluster() {
   const showDatum = useStore((s) => s.showDatum);
   const showDropLines = useStore((s) => s.showDropLines);
   const showPlaces = useStore((s) => s.showPlaces);
+  const showDestination = useStore((s) => s.showDestination);
   const showRadar = useStore((s) => s.showRadar);
   const showProjection = useStore((s) => s.showProjection);
   const projMinutes = useStore((s) => s.projMinutes);
@@ -247,6 +248,10 @@ export function LayerCluster() {
           ))}
         </div>
       )}
+      {/* Filed intent, not a prediction - the note says so, because a dashed line to an
+          airport is otherwise easy to read as "it will be there" (D-050). */}
+      <Item on={showDestination} label="Destination" k="showDestination"
+            note={selected ? "filed route · dashed" : "needs a selected contact"} />
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />

@@ -45,8 +45,14 @@
       better".
 - [x] **Place-label density** — `MAX_CITY_SCALERANK` 7 → 10 (cities 5,527 → 7,342; places.json
       631 → 687 KB) plus a DENSITY control (STD/MORE/MAX) that scales range, not membership.
-- [ ] **Dotted line to the known destination** — adsbdb already supplies destination lat/lon. Must
-      read as the FILED destination, distinct from the projection envelope, absent when unknown.
+- [x] **Dashed line to the FILED destination** (D-050) — dashed cyan @0.55 vs the solid amber
+      envelope; labelled `FILED <code>`; a LEVEL run + plumb drop, never a straight line to the
+      runway (that would draw a descent profile we have not computed). Nothing drawn when adsbdb
+      has no coordinates. Verified live: FFT1257 -> KLAS.
+- [x] **Map labels near-white** (`--map-label` #9db2c4 -> #e9edf0, D-050). The three previous
+      attempts all changed LIGHTNESS while staying in the water's blue-grey hue family — same
+      attempt three times. NOTE: labels are built once at globe mount, so a full page reload is
+      needed to see any label change.
 - [ ] **Small airports: include them?** The next density lever and a big one — **+42,698 rows**
       worldwide (2,154 within 6° of Mobile), ~8× the airport rows, ~3 MB JSON. D-037's rationale
       for excluding them still stands; reversing it is an owner call (D-049).
@@ -93,4 +99,4 @@
       (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
       ramp, and re-derived altitude-ramp lightness.
 
-_Updated: 2026-07-25 — main (D-049: track auto-load + refresh, label halo, denser places)_
+_Updated: 2026-07-25 — main (D-049 track/labels/density; D-050 destination line + near-white labels)_
