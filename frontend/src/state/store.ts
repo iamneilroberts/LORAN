@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { coordLabel, effectiveHome, isHomePos, type HomePos } from "./homeInput";
 
 export interface Aircraft {
   hex: string | null;
@@ -172,7 +173,12 @@ interface State {
   feeds: FeedStatus[];
   peaks: Record<string, Peak>;   // by hex, observed only
 
-  home: { lat: number; lon: number; label: string };
+  /** The home actually in force: the override if there is one, else the server's (D-068). */
+  home: HomePos;
+  /** What `/api/config` said. Kept so "reset to configured" is possible. Not persisted. */
+  serverHome: HomePos;
+  /** Per-browser override. PERSISTED — this is the one thing a remote viewer can set. */
+  homeOverride: HomePos | null;
   cursor: { lat: number; lon: number } | null;
   depthM: number | null;
   depthPending: boolean;
@@ -251,7 +257,9 @@ interface State {
   setAircraft: (a: Aircraft[], source: string | null, degraded: boolean, errors: string[]) => void;
   setFetchFailed: (errors: string[]) => void;
   setFeeds: (f: FeedStatus[]) => void;
-  setHome: (h: { lat: number; lon: number; label: string }) => void;
+  setHome: (h: HomePos) => void;
+  /** Set or clear the per-browser override. Pass null to fall back to the configured home. */
+  setHomeOverride: (h: { lat: number; lon: number } | null) => void;
   setTheme: (t: ThemeName) => void;
   setCursor: (c: { lat: number; lon: number } | null) => void;
   setDepth: (m: number | null, pending: boolean) => void;
@@ -350,6 +358,11 @@ export function migratePrefs(persisted: unknown, from: number): Record<string, u
   if (from < 4) {
     p = { ...p, showAllLabels: false };
   }
+  if (from < 7) {
+    // No override for a browser that predates the control - which means it keeps using the
+    // server's configured home, exactly as it did before (D-068).
+    p = { ...p, homeOverride: null };
+  }
   if (from < 6) {
     // Themes arrived AFTER the boundary toggles, so v6 not v5 - the earlier handoff had
     // reserved v5 for this and D-063 got there first.
@@ -374,7 +387,10 @@ export const useStore = create<State>()(persist((set) => ({
   feeds: [],
   peaks: {},
 
+  // Placeholder only, for the moment before /api/config lands. Overwritten on every load.
   home: { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" },
+  serverHome: { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" },
+  homeOverride: null,
   cursor: null,
   depthM: null,
   depthPending: false,
@@ -435,7 +451,17 @@ export const useStore = create<State>()(persist((set) => ({
   // stale frame as if it were current.
   setFetchFailed: (errors) => set({ lastFetchOk: false, errors }),
   setFeeds: (feeds) => set({ feeds }),
-  setHome: (home) => set({ home }),
+  // The server's value never wins over an explicit override - otherwise a remote viewer's
+  // chosen home would be silently reset by the next config fetch.
+  setHome: (serverHome) => set((st) => ({
+    serverHome, home: effectiveHome(serverHome, st.homeOverride),
+  })),
+  setHomeOverride: (pos) => set((st) => {
+    const override = pos ? { ...pos, label: coordLabel(pos.lat, pos.lon) } : null;
+    // Guarded, because this value reaches the camera and the fetch radius.
+    const safe = override && isHomePos(override) ? override : null;
+    return { homeOverride: safe, home: effectiveHome(st.serverHome, safe) };
+  }),
   // Guarded rather than trusted: a persisted payload from a build that shipped a theme this one
   // does not would otherwise style the display with a data-theme that has no matching block.
   setTheme: (theme) => set({ theme: isThemeName(theme) ? theme : DEFAULT_THEME }),
@@ -472,8 +498,22 @@ export const useStore = create<State>()(persist((set) => ({
   setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  version: 6,
+  version: 7,
   migrate: migratePrefs,
+  /**
+   * `home` is derived, not persisted, so it has to be recomputed once the override comes back
+   * off disk (D-068). Without this the override would rehydrate into the store and change
+   * nothing - the camera and the fetch both read `home`, and it would still hold the
+   * placeholder until the next `/api/config` reply happened to recompute it.
+   *
+   * `isHomePos` guards the value on the way in: this is JSON from localStorage, which a user
+   * can hand-edit and a downgrade can leave malformed, and it reaches the camera.
+   */
+  merge: (persisted, current) => {
+    const merged = { ...current, ...(persisted as object) } as typeof current;
+    const override = isHomePos(merged.homeOverride) ? merged.homeOverride : null;
+    return { ...merged, homeOverride: override, home: effectiveHome(merged.serverHome, override) };
+  },
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
   partialize: (s) => ({
@@ -485,6 +525,10 @@ export const useStore = create<State>()(persist((set) => ({
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
     theme: s.theme,
+    // The ONE piece of location data this app persists, and only because the user typed or
+    // granted it. `home` and `serverHome` are deliberately absent: they come from the server
+    // every load, and persisting them would let a stale copy outlive a config change.
+    homeOverride: s.homeOverride,
     showStates: s.showStates,
     showCounties: s.showCounties,
     showDestination: s.showDestination,

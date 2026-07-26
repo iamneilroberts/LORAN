@@ -117,6 +117,24 @@ export default function Globe() {
       },
     });
 
+    /* --- home moved: re-aim the camera (D-068) --- */
+    // The fetch loop reads `home` imperatively every tick, so it re-centres on its own. The
+    // camera does not - it is positioned once at mount - so without this the traffic would
+    // move and the view would stay pointed at the old place, which reads as a broken feed.
+    let lastHome = `${s0.home.lat},${s0.home.lon}`;
+    const unsubHome = useStore.subscribe((st) => {
+      const key = `${st.home.lat},${st.home.lon}`;
+      if (key === lastHome) return;
+      lastHome = key;
+      // flyTo, not setView: an instant jump gives no sense of where it went. Same framing as
+      // the opening view so the result looks like a fresh start rather than a nudge.
+      camera.flyTo({
+        destination: Cartesian3.fromDegrees(st.home.lon, st.home.lat - 1.9, 145_000),
+        orientation: { heading: CMath.toRadians(0), pitch: CMath.toRadians(-32), roll: 0 },
+        duration: 1.5,
+      });
+    });
+
     /* --- theme (D-066) --- */
     // Most of the globe rethemes for free: the aircraft icons are cached by colour STRING, and
     // the planes, cone and destination line re-derive their colours on every update tick, so
@@ -444,6 +462,7 @@ export default function Globe() {
       unsub();
       unsubTrack();
       unsubPlaces();
+      unsubHome();
       unsubTheme();
       camera.moveEnd.removeEventListener(redeclutter);
       scene.postRender.removeEventListener(onTick);

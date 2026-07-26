@@ -2655,3 +2655,83 @@ a guest uses the link; and three `voygent.ai` records now point at deleted tunne
 and 858 state-boundary rings (D-063) now draw by default. So the boundary cost looks mild rather
 than a regression. The outstanding question was always FPS on the homelab display itself, and a
 laptop GPU does not answer it.
+
+## D-068 — 2026-07-26 — HOME: a per-browser centre, typed or geolocated, labelled by coordinates because there is no geocoder
+
+**Date:** 2026-07-26
+
+Until now the console's centre was one value for the whole install — `LORAN_HOME_LAT/LON/LABEL`
+in `.env`, served at `/api/config`. That was correct while the only viewer sat at the machine.
+**D-067 made the console reachable over a tunnel, and broke that assumption:** a second viewer in
+another city opens the link and gets Mobile. Not merely the wrong centre — the feed radius is
+anchored to home (viewport-scoped fetch is still Phase 1 debt), so they are fetching traffic
+around someone else's house.
+
+**Owner's order was explicit: manual lat/lon first, browser geolocation second.** Both shipped
+here; address entry did **not**, and deliberately — see below.
+
+**The rule that shapes the whole feature: a coordinate this app did not look up never gets a
+place name.** There is no geocoder in this project, and adding one means a new upstream feed, a
+`docs/data-sources.md` verdict and the owner's sign-off (Nominatim's policy is a
+contact-carrying-UA arrangement, the same shape as planespotters/D-009). So a position the user
+typed or the browser reported is labelled `47.61N 122.33W`, formatted from its own coordinates.
+Labelling it "SEATTLE" because it is near one would be exactly the invented data ground rule 1
+forbids — and the status bar prints this label as fact, next to live telemetry.
+
+**Three fields, not one, and the split is the design.** `serverHome` is what `/api/config` said;
+`homeOverride` is the per-browser choice; `home` is the effective value everything reads. Keeping
+the server's value rather than overwriting it is what makes "reset to configured" possible and
+lets the panel say *which* is in force. The alternative — one `home` field that the override
+writes over — cannot distinguish "user chose exactly the configured position" from "no override",
+and offers no way back.
+
+**`setHome` must not clobber an override**, and that is the regression most worth guarding: the
+config fetch runs on every load, so a naive `setHome` would silently snap a remote viewer's
+chosen centre back to Mobile each time. There is a test for exactly that, and it fails when the
+guard is removed.
+
+**Only `homeOverride` is persisted.** `home` and `serverHome` are deliberately absent from the
+`partialize` allow-list (D-041 — that list *is* the safety property): they arrive from the server
+every load, and persisting them would let a stale copy outlive a config change. The override is
+the one piece of location data this app writes to disk, and only because the user typed or
+granted it.
+
+**Rehydration needed an explicit `merge`.** `home` is derived, so restoring `homeOverride` from
+localStorage changes nothing on its own — the camera and the fetch both read `home`, which would
+still hold the placeholder until some later `/api/config` reply happened to recompute it. The
+`merge` recomputes it at rehydration and runs the value through `isHomePos` on the way in, because
+this is hand-editable JSON that reaches the camera.
+
+**Geolocation names its failures.** Not supported, permission denied, position unavailable and
+timeout are four different messages, and **none of them changes the current home**. A silent
+fall back to the configured position would look identical to success for a viewer who does not
+know where the configured position is — the same failure mode as an honest empty state versus a
+plausible fake one.
+
+**The camera had to be told; the fetch did not.** `App.tsx` reads `home` imperatively on every
+poll tick, so a new centre takes effect on the next fetch with no loop teardown. The camera is
+positioned once at mount, so without an explicit re-aim the traffic would move and the view would
+stay pointed at the old place — which reads as a broken feed. It `flyTo`s rather than `setView`s,
+in the same framing as the opening view, so the result looks like a fresh start rather than a jolt.
+
+**Persist bumped 6 → 7**, with `if (from < 7)` adding `homeOverride: null` — so a browser that
+predates this control keeps using the configured home, exactly as before.
+
+**Twenty new tests** across `homeInput.test.ts` (15) and `store.test.ts` (5), built around the
+observation that testing well-formed input proves nothing — every parser handles `"30.6944"`.
+The weight is on `""` (which `Number("")` turns into 0, putting the console in the Gulf of Guinea
+while looking perfectly healthy), partially-numeric junk, range edges, and a corrupt persisted
+value. Mutations confirmed caught: `setHome` clobbering the override, and `setHomeOverride`
+dropping its range guard.
+
+**One mutation did NOT fail, and the finding was real.** Removing the explicit empty-string guard
+from `parseCoord` changed no behaviour — the regex cannot match `""` either — so the guard was
+dead code reading as defence. It was removed rather than left in with a passing test wrapped
+around it, and the comment now says why one gate is enough.
+
+**What the owner still has to judge on a real display:** whether two coordinate fields in a 210px
+column are usable or cramped, whether `flyTo` at 1.5 s reads as deliberate, and whether the
+`Centre` block belongs above the theme chooser or somewhere less prominent.
+
+**Not built, and needing a decision first:** address entry. It requires a geocoding feed, which is
+a `docs/data-sources.md` decision before it is a code decision.

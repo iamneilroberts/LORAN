@@ -72,6 +72,12 @@ describe("migratePrefs", () => {
     expect(migrated.showStates).toBe(false);
   });
 
+  it("from < 7 adds a null home override, so nothing changes for an existing browser", () => {
+    const migrated = migratePrefs({ theme: "slate" }, 6);
+    expect(migrated.homeOverride).toBeNull();
+    expect(migrated.theme).toBe("slate");
+  });
+
   it("chains: a v1 payload picks up the v2, v3, v4 and v5 fields, not just the newest", () => {
     const migrated = migratePrefs({ showDatum: true }, 1);
     // v2 step (D-047) - proves the chain did not break when v3 and v4 were added on top of it.
@@ -88,6 +94,8 @@ describe("migratePrefs", () => {
     expect(migrated.showCounties).toBe(false);
     // v6 step (D-066).
     expect(migrated.theme).toBe(DEFAULT_THEME);
+    // v7 step (D-068).
+    expect(migrated.homeOverride).toBeNull();
   });
 });
 
@@ -121,5 +129,44 @@ describe("themes", () => {
     store.setTheme("nonesuch" as never);
     expect(useStore.getState().theme).toBe(DEFAULT_THEME);
     store.setTheme(DEFAULT_THEME);
+  });
+});
+
+describe("home override", () => {
+  const server = { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" };
+
+  it("uses the configured home until an override is set", () => {
+    useStore.getState().setHomeOverride(null);
+    useStore.getState().setHome(server);
+    expect(useStore.getState().home).toEqual(server);
+    expect(useStore.getState().homeOverride).toBeNull();
+  });
+
+  it("labels an override by coordinates, never by a place name", () => {
+    useStore.getState().setHomeOverride({ lat: 47.6062, lon: -122.3321 });
+    expect(useStore.getState().home.label).toBe("47.61N 122.33W");
+  });
+
+  it("does NOT let a later config fetch clobber an explicit override", () => {
+    // The regression that would make a remote viewer's chosen home silently snap back to the
+    // server's every time /api/config replied.
+    useStore.getState().setHomeOverride({ lat: 47.6062, lon: -122.3321 });
+    useStore.getState().setHome(server);
+    expect(useStore.getState().home.lat).toBeCloseTo(47.6062, 4);
+    expect(useStore.getState().serverHome).toEqual(server);
+  });
+
+  it("resets to the configured home when the override is cleared", () => {
+    useStore.getState().setHomeOverride({ lat: 47.6062, lon: -122.3321 });
+    useStore.getState().setHomeOverride(null);
+    expect(useStore.getState().home).toEqual(server);
+  });
+
+  it("refuses an impossible position rather than pointing the camera at it", () => {
+    useStore.getState().setHomeOverride(null);
+    useStore.getState().setHome(server);
+    useStore.getState().setHomeOverride({ lat: 91, lon: 0 });
+    expect(useStore.getState().homeOverride).toBeNull();
+    expect(useStore.getState().home).toEqual(server);
   });
 });
