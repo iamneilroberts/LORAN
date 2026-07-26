@@ -60,7 +60,20 @@ body {
   font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
+  /*
+   * `-webkit-font-smoothing: antialiased` was removed here, deliberately.
+   *
+   * It is a Chrome/Safari-only property that Firefox ignores, and it turns OFF subpixel
+   * antialiasing - which on light-on-dark text thins every stroke. At the 9-10px letterspaced
+   * sizes this interface is built from, that was most of the stroke weight, and the owner
+   * reported the chrome as noticeably harder to read in Chrome than in Firefox. Same markup,
+   * same colours; only this line differed between them.
+   *
+   * It also worked directly against D-028. The comment on .panel below records that
+   * backdrop-filter was removed precisely BECAUSE it drops subpixel antialiasing and softens
+   * 10px letterspaced text - and then this line went and dropped it globally in Chrome anyway,
+   * so that fix bought far less than intended in the browser actually being used.
+   */
 }
 
 /* ---- small uppercase label ---- */
