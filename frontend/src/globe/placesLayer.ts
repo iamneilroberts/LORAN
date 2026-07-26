@@ -63,6 +63,30 @@ const FAR_MEDIUM = 450_000;
 const FAR_SMALL = 120_000;
 
 /**
+ * The airfield CODE/marker range and the airfield NAME range, given a tier's base `far`
+ * (the density-1 code range) and the current DENSITY multiplier (D-049: 1, 2 or 4).
+ *
+ * The code scales with density - pulling more of the shipped set into view at a given camera
+ * height is the entire point of that control. The NAME does not scale the same way, and this
+ * is the fix for D-059: a name label is many characters wide, several times the footprint of a
+ * 4-character code, and at MAX (4x) the old `far / 4` name range grew right back up to the
+ * code's own density-1 range - e.g. ~61 nm to ~243 nm for a medium field - which is far enough
+ * to pull a whole regional cluster of airfield names (and the towns among them) into view at
+ * once. Two names 14 miles apart that both fit on screen at once will visually stack.
+ *
+ * The name range is pinned to its density-1 value (`far / 4`, unchanged from the original
+ * shipped ratio - D-059 did not re-litigate the ratio itself, only whether it should scale) and
+ * clamped to the code's own range so the ordering (name <= code) cannot invert even if a future
+ * density preset ever ships below 1x. Exported so the ratio and the ordering invariant can be
+ * unit-tested without a Cesium Viewer (D-051 - this file cannot build one headless).
+ */
+export function airfieldRanges(far: number, densityMult: number): { codeFar: number; nameFar: number } {
+  const codeFar = far * densityMult;
+  const baseNameFar = far / 4;
+  return { codeFar, nameFar: Math.min(baseNameFar, codeFar) };
+}
+
+/**
  * Cities thin by Natural Earth's scalerank, which is what the rank exists for.
  *
  * The build drops everything above scalerank 7 outright (D-037), so 7 is the floor here.
@@ -175,8 +199,17 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
    * fixed at build time, so the only honest thing a runtime control can do is decide how far
    * out each row is worth drawing. Rebuilding the collections on every change would also cost
    * a visible stall at ~21,000 primitives.
+   *
+   * `isName` marks an airfield NAME label. Those are re-ranged through `airfieldRanges()`
+   * rather than a flat `far * mult`, because the name range is deliberately pinned rather than
+   * scaled (D-059) - see that function. `far` for a name entry is the tier's base code range,
+   * not the name's own range, so `airfieldRanges()` can derive `/4` from it either way.
    */
-  const ranged: { prim: { distanceDisplayCondition?: DistanceDisplayCondition }; far: number }[] = [];
+  const ranged: {
+    prim: { distanceDisplayCondition?: DistanceDisplayCondition };
+    far: number;
+    isName?: boolean;
+  }[] = [];
 
   for (const row of airports) {
     const [lat, lon, code, kind, name, municipality, region, country, elevationFt, iata] = row;
@@ -227,14 +260,15 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     // The airfield's NAME, under its code. Kept to a SHORTER range than the code deliberately:
     // the code is the identifier you scan for at a distance, the name is what you want once you
     // have found it, and drawing 5,275 names at full range would bury the map. far/4 means a
-    // name appears only when its airfield is already the local subject.
+    // name appears only when its airfield is already the local subject. That range is pinned
+    // regardless of DENSITY (D-059) - see `airfieldRanges()`.
     //
     // The trailing "Airport" is dropped (4,292 of 5,275 carry it) purely to control label width -
     // that is trimming a redundant suffix for display, not altering what we were told. The full
     // name is still shown verbatim in the click-through panel (D-038).
     const shortName = name.replace(/\s+(Airport|Airfield|Aerodrome)$/i, "").trim();
     if (shortName) {
-      const nameFar = far / 4;
+      const { nameFar } = airfieldRanges(far, 1); // constructed at density 1; setDensity re-ranges it
       const nameLabel = labels.add({
         position,
         text: shortName.toUpperCase(),
@@ -251,7 +285,9 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       });
       // Clicking the name selects the same airfield the code does.
       placeOf.set(nameLabel, info);
-      ranged.push({ prim: nameLabel, far: nameFar });
+      // `far`, not `nameFar`: setDensity derives the pinned name range from the tier's code
+      // range via `airfieldRanges()`, so this entry carries the same base the code entries do.
+      ranged.push({ prim: nameLabel, far, isName: true });
     }
 
     ranged.push({ prim: marker, far }, { prim: label, far });
@@ -375,7 +411,10 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       if (mult === density) return;
       density = mult;
       for (const r of [...ranged, ...smallRanged]) {
-        r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, r.far * mult);
+        // Name labels are re-ranged through the pinned/clamped formula, not `far * mult` -
+        // see `airfieldRanges()` and D-059.
+        const rangeFar = r.isName ? airfieldRanges(r.far, mult).nameFar : r.far * mult;
+        r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, rangeFar);
       }
     },
     setSmallAirports: (on: boolean) => {

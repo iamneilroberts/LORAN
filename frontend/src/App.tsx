@@ -212,9 +212,14 @@ export default function App() {
       <div className="absolute inset-0 pointer-events-none">
         {/* Camera lives on the LEFT with the other controls (owner's call). It used to sit above
             the dossier and stole its height, which is why the photo fell below the fold. The
-            right column is now the dossier's alone. LAYERS moved out of this column entirely
-            into the PREFS overlay (D-056) - it is a panel someone visits, not one worth reading
-            at a glance, so it does not need a standing slot in the column's height budget.
+            right column is now the dossier's alone. LAYERS spent one revision (D-056) pulled all
+            the way out into a PREFS overlay, on the theory that a docked panel always reclaims
+            column height whether anyone is looking or not - true, but the fix overshot: the
+            overlay's trigger turned out hard to find and low-contrast on the status bar, and a
+            modal is a worse way to fiddle with settings than a pane in the same column as
+            everything else being fiddled with. D-058 reverses it: PreferencesPanel is back here,
+            docked, as a collapsing pane like TrafficPanel - which gets the same "costs nothing
+            while shut" property the overlay was chasing, without the findability cost.
 
             ONE column spanning the viewport, not two opposing stacks. This used to be a `top-3`
             stack growing down and a `bottom-34` stack growing up, neither aware of the other, so
@@ -224,14 +229,19 @@ export default function App() {
             budget makes the collision impossible instead of unlikely; the right column has had one
             since the dossier grew a photo.
 
-            `items-start` because every panel sets its own width (210/148/176) and stretching them
-            to the widest would misalign the whole column. */}
+            `items-start` because every panel sets its own width (210/148/210/176) and stretching
+            them to the widest would misalign the whole column. */}
         <div
           className="absolute left-3 top-3 flex flex-col gap-2 items-start"
           style={{ bottom: 34 }}
         >
           <TrafficPanel />
           <CameraCluster />
+          {/* Below the camera controls, not above: both TrafficPanel and CameraCluster are
+              things read or driven continuously, while preferences are visited occasionally to
+              flip a setting and then left alone - collapsed, it is the cheapest thing in the
+              column, so it costs almost nothing to place it here rather than at the very top. */}
+          <PreferencesPanel />
           {/* Holds the legend and readout at the bottom, and collapses first when height is
               tight, so the controls above keep their natural size for as long as possible. */}
           <div className="flex-1" />
@@ -252,7 +262,6 @@ export default function App() {
       </div>
       <Attribution />
       <StatusBar />
-      <PreferencesPanel />
       {/* An honest locked state. A blank globe with no explanation is indistinguishable from a
           dead feed, and would send the visitor to the owner asking the wrong question. */}
       {denied && <LockedPanel />}

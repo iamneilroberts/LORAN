@@ -1,63 +1,57 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LayerCluster } from "./Panels";
-import { useStore } from "../state/store";
+import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS } from "./trafficCollapse";
 
 /**
- * Preferences overlay (D-056).
+ * Docked preferences pane (D-058, reversing the D-056 overlay).
  *
- * LAYERS used to be a permanently docked 148px panel in the left column. The owner asked for it
- * out of that column entirely, not just made smaller - a docked panel, however it is resized,
- * always reclaims the same amount of column height whether it is being looked at or not. An
- * overlay is the only shape that costs zero column height while closed, which is the actual
- * point of moving it.
+ * D-056 pulled `LayerCluster` out of the left column into a modal overlay so it would cost zero
+ * column height while closed. That worked, but the owner reported the overlay's `PREFS` trigger
+ * on the status bar was hard to find and low-contrast, and that fiddling with settings behind a
+ * backdrop read worse than a pane in the same column as everything else being fiddled with. A
+ * COLLAPSING docked pane gets the same "costs nothing while shut" property the overlay was
+ * chasing - collapsed, it is just this header - without hiding the controls behind a trigger
+ * nobody could find.
  *
- * `LayerCluster` is unchanged and still exported from Panels.tsx; this file renders it rather
- * than re-implementing its toggle logic, so there remains exactly one copy of that logic to keep
- * in sync with the store.
+ * Collapse mechanics are copied from `TrafficPanel` rather than shared through a hook: same
+ * shape (a `hovering` flag, one re-arming timeout, `COLLAPSE_AFTER_MS` / `HOVER_EXPAND_DELAY_MS`
+ * imported from `trafficCollapse.ts` so the two numbers stay one number each, not two). Unlike
+ * TrafficPanel, nothing here is live data that must survive a collapse - every row is inert
+ * configuration - so there is no `trafficPanelSections`-style decision function to extract: the
+ * one decision, "hide the body while collapsed", is the `{!collapsed && ...}` below, and a pure
+ * function wrapping a single negation would not be worth the indirection.
+ *
+ * BEHAVIOURAL POINT: unlike the traffic panel (read, never touched), this one is full of buttons
+ * the owner clicks while it is open. Clicking must never re-arm the collapse timer out from under
+ * them. It doesn't: the timer only ever restarts from `onMouseLeave` firing (see the effect
+ * below), and `onMouseLeave` only fires on real pointer movement out of the panel's box - a click
+ * does not move the pointer, and a re-render triggered by a click does not synthesize one either,
+ * even if the click shrinks the panel out from under a stationary cursor (e.g. toggling "Places"
+ * off hides "Small fields" beneath it). So `hovering` stays true for as long as the cursor stays
+ * put, which is exactly the "still fiddling" signal that should keep it open.
  */
 export function PreferencesPanel() {
-  const open = useStore((s) => s.prefsOpen);
-  const setOpen = useStore((s) => s.setPrefsOpen);
+  const [collapsed, setCollapsed] = useState(false);
+  const [hovering, setHovering] = useState(false);
 
-  // Escape closes from anywhere, not just while the panel has focus - it is a `<div>`, not a
-  // form control, so there is nothing else for keyboard focus to land on. Listener is only
-  // attached while open, and always removed on the way out, including on unmount.
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, setOpen]);
-
-  if (!open) return null;
+    const id = window.setTimeout(
+      () => setCollapsed(!hovering),
+      hovering ? HOVER_EXPAND_DELAY_MS : COLLAPSE_AFTER_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [hovering]);
 
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center pointer-events-auto"
-      style={{ background: "rgba(5,7,10,.6)" }}
-      onClick={() => setOpen(false)}
+      className="panel w-[210px] pointer-events-auto"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
     >
-      {/* Stops propagation so a click anywhere on the panel does not bubble to the backdrop and
-          close it - only the backdrop itself and Escape should close this. */}
-      <div
-        className="panel pointer-events-auto"
-        style={{ width: 260, maxWidth: "90vw", maxHeight: "80vh", overflowY: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="panel-h">
-          <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Preferences</span>
-          <button
-            onClick={() => setOpen(false)}
-            className="lbl"
-            style={{ background: "none", border: "none", cursor: "pointer" }}
-          >
-            ×
-          </button>
-        </div>
-        <LayerCluster />
+      <div className="panel-h">
+        <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Preferences</span>
       </div>
+      {!collapsed && <LayerCluster />}
     </div>
   );
 }

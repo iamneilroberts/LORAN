@@ -259,15 +259,16 @@ export function LayerCluster() {
   const sliceNote = needsSel ?? (hasSlicePerspective(pitchDeg) ? undefined : "needs a tilted view");
 
   return (
-    /* D-056: this used to be the one panel in the left column that GROWS and therefore the one
-       allowed to scroll when the column ran short (`minHeight: 0` + `overflowY: auto`, same fix
-       as the dossier). It now renders inside PreferencesPanel's overlay instead, which owns both
-       the max height and the scrolling, so neither is needed here - and the fixed 148px width
-       existed only to hold a column slot that no longer applies.
+    /* D-056/D-058: this used to be the one panel in the left column that GROWS and therefore the
+       one allowed to scroll when the column ran short (`minHeight: 0` + `overflowY: auto`, same
+       fix as the dossier). D-056 moved it into an overlay; D-058 moved it again, into
+       PreferencesPanel's docked collapsing pane - in both homes it renders inside somebody
+       else's frame, so the fixed 148px width and the scroll pair never came back.
 
-       Nor is it `.panel` any more: `.panel` draws bracket corners via ::before/::after, so
-       keeping it stacked a second set of corners inside the overlay's own. The overlay owns
-       the frame; this is a section within it. */
+       Nor is it `.panel` any more: `.panel` draws bracket corners via ::before/::after, and
+       PreferencesPanel already wraps this in one `.panel`. Adding a second here would nest a
+       harmless but pointless extra set of corners inside the first - the parent owns the frame,
+       this is a section within it. */
     <div className="p-[5px]">
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
       {/* This is a FETCH-scope control, not a display one - it changes what is asked of the
@@ -856,7 +857,6 @@ export function StatusBar() {
   const aircraft = useStore((s) => s.aircraft);
   const fps = useStore((s) => s.fps);
   const home = useStore((s) => s.home);
-  const setPrefsOpen = useStore((s) => s.setPrefsOpen);
 
   const mil = aircraft.filter((a) => a.military).length;
 
@@ -876,20 +876,6 @@ export function StatusBar() {
       <span className="chip">{aircraft.length} air</span>
       <span className="chip" style={{ color: mil ? "var(--mil)" : undefined }}>{mil} mil</span>
       <span className="chip">{home.label}</span>
-      {/* The bar sits outside App.tsx's `pointer-events-none` chrome wrapper already, but every
-          other clickable element in this file states `pointer-events: auto` explicitly rather
-          than relying on an ancestor not overriding it - same belt-and-braces here. */}
-      <button
-        onClick={() => setPrefsOpen(true)}
-        className="chip"
-        style={{
-          font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
-          background: "none", border: "none", padding: 0, cursor: "pointer",
-          color: "var(--cyan)", pointerEvents: "auto",
-        }}
-      >
-        Prefs
-      </button>
       <span className="ml-auto chip">{fps} FPS · WebGL2</span>
     </div>
   );

@@ -1799,3 +1799,160 @@ new token stays a deliberate manual step, which is what keeps this from becoming
 quietly creates credentials. It prints to stdout only, never to a file, and leads with a warning
 that each URL is a live credential — a file full of these is a secret on disk that nobody
 remembers to delete, in a directory that happens to be a git repo.
+
+---
+
+## D-058 — 2026-07-26 — Preferences comes back out of the overlay, docked as a collapsing pane like air traffic
+
+D-056 pulled `LayerCluster` out of the left column into a `PreferencesPanel` modal overlay,
+reached through a `PREFS` chip on the status bar. The owner has now seen it running and asked for
+it back: "Preferences is hard to find on the bottom bar and difficult to read... I think we can fit
+prefs as a first class member of the left-hand control area, and it would be fine as a collapsing
+pane like air traffic." This reverses that part of D-056. The record of the wrong turn stays there
+unedited — this entry explains why it was wrong and what replaces it, not that D-056 never happened.
+
+**Why the overlay was the wrong call, specifically.** D-056's stated goal was real and still is:
+a docked panel, however it is sized, reclaims some fixed slice of the column's height budget
+(D-054) whether anyone is looking at it or not, and LAYERS is the tallest, most variable thing that
+would go there. But an overlay solves that at the cost of two things that turned out to matter more
+in practice than on paper. First, findability: the `PREFS` chip sat in the status bar's row of
+9px, `--dim`-coloured chips, one of a dozen small labels along the bottom edge, with no visual
+weight to say "this opens something." Second, mode: a modal with a backdrop is built for a task you
+step into and then step back out of — reading a dossier, confirming a dialog — not for a control
+you nudge once and want to keep an eye on the globe while you do it. Blocking the whole screen to
+flip one toggle was a heavier interaction than the toggle deserved.
+
+**Why a collapsing pane keeps the thing D-056 was actually chasing.** The zero-cost-while-shut
+property was never inherent to being an overlay — it was inherent to being SHUT. `TrafficPanel`
+already proved a docked panel can do that: it renders full width and height while in use, then
+auto-collapses to a single header row after `COLLAPSE_AFTER_MS` (8 s) of no hover, which is
+functionally the same "cost nothing when nobody is looking" property the overlay was built to get,
+minus the backdrop and minus the missing trigger. `PreferencesPanel` now docks in the left column,
+between `CameraCluster` and the height-budget spacer, and collapses/expands the identical way:
+same `hovering` boolean, same re-arming `useEffect`, and the same two timing constants
+(`COLLAPSE_AFTER_MS`, `HOVER_EXPAND_DELAY_MS`) imported from `trafficCollapse.ts` rather than
+redefined, so the two panels can never drift to different collapse timings by accident. The
+mechanism was duplicated rather than pulled into a shared hook: it is eight lines, TrafficPanel's
+copy is untouched and still independently correct, and a hook wrapping two `useState` calls and one
+`useEffect` would have been an abstraction over a pattern used exactly twice — not worth it per the
+project's own simplicity rule.
+
+**No new pure decision function, and that is a deliberate difference from `trafficPanelSections`.**
+TrafficPanel's collapse needed a dedicated function because collapsing there is genuinely subtle:
+the filter warning and the empty state both have to survive collapse or the panel would make a
+live feed look tidied away, which is exactly the failure ground rule 1 forbids for invented data.
+Nothing in `LayerCluster` carries that risk — every row is inert configuration the operator set,
+never live data whose absence could be misread — so collapsing it is just "hide the body, keep the
+header": `{!collapsed && <LayerCluster />}`. Wrapping a single negation in an exported function to
+satisfy the letter of "extract decision logic into something testable" would be indirection with
+no decision behind it, so none was added. No tests were added for this reason: there is no new
+logic to mutation-test, only a straight re-use of already-tested constants and an already-proven
+JSX pattern. The 4 `trafficCollapse.test.ts` tests were re-run and still pass unchanged.
+
+**Buttons inside a collapsing pane are a real hazard, checked rather than assumed.** Air traffic is
+read, not touched; preferences is a panel of buttons the owner clicks while it is open, and a panel
+that could collapse mid-click would be worse than the overlay it replaced. Traced through the event
+model rather than guessed: the collapse timer only ever re-arms from the `onMouseLeave` handler on
+the panel's outer `<div>`, and `onMouseLeave` fires only on an actual pointer-movement event that
+carries the cursor outside that element's current box — never as a side effect of a click, and never
+synthesized just because a re-render (e.g. toggling "Places" off, which removes the "Small fields"
+row beneath it) shrinks the box out from under a stationary cursor. No mousemove, no mouseleave, no
+re-arm. This is not a new risk being newly tolerated: `TrafficPanel` has shipped with exactly this
+mechanism guarding a panel full of clickable operator rows and a MIL toggle since D-056, with no
+report of it collapsing under a click. Chrome's devtools MCP would not launch in this sandbox (no
+reachable `DevToolsActivePort`) to click through it live, so this is a source-level trace rather
+than a captured recording — worth a real click-through next time a browser is available, but the
+event-model argument does not depend on one.
+
+**`prefsOpen` and `setPrefsOpen` are removed from the store, not just unused.** The docked pane's
+collapsed/expanded state is local `useState` in `PreferencesPanel`, the same as `TrafficPanel`'s —
+there is nothing left for a store field to hold. `prefsOpen` was already excluded from `partialize`
+(D-056), so removing it involves no persisted-shape change and no version bump.
+
+**LayerCluster gets exactly one set of bracket corners, still.** It has not carried the `.panel`
+class since D-056, for the reason still recorded in the comment above its root `<div>`: the parent
+already supplies one `.panel` frame, and a second nested one would just be a harmless, pointless
+extra border. That parent used to be the overlay; it is now `PreferencesPanel`'s own `.panel`
+wrapper. The comment is updated to say so rather than describing a frame that no longer exists.
+
+---
+
+## D-059 — 2026-07-26 — Airfield NAME labels stop scaling with DENSITY; they are pinned, not proportional
+
+**Date:** 2026-07-26
+
+The owner reported airport names colliding at MAX, around Hattiesburg: `HATTIESBURG LAUREL
+REGIONAL` and `HATTIESBURG BOBBY L CHAIN MUNICIPAL` stacked on each other and on the city label
+`HATTIESBURG`. The suspected cause, confirmed by reading `placesLayer.ts` rather than assumed: it
+was right. `setDensity()` kept a single `ranged` list of every marker, code label and name label,
+each carrying its own `far`, and rescaled every entry the same way — `r.prim.distanceDisplayCondition
+= new DistanceDisplayCondition(0, r.far * mult)`. A NAME label's `far` was `far / 4` (the tier's
+code range, quartered — a guess shipped in 072dc2f, never re-measured). At MAX (`mult = 4`) that
+guess multiplied straight back up to the tier's own density-1 code range: a medium field's name
+went from ~61 nm to ~450,000 m ≈ 243 nm. City labels ride the same `ranged` list and got the same
+treatment, so the city name was also pulled further out by the identical multiplier — true, but
+not what this fix touches (see below).
+
+**Range tuning, not decluttering.** Cesium's entity labels do not declutter themselves, and
+building a collision system for ~21,000 static primitives is a different, much bigger project
+than "the name label collides at one density setting." The honest lever here is the same one
+D-049 already established for this file: how far out a thing stays drawn.
+
+**The fix: airfield NAME range is pinned to its density-1 value, not scaled by density.** A new
+exported pure function, `airfieldRanges(far, densityMult)`, returns `{ codeFar, nameFar }`:
+`codeFar = far * densityMult` (unchanged — the whole point of DENSITY is pulling more of the
+shipped set into view at a given camera height, and that stays true for codes and markers).
+`nameFar = Math.min(far / 4, codeFar)` — the same `/4` ratio D-072dc2f shipped, but now held
+constant across density instead of multiplied by it, and clamped to `codeFar` so the ordering
+(name ≤ code) cannot invert even if some future density preset ever ships below the current
+floor of 1x. The `/4` ratio itself is not re-derived here; it was a guess when it shipped and is
+still a guess, now applied consistently instead of inconsistently.
+
+**Why pin instead of "scale less."** The code is the thing you scan for at a distance; the name
+is what you want once you've found it, at close range — the DENSITY control's own stated job
+(D-049) is "scales range, not membership," and pulling more *names* into simultaneous view is
+precisely what breaks legibility, since a name label is many times wider than a 4-character
+code. Pinning is the strongest form of "scale less" that still satisfies that job description:
+DENSITY keeps doing exactly what it says for codes and markers, and simply stops doing it for
+names.
+
+**City labels are left alone.** They are also pulled further out by DENSITY today, and that is
+true and worth recording, but there is no code/name pair for a city the way there is for an
+airfield — a city has one label, ranged by Natural Earth scalerank (D-037/D-049) — so there is no
+equivalent "pin the name, scale the code" split to make. Touching `cityFar()` scaling was not
+needed to address the reported bug and was left out on the surgical-change rule; if the owner
+finds city labels crowding a cluster of airfields at MAX after this ships, that is a second, and
+separate, decision.
+
+**DENSITY changes take effect live, not on reload — confirmed by reading `Globe.tsx`, not
+assumed.** `createPlacesLayer()` builds every primitive once at mount, per the discipline at the
+top of this file, but `Globe.tsx` (outside this fix's scope, read-only) subscribes to
+`useStore` and calls `places.setDensity(st.placeDensity)` whenever `placeDensity` changes,
+mutating the existing primitives' `DistanceDisplayCondition`s in place rather than rebuilding
+anything. Because that call already goes through `setDensity()`, this fix's changed formula
+takes effect on the next density click with no reload required — nothing in `Globe.tsx` needed
+to change.
+
+**Tests: `airfieldRanges()` is exported specifically so this could be checked without a Cesium
+Viewer** — `node` environment, no DOM, no WebGL (D-051). Four tests in the new
+`placesLayer.test.ts`, all mutation-checked (broke the source, confirmed the intended test failed,
+restored, reran green):
+- *scales the code range linearly with density* — caught `codeFar = far` (density ignored).
+- *does not blow the name range up at MAX the way the code range blows up* — caught both the
+  original bug reintroduced (`nameFar` scaled by `densityMult`) and the clamp removed outright.
+- *clamps the name range to the code range* (at a hypothetical `densityMult = 0.1`, below today's
+  floor of 1x) — caught the clamp removed and the pinned value left unclamped.
+- *ordering invariant (name ≤ code) across every tier and every shipped density preset* — caught
+  a `codeFar`/`nameFar` swap directly; note it did **not** independently catch the clamp's
+  removal at today's density floor (1, 2, 4), because `far / 4 ≤ far ≤ far × mult` already holds
+  for any `mult ≥ 1` without the clamp — the clamp only matters below that floor, which is what
+  the dedicated `0.1` test exists to cover. Recorded here rather than overstated: this test is
+  real regression insurance across tiers, not four independently-triggerable failure modes.
+
+**What the owner still has to judge on a real display.** This box's headless capture runs at
+~1 FPS on software GL and is explicitly not a pixel oracle (D-049) — it can confirm the range
+numbers are what the code now computes, not whether HATTIESBURG and its two airfields read
+cleanly apart at MAX on an actual GPU. The `/4` ratio (61 nm at density 1) was a guess in
+072dc2f and is still exactly that guess; if two real airfields closer together than Hattiesburg's
+pair still stack at that close range, the next move is tightening the ratio itself, not
+resurrecting density scaling.
