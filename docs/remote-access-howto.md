@@ -302,7 +302,7 @@ running `cloudflared tunnel run voygent-desktop`). Its full contents:
 
 ```
 tunnel: 71bc66de-4433-44f6-b6bf-5304f28d2578
-credentials-file: /home/neil/.cloudflared/71bc66de-4433-44f6-b6bf-5304f28d2578.json
+credentials-file: /home/<you>/.cloudflared/71bc66de-4433-44f6-b6bf-5304f28d2578.json   # home dir redacted
 
 ingress:
   - hostname: mcp.voygent.ai
@@ -322,7 +322,7 @@ cloudflared --config ~/.cloudflared/config.yml tunnel ingress rule https://adsb.
 ```
 
 ```
-Using rules from /home/neil/.cloudflared/config.yml
+Using rules from /home/<you>/.cloudflared/config.yml   # home dir redacted
 Matched rule #2
 	service: http_status:404
 ```
@@ -406,11 +406,14 @@ cloudflared tunnel route dns --overwrite-dns loran adsb.voygent.ai
 
 **4. Write LORAN its own config file** — this is the step that keeps you away from voygent's
 `config.yml`. Create `~/.cloudflared/loran.yml` containing exactly this, with `<LORAN-UUID>`
-replaced by the UUID from step 2:
+replaced by the UUID from step 2 and `<you>` by your own username.
+**Use a real absolute path here — do not write `~`.** This file is parsed as YAML, not by a
+shell, so a tilde is not expanded. The absolute form is what the already-running production
+tunnel uses, which is the only form observed working on this machine:
 
 ```
 tunnel: <LORAN-UUID>
-credentials-file: /home/neil/.cloudflared/<LORAN-UUID>.json
+credentials-file: /home/<you>/.cloudflared/<LORAN-UUID>.json
 
 ingress:
   - hostname: adsb.voygent.ai
@@ -459,7 +462,8 @@ line **ending in `Secure`** from the second. If `Secure` is missing, cloudflared
 **8. Make it survive a reboot — optional, and only once you trust it.** Do NOT use
 `cloudflared service install`; that writes to the shared config path. Write your own unit,
 modelled on `/etc/systemd/system/cloudflared-voygent.service`, named `cloudflared-loran.service`,
-whose `ExecStart` is `/usr/local/bin/cloudflared --config /home/neil/.cloudflared/loran.yml tunnel run loran`.
+whose `ExecStart` is `/usr/local/bin/cloudflared --config /home/<you>/.cloudflared/loran.yml tunnel run loran`
+(systemd does not expand `~` either, so this one must be absolute too).
 Untested.
 
 **Also untested, and worth knowing:** whether Cloudflare's default proxy settings interfere with
@@ -608,7 +612,7 @@ the tunnel is down, never before.**
 it in the foreground, Ctrl-C. Otherwise find it by its config file and kill it by PID:
 
 ```
-pgrep -af "cloudflared --config /home/neil/.cloudflared/loran.yml"
+pgrep -af "cloudflared --config $HOME/.cloudflared/loran.yml"
 ```
 
 ```
