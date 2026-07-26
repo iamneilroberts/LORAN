@@ -1,0 +1,50 @@
+# Keep secrets and local state OUT of the build context.
+#
+# This file is a safety property, not an optimisation. Anything listed here cannot end up in an
+# image layer even by accident, and `.env` holds real API keys and access tokens - see D-045.
+# Configuration reaches the container at RUN time (env_file / -e), never at build time.
+
+.env
+.env.local
+.env.*.local
+
+# Local state and archives
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Dependencies and build output - the image builds its own
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/public/cesium
+.vite
+backend/.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Repo and tooling noise
+.git
+.gitignore
+.github
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docs and screenshots are not needed to RUN the app. docs/decisions.md and the 2.8 MB of
+# screenshots would otherwise be copied into the build context for nothing.
+docs/
+*.md
+!README.md
+
+# Dev-only helpers that drive a browser over CDP; they have no place in a runtime image.
+scripts/shoot.py
+scripts/shoot_readme.py
+scripts/evaljs.py
+scripts/verify_phase1.py
+scripts/ais_coverage_probe.py
+scripts/build_mockup_assets.py

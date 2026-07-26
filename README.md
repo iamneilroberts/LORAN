@@ -103,11 +103,22 @@ That starts the API on `:8010` and Vite on `:5173`; open http://localhost:5173. 
 `bash scripts/dev.sh status` / `stop` to inspect or stop it. It resolves paths relative to
 itself, so it works from any checkout or git worktree.
 
-Production — one process serving both the built app and the API on one origin:
+Production, bare metal — one process serving both the built app and the API on one origin:
 
 ```
 bash scripts/serve.sh
 ```
+
+Production, Docker — the same single-origin arrangement, 175 MB image:
+
+```
+docker compose up --build
+```
+
+Then open http://127.0.0.1:8010. Configuration reaches the container at **run** time via
+`env_file`; `.dockerignore` excludes `.env` from the build context, so no secret can end up in an
+image layer. The container publishes to `127.0.0.1` only and runs unprivileged — put a tunnel or
+reverse proxy in front rather than binding it to `0.0.0.0`.
 
 By hand, if you prefer:
 

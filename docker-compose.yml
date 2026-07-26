@@ -1,0 +1,46 @@
+# LORAN — Docker Compose path (D-045). The bare-metal path is scripts/serve.sh; both are
+# first-class (D-019), and both serve the app and API from one origin on one port.
+#
+#   cp .env.example .env    # then edit it
+#   docker compose up --build
+#
+# Then open http://127.0.0.1:8010
+
+services:
+  loran:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: loran:local
+    container_name: loran
+
+    # Configuration arrives at RUN time. .env is excluded from the build context by
+    # .dockerignore, so nothing here can end up baked into an image layer.
+    env_file:
+      - .env
+
+    # 127.0.0.1 on purpose. Publishing on 0.0.0.0 would expose the console to your whole LAN,
+    # and to the internet if the host is forwarded - and with LORAN_ACCESS_TOKENS empty there
+    # is no access control at all. Put a tunnel or reverse proxy in front instead; see
+    # docs/remote-access.md.
+    ports:
+      - "127.0.0.1:8010:8010"
+
+    restart: unless-stopped
+
+    # The app currently keeps its track buffer in memory and writes nothing. Phase 5's recorder
+    # will need this volume, so it is declared now rather than discovered later - a container
+    # that loses the archive on restart would be worse than no archive.
+    volumes:
+      - loran-data:/app/data
+
+    # Small hardening, none of it load-bearing for correctness: no new privileges, and a
+    # read-only root filesystem with a tmpfs for the one place anything transient goes.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  loran-data:

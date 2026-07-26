@@ -1098,3 +1098,50 @@ Two things learned writing that script, both fixed in it:
 The README states plainly what is *not* built (vessels blocked on an antenna, no recorder, no
 Docker, **zero unit tests**) alongside what is. A status section that lists only strengths is the
 documentation equivalent of a fake screen.
+
+---
+
+### D-045 · Docker: one image, one origin, no secret in any layer
+
+**Date:** 2026-07-25
+
+Completes D-019's requirement that Docker and bare metal both stay first-class. The container
+reproduces exactly what `scripts/serve.sh` does — the built frontend and the API served from one
+process on one port — because single origin is what makes the session cookie same-site by
+construction and leaves one port to tunnel.
+
+**Multi-stage build.** `node:22-slim` builds the frontend, `python:3.12-slim` runs it; no Node,
+npm or build tools in the runtime. 175 MB. The build context is the repo root rather than
+`frontend/`, because the frontend build needs `scripts/check_palette.mjs` — the D-042 guard —
+which means **a palette drift or a type error fails the image build** instead of shipping
+quietly. Confirmed in the build log: `check:palette ok - 11 colours match`.
+
+**Nothing is configured at build time.** `.dockerignore` excludes `.env` from the build context
+entirely, so a secret cannot reach a layer even by mistake; configuration arrives at run time via
+`env_file`. Verified rather than asserted: no `.env` exists anywhere in the image, and grepping
+every layer of `docker save` output for the live access token returns zero hits. The container
+also runs as uid 10001 with `no-new-privileges`, a read-only root filesystem and a tmpfs for
+`/tmp`.
+
+**`0.0.0.0` inside, `127.0.0.1` outside.** The CMD binds all interfaces because container
+loopback is unreachable from the host, but compose publishes to `127.0.0.1:8010` only. Binding
+the published port to `0.0.0.0` would expose the console to the whole LAN — and with
+`LORAN_ACCESS_TOKENS` empty there is no access control at all. The comments say so at both ends.
+
+**Healthcheck uses `/api/health` via stdlib `urllib`**, not curl. `curl` is absent from slim and
+adding a package purely for a probe is weight for nothing; `/api/health` is deliberately open and
+reports uptime and feed status only, so it works as a probe even with tokens configured.
+
+**A volume is declared for `/app/data` before anything needs it.** Nothing writes to disk today,
+but the Phase 5 recorder will, and a container that silently loses the archive on restart is a
+worse outcome than discovering the volume requirement late.
+
+**Trap found and fixed while testing:** `.env.example` shipped `LORAN_STATIC_DIR=` **empty**.
+Copied to `.env` and passed through `env_file`, that empty value overrides the image's own
+`/app/static`, so the container serves the API with no app behind it and `/` returns 404 — a
+first-run failure for every Docker user, with a confusing symptom. The line is now commented out
+with an explanation of exactly that failure mode.
+
+Verified running: healthcheck reports healthy, `/` 200, `/api/aircraft` 401 without a token, 200
+with the owner token and 41 live contacts, photos returning, and the Vite dev server on 5173
+proxying to the container so the normal development URL keeps working against one API process.
