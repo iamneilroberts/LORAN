@@ -21,12 +21,12 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 Put them in `.env` at the repo root (gitignored — **never commit tokens**):
 
 ```
-ADSBVIZ_ACCESS_TOKENS=owner:PASTE_YOUR_TOKEN,brother:PASTE_THEIR_TOKEN
-ADSBVIZ_OWNER_PRINCIPAL=owner
+LORAN_ACCESS_TOKENS=owner:PASTE_YOUR_TOKEN,brother:PASTE_THEIR_TOKEN
+LORAN_OWNER_PRINCIPAL=owner
 ```
 
-The names are yours to choose; `ADSBVIZ_OWNER_PRINCIPAL` must match whichever one is you.
-Leave `ADSBVIZ_ACCESS_TOKENS` empty and **there is no access control at all** — which is the
+The names are yours to choose; `LORAN_OWNER_PRINCIPAL` must match whichever one is you.
+Leave `LORAN_ACCESS_TOKENS` empty and **there is no access control at all** — which is the
 right setting for a localhost-only instance, and the wrong one for anything reachable.
 
 ## 2. Serve app and API as one origin
@@ -53,9 +53,9 @@ Outbound-only — nothing is forwarded into your network, and TLS is handled for
 
 ```
 cloudflared tunnel login            # once, opens a browser; skip if ~/.cloudflared/cert.pem exists
-cloudflared tunnel create adsb-viz
-cloudflared tunnel route dns adsb-viz adsb.example.com
-cloudflared tunnel run --url http://127.0.0.1:8010 adsb-viz
+cloudflared tunnel create loran
+cloudflared tunnel route dns loran adsb.example.com
+cloudflared tunnel run --url http://127.0.0.1:8010 loran
 ```
 
 > **Do not edit `~/.cloudflared/config.yml` if you run other tunnels.** That file is shared, and
@@ -75,7 +75,7 @@ https://adsb.example.com/?t=PASTE_THEIR_TOKEN
 
 They open it once. The app trades the token for an `HttpOnly` cookie, **strips `?t=` out of the
 address bar**, and that browser stays signed in for 30 days
-(`ADSBVIZ_SESSION_TTL_SECONDS`). Their toggles, filters and slice settings persist in their own
+(`LORAN_SESSION_TTL_SECONDS`). Their toggles, filters and slice settings persist in their own
 browser via `localStorage` — per device, not per account.
 
 Send the link over something private. It is a bearer credential in a URL, which is the price of
@@ -85,7 +85,7 @@ Send the link over something private. It is a bearer credential in a URL, which 
 
 ## Revoking
 
-Remove that person's entry from `ADSBVIZ_ACCESS_TOKENS` and restart. Their existing cookies
+Remove that person's entry from `LORAN_ACCESS_TOKENS` and restart. Their existing cookies
 stop working immediately — sessions name their principal, and a principal that is no longer
 configured is rejected. Changing your own token invalidates only your own sessions.
 
@@ -102,7 +102,7 @@ It reports uptime and feed status only — no positions, no airframe data.
 ## Photos and planespotters clause 8
 
 Their terms forbid re-exposing their API, and `docs/data-sources.md` records the mitigation as
-*"never expose it publicly"*. So `ADSBVIZ_PHOTO_GUEST_ACCESS` **defaults to `false`**: guests
+*"never expose it publicly"*. So `LORAN_PHOTO_GUEST_ACCESS` **defaults to `false`**: guests
 get the honest no-photo state and an explicit reason, while the owner still gets photos. Setting
 it `true` serves photos to guests too and is a deliberate departure from those terms — the
 owner of this deployment has made that call knowingly (D-041). The default in this repository

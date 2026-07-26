@@ -1,4 +1,4 @@
-# adsb-viz — 3D ADS-B + AIS Globe Console
+# LORAN — 3D ADS-B + AIS Globe Console
 
 Self-hosted, single-user, browser-based 3D globe fusing live aircraft (ADS-B) and vessel (AIS)
 traffic, with a scrubbable recording archive. Runs on a homelab. No auth, no multi-user.
@@ -150,13 +150,13 @@ toggle (D-040). That is the whole of the reversal — no forecasts, no alerting,
 lightning, no soundings. Do not read it as a licence to build a weather feature.
 
 **"No accounts / no multi-user" is narrowly reversed too** (D-041, 2026-07-25). There is now a
-shared-secret door — `ADSBVIZ_ACCESS_TOKENS`, one token per person, traded for a signed
+shared-secret door — `LORAN_ACCESS_TOKENS`, one token per person, traded for a signed
 `HttpOnly` cookie — so the owner can share a link with one trusted family member. It is **off
 unless tokens are configured**, so the default install is still exactly the single-user,
 unauthenticated console described above. Still no accounts, no roles beyond owner-or-not, no
 audit log, no per-user data. Preferences persist per browser in `localStorage`, not server-side.
 Runbook: `docs/remote-access.md`. Do not grow this into a user system without asking.
 
-Note the recorded terms departure: `ADSBVIZ_PHOTO_GUEST_ACCESS` defaults to **false** because
+Note the recorded terms departure: `LORAN_PHOTO_GUEST_ACCESS` defaults to **false** because
 planespotters clause 8 forbids re-exposing their API. **Keep that default** — this owner
 overrides it in their own `.env`, which is their call for their deployment, not this repo's.

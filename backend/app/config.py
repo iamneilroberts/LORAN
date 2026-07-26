@@ -38,40 +38,40 @@ def _f(name: str, default: float) -> float:
 # planespotters returns 403 without a contact address in the UA, and it is polite to the
 # volunteer-funded ADS-B feeds to identify ourselves too. See docs/data-sources.md 4.2.
 USER_AGENT = os.environ.get(
-    "ADSBVIZ_USER_AGENT", "adsb-viz/0.1 (+mailto:unset@example.com)"
+    "LORAN_USER_AGENT", "loran/0.1 (+mailto:unset@example.com)"
 )
 
-HOME_LAT = _f("ADSBVIZ_HOME_LAT", 30.6944)
-HOME_LON = _f("ADSBVIZ_HOME_LON", -88.0399)
-HOME_LABEL = os.environ.get("ADSBVIZ_HOME_LABEL", "MOBILE, AL")
+HOME_LAT = _f("LORAN_HOME_LAT", 30.6944)
+HOME_LON = _f("LORAN_HOME_LON", -88.0399)
+HOME_LABEL = os.environ.get("LORAN_HOME_LABEL", "MOBILE, AL")
 
 # airplanes.live documents 1 request/second. We poll slower than that and share one upstream
 # call across every connected browser, so the limit holds no matter how many tabs are open.
-POLL_SECONDS = _f("ADSBVIZ_ADSB_POLL_SECONDS", 2.0)
-MAX_RADIUS_NM = _f("ADSBVIZ_ADSB_MAX_RADIUS_NM", 250.0)
+POLL_SECONDS = _f("LORAN_ADSB_POLL_SECONDS", 2.0)
+MAX_RADIUS_NM = _f("LORAN_ADSB_MAX_RADIUS_NM", 250.0)
 
 # adsbdb enrichment. No key, no published limit, so we set our own budget: airframe data is
 # static per hull and cached for a day; routes change per flight and are cached for an hour;
 # a miss is cached briefly so an unknown hex is not re-asked on every selection.
-ADSBDB_TTL_S = _f("ADSBVIZ_ADSBDB_TTL_SECONDS", 86400.0)
-ADSBDB_ROUTE_TTL_S = _f("ADSBVIZ_ADSBDB_ROUTE_TTL_SECONDS", 3600.0)
-ADSBDB_MISS_TTL_S = _f("ADSBVIZ_ADSBDB_MISS_TTL_SECONDS", 3600.0)
-ADSBDB_MIN_INTERVAL_S = _f("ADSBVIZ_ADSBDB_MIN_INTERVAL_SECONDS", 0.2)
+ADSBDB_TTL_S = _f("LORAN_ADSBDB_TTL_SECONDS", 86400.0)
+ADSBDB_ROUTE_TTL_S = _f("LORAN_ADSBDB_ROUTE_TTL_SECONDS", 3600.0)
+ADSBDB_MISS_TTL_S = _f("LORAN_ADSBDB_MISS_TTL_SECONDS", 3600.0)
+ADSBDB_MIN_INTERVAL_S = _f("LORAN_ADSBDB_MIN_INTERVAL_SECONDS", 0.2)
 
 # planespotters photo JSON. D-009 caps the cache at 24 h. Image bytes are never cached
 # anywhere - the browser loads those straight from their CDN.
-PHOTO_TTL_S = min(_f("ADSBVIZ_PHOTO_TTL_SECONDS", 86400.0), 86400.0)
-PHOTO_MISS_TTL_S = _f("ADSBVIZ_PHOTO_MISS_TTL_SECONDS", 21600.0)
+PHOTO_TTL_S = min(_f("LORAN_PHOTO_TTL_SECONDS", 86400.0), 86400.0)
+PHOTO_MISS_TTL_S = _f("LORAN_PHOTO_MISS_TTL_SECONDS", 21600.0)
 
 # Track ring buffer (D-016). In memory, dies with the process; Phase 5 makes it durable.
 # The sample floor matters: at a 2 s poll an unthrottled buffer is 900 near-identical points
 # per contact, which costs memory without lengthening the window it can cover.
-TRACK_WINDOW_S = _f("ADSBVIZ_TRACK_WINDOW_SECONDS", 1800.0)
-TRACK_SAMPLE_S = _f("ADSBVIZ_TRACK_SAMPLE_SECONDS", 5.0)
-TRACK_MAX_CONTACTS = int(_f("ADSBVIZ_TRACK_MAX_CONTACTS", 3000))
+TRACK_WINDOW_S = _f("LORAN_TRACK_WINDOW_SECONDS", 1800.0)
+TRACK_SAMPLE_S = _f("LORAN_TRACK_SAMPLE_SECONDS", 5.0)
+TRACK_MAX_CONTACTS = int(_f("LORAN_TRACK_MAX_CONTACTS", 3000))
 
 CORS_ORIGINS = os.environ.get(
-    "ADSBVIZ_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    "LORAN_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")
 
 # ---------------------------------------------------------------------------
@@ -82,13 +82,13 @@ CORS_ORIGINS = os.environ.get(
 # Format: "name:token,name:token" - e.g. "neil:AAAA...,brother:BBBB...".
 # Generate tokens with:  python3 -c "import secrets;print(secrets.token_urlsafe(32))"
 # ---------------------------------------------------------------------------
-ACCESS_TOKENS = os.environ.get("ADSBVIZ_ACCESS_TOKENS", "")
+ACCESS_TOKENS = os.environ.get("LORAN_ACCESS_TOKENS", "")
 # Which principal counts as the owner. Only matters for owner-only features.
-OWNER_PRINCIPAL = os.environ.get("ADSBVIZ_OWNER_PRINCIPAL", "owner")
+OWNER_PRINCIPAL = os.environ.get("LORAN_OWNER_PRINCIPAL", "owner")
 # Optional. Unset means the cookie key is derived from the tokens themselves, so
 # sessions survive restarts and rotating a token revokes its sessions.
-SESSION_SECRET = os.environ.get("ADSBVIZ_SESSION_SECRET", "")
-SESSION_TTL_S = _f("ADSBVIZ_SESSION_TTL_SECONDS", 30 * 24 * 3600.0)
+SESSION_SECRET = os.environ.get("LORAN_SESSION_SECRET", "")
+SESSION_TTL_S = _f("LORAN_SESSION_TTL_SECONDS", 30 * 24 * 3600.0)
 
 # planespotters clause 8 forbids re-exposing their API, and docs/data-sources.md
 # records the mitigation as "never expose it publicly". So the DEFAULT here is
@@ -96,9 +96,9 @@ SESSION_TTL_S = _f("ADSBVIZ_SESSION_TTL_SECONDS", 30 * 24 * 3600.0)
 # The owner of THIS deployment has chosen to override it in their own .env with
 # eyes open; see D-041. Do not flip the default in the open-source repo.
 PHOTO_GUEST_ACCESS = os.environ.get(
-    "ADSBVIZ_PHOTO_GUEST_ACCESS", "false"
+    "LORAN_PHOTO_GUEST_ACCESS", "false"
 ).strip().lower() in ("1", "true", "yes", "on")
 
 # Serve the built frontend from the API process, so remote access is ONE origin and
 # one tunnel. Empty means do not serve static files (the dev path: Vite on 5173).
-STATIC_DIR = os.environ.get("ADSBVIZ_STATIC_DIR", "")
+STATIC_DIR = os.environ.get("LORAN_STATIC_DIR", "")

@@ -1,5 +1,5 @@
 """
-adsb-viz backend.
+loran backend.
 
 Exists to (a) proxy/normalize upstream feeds so the browser is not hitting six APIs directly,
 (b) enforce rate limits and cache, (c) run the recorder (Phase 5).
@@ -52,7 +52,7 @@ async def lifespan(_: FastAPI):
     await adsb.close()
 
 
-app = FastAPI(title="adsb-viz", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="loran", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS if o.strip()],
@@ -254,13 +254,13 @@ async def health():
 #
 # Serving the built app from this process is what makes remote access one origin and one
 # tunnel: no CORS, no second port to expose, and the session cookie is same-site by
-# construction. Unset ADSBVIZ_STATIC_DIR for the dev path, where Vite serves on 5173 and
+# construction. Unset LORAN_STATIC_DIR for the dev path, where Vite serves on 5173 and
 # proxies /api here.
 # ---------------------------------------------------------------------------
 if STATIC_DIR:
     _static = Path(STATIC_DIR)
     if not _static.is_dir():
-        raise RuntimeError(f"ADSBVIZ_STATIC_DIR is set but not a directory: {_static}")
+        raise RuntimeError(f"LORAN_STATIC_DIR is set but not a directory: {_static}")
 
     @app.get("/")
     async def index():

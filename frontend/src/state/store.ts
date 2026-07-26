@@ -303,7 +303,7 @@ export const useStore = create<State>()(persist((set) => ({
   setCameraPitch: (cameraPitchDeg) => set({ cameraPitchDeg }),
   setAuthRequired: (authRequired) => set({ authRequired }),
 }), {
-  name: "adsbviz.prefs",
+  name: "loran.prefs",
   version: 1,
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.

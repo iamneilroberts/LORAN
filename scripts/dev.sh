@@ -10,9 +10,9 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_PORT="${ADSBVIZ_API_PORT:-8010}"   # NOT 8000 - occupied by an unrelated service here
-WEB_PORT="${ADSBVIZ_WEB_PORT:-5173}"
-LOG_DIR="${TMPDIR:-/tmp}/adsb-viz"
+API_PORT="${LORAN_API_PORT:-8010}"   # NOT 8000 - occupied by an unrelated service here
+WEB_PORT="${LORAN_WEB_PORT:-5173}"
+LOG_DIR="${TMPDIR:-/tmp}/loran"
 mkdir -p "$LOG_DIR"
 
 port_pid() { ss -ltnp 2>/dev/null | awk -v p=":$1\$" '$4 ~ p {print $NF}' \
@@ -48,7 +48,7 @@ case "${1:-start}" in
   status) echo "Listening:"; status; exit 0 ;;
 esac
 
-echo "Restarting adsb-viz from: $ROOT"
+echo "Restarting loran from: $ROOT"
 stop
 
 if [ ! -x "$ROOT/backend/.venv/bin/uvicorn" ]; then

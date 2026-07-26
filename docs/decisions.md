@@ -351,7 +351,7 @@ permission to hammer it.
 
 **Decision:** `backend/app/feeds/adsbdb.py` caches airframe lookups for 24 h, route lookups for
 1 h, and **negative results for 1 h**. Upstream calls are serialised behind a 0.2 s floor. All
-four values are `.env`-tunable (`ADSBVIZ_ADSBDB_*`).
+four values are `.env`-tunable (`LORAN_ADSBDB_*`).
 
 **Why:** airframe data is static per hull, so a hex should cost one upstream call a day no matter
 how often it is clicked. Routes change per flight, so an hour is the honest ceiling. Caching the
@@ -468,7 +468,7 @@ text, plain `<a>` to the photo page with no `rel="nofollow"`, no image bytes tou
 
 Implementation calls behind D-016, all three about not letting the buffer lie.
 
-**Sample floor (`ADSBVIZ_TRACK_SAMPLE_SECONDS`, default 5 s).** The poll runs every 2 s. Storing
+**Sample floor (`LORAN_TRACK_SAMPLE_SECONDS`, default 5 s).** The poll runs every 2 s. Storing
 every poll would put ~900 near-identical points per contact in a 30-minute buffer without
 covering any more time. One sample per contact per 5 s gives 361 slots, which is the whole window.
 
@@ -899,7 +899,7 @@ which would imply precision the source does not have.
 instruction: they want their brother to open a URL and have it work, with a real token and
 settings that stick. Runbook: `docs/remote-access.md`.
 
-**What it is:** a shared-secret door in front of a single-user console. `ADSBVIZ_ACCESS_TOKENS`
+**What it is:** a shared-secret door in front of a single-user console. `LORAN_ACCESS_TOKENS`
 maps `name:token` pairs to principals; `GET /api/session?t=…` trades a token for an
 HMAC-signed `HttpOnly` cookie. No registration, no password reset, no roles beyond
 owner-or-not. Calling it auth rather than an account system is the honest description.
@@ -925,7 +925,7 @@ owner-or-not. Calling it auth rather than an account system is the honest descri
   panel stating that nothing on screen is current. A blank globe would be indistinguishable
   from a dead feed and would send them to the owner asking the wrong question. A 401 is
   therefore reported as "not authorised", never through `setFetchFailed` as a feed outage.
-- **One origin.** `ADSBVIZ_STATIC_DIR` serves the built app from the API process
+- **One origin.** `LORAN_STATIC_DIR` serves the built app from the API process
   (`scripts/serve.sh`), so there is no CORS, one port to tunnel, and a same-site cookie by
   construction. The static mount is registered last so it can never shadow an `/api` route.
 
@@ -945,7 +945,7 @@ principle.
 **Deliberate terms departure, recorded plainly.** planespotters clause 8 forbids re-exposing
 their API and `docs/data-sources.md` records our mitigation as *"never expose it publicly"*. The
 owner was shown this and chose to serve photos to both people. Therefore
-`ADSBVIZ_PHOTO_GUEST_ACCESS` exists, **defaults to `false`**, and this repository ships the
+`LORAN_PHOTO_GUEST_ACCESS` exists, **defaults to `false`**, and this repository ships the
 compliant default — the owner sets it `true` in their own gitignored `.env`. That keeps a public
 open-source repo from shipping a terms violation as its out-of-the-box behaviour while giving
 the owner exactly the deployment they asked for. When photos are withheld, the response carries
@@ -1011,3 +1011,51 @@ plus re-derived lightness in the altitude ramp (which assumes a near-black groun
 remain the real cost of light mode; this decision only removes the scattered-literal problem.
 
 **The chooser itself stays parked as FUTURE**, per the owner.
+
+---
+
+### D-043 · The project is named LORAN
+
+**Date:** 2026-07-25
+
+`adsb-viz` was always a placeholder, and it fails the project's own roadmap: Phase 4 adds
+**vessels**, so an aircraft-only name would be wrong within one phase.
+
+**Decision:** the project is **LORAN** — display `LORAN`, slug and identifiers `loran`, env
+prefix `LORAN_`.
+
+**Why it fits.** LORAN (LOng RAnge Navigation) was used by *both ships and aircraft*, which is
+exactly the air-and-sea scope this console is heading for. It is terse and belongs to the
+instrument era the visual direction already borrows from. It was decommissioned in 2010, so
+there is no live product or trademark to collide with. It implies neither a service nor a
+consumer tracker.
+
+**Owner chose it from a shortlist checked against GitHub for real** rather than by assumption —
+an earlier check had silently reported every candidate as free because it queried a misspelled
+field, which is why a control query for known-crowded names (`readsb` 641★, `tar1090` 1846★) was
+run before trusting the results. `perch` (google-research, 375★) and `racon` (isovic, 299★) were
+eliminated that way; `vantage` (3419★) and `plotter` (188★) in a second round. `loran`'s busiest
+exact-name match is 11★.
+
+**Recorded caveat:** LORAN was a *navigation* system — it told you where **you** are. This is a
+*surveillance* display — it shows where **others** are. The owner accepted that mismatch; it is
+noted here so nobody later "discovers" it as a problem.
+
+**Scope of the rename:** ~181 occurrences across ~20 files. `LORAN_*` for all 32 environment
+variables, `loran` for the package name, FastAPI title, log directory, User-Agent product token,
+the session cookie (`loran_session`) and the prefs key (`loran.prefs`). The last two reset
+existing sessions and stored preferences once — a link re-open, and acceptable pre-release.
+Earlier entries in this log keep their original wording; only environment-variable names were
+updated inside them, so the log stays actionable without rewriting past decisions.
+
+**Not renamed, deliberately:** the working directories (`~/dev/adsb-viz`, the worktree) and the
+shared coordination directory. Those are shared with another checkout and a worktree journal, so
+moving them is an infrastructure change that needs to happen deliberately rather than as a side
+effect of a text substitution.
+
+**Bug found while renaming, and fixed:** `.env` never set a User-Agent, so every upstream request
+had been going out as `…(+mailto:unset@example.com)`. planespotters *requires* a contact address
+and the volunteer ADS-B feeds deserve a real one, so this was quietly impolite at best and
+dishonest at worst. Now set to a real address; verified planespotters still returns 200 with it.
+It also confirms the handoff's suspicion that their UA gate is looser than documented — a
+placeholder contact was being accepted all along.

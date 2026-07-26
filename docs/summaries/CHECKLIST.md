@@ -49,7 +49,7 @@
 
 ## Open
 
-- [ ] Pick a repo name to replace the placeholder "adsb-viz" before open-sourcing
+- [x] **Name chosen: LORAN** (D-043) — repo slug `loran`, display `LORAN`. Env prefix `LORAN_*`.
 - [ ] Low end of the altitude ramp: deep blue over dark blue ocean is the lowest-contrast pairing — owner to judge on a real display
 - [ ] Judge the place markers on the real display now that D-037 has thinned them
 - [ ] Residual label overlap where two airfields + a city sit within a few km (Maxwell / Montgomery
@@ -72,7 +72,7 @@
 - [ ] Open-source prep: licence + README stating single-user-by-design
 - [ ] Remote access is BUILT (D-041) but not yet live: owner still has to mint tokens into `.env`,
       run `scripts/serve.sh`, and start `cloudflared`. See `docs/remote-access.md`.
-      Owner ruled: serve photos to both people, so set `ADSBVIZ_PHOTO_GUEST_ACCESS=true` in the
+      Owner ruled: serve photos to both people, so set `LORAN_PHOTO_GUEST_ACCESS=true` in the
       LOCAL `.env` only — the repo default stays compliant.
 - [ ] FUTURE (parked, owner's call): colour scheme chooser incl. light mode. Groundwork is DONE
       (D-042 — one palette, `refreshPalette()` hook exists and is unused). Remaining real cost:
@@ -80,4 +80,4 @@
       `scripts/make_dark_bathy.py`) and re-derived lightness in the altitude hue ramp, which
       assumes a near-black ground. A dark-VARIANT chooser is much cheaper than light mode.
 
-_Updated: 2026-07-25 — phase2-dossier_
+_Updated: 2026-07-25 — phase2-dossier (project renamed LORAN, D-043)_

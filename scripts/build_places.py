@@ -80,7 +80,7 @@ def fetch(url: str, dest: Path, refresh: bool) -> Path:
         return dest
     print(f"  fetch   {url}")
     # A contact-carrying UA is the courtesy this project uses everywhere it hits a third party.
-    req = urllib.request.Request(url, headers={"User-Agent": "adsb-viz build_places.py"})
+    req = urllib.request.Request(url, headers={"User-Agent": "loran build_places.py"})
     with urllib.request.urlopen(req, timeout=120) as r, dest.open("wb") as f:
         f.write(r.read())
     print(f"  wrote   {dest.relative_to(ROOT)} ({dest.stat().st_size:,} bytes)")

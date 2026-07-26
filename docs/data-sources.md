@@ -175,7 +175,7 @@ This covers the dossier's registration / type / operator / origin / destination 
 
 > `{"error":"Server User-Agent strings must include a contact URL or email so we can reach you, e.g. MyFlightTracker/1.2 (+https://example.com/contact)."}`
 
-With a compliant UA (`adsb-viz/0.1 (+mailto:dneilroberts@gmail.com)`) it returns 200. Both `/pub/photos/hex/{hex}` and `/pub/photos/reg/{reg}` work.
+With a compliant UA (`loran/0.1 (+mailto:dneilroberts@gmail.com)`) it returns 200. Both `/pub/photos/hex/{hex}` and `/pub/photos/reg/{reg}` work.
 
 ```json
 {"photos":[{
@@ -197,7 +197,7 @@ A miss returns `{"photos":[]}` — an empty array, **not** a 404. The dossier mu
 | 1 | Photos may not be a paid/premium/member-only feature; must be freely available to all users; thumbnail sizes identical across access levels | N/A — single user, no auth. Satisfied trivially. |
 | 2 | **Each photo must credit the photographer in text visible next to the image**, and the thumbnail **must link to the photo's page using the `link` URL from the response**. Plain anchor — **no `rel="nofollow"`** or equivalent. | Dossier renders photographer text + wraps thumbnail in a plain `<a href={link}>`. |
 | 3 | Browser clients must send a valid `Origin` or `Referer` | See empirical finding below — this path does not work for us. |
-| 4 | Server-side clients must send a unique descriptive User-Agent including a contact URL or email | `ADSBVIZ_USER_AGENT` in `.env`. Generic defaults (`curl/8.0`, `python-requests`) discouraged. |
+| 4 | Server-side clients must send a unique descriptive User-Agent including a contact URL or email | `LORAN_USER_AGENT` in `.env`. Generic defaults (`curl/8.0`, `python-requests`) discouraged. |
 | 5 | JSON may be cached server-side **up to 24 h**. **Image binaries must never be downloaded, stored, or re-hosted** — they must load in the end user's browser from the returned URLs. | **Backend must not proxy images.** Backend caches JSON only; `<img src>` points at their CDN. |
 | 6 | All returned URLs used **unchanged**. No proxying, rewriting, or hot-link-protection bypassing. | Never rewrite `thumbnail.src` / `link`. |
 | 7 | **Photos and metadata must not be used to train, fine-tune, evaluate, or build datasets for ML/AI models** | Never feed photo data to an LLM. Reinforces the existing no-AI-summarization non-goal. |
@@ -214,7 +214,7 @@ Also documented: the API is free, needs no key, queries by registration or hex o
 | A | `http://localhost:5173` | browser (`Mozilla/5.0 … Chrome/126`) | **403** |
 | B | `https://adsb.example.com` | browser | **403** |
 | C | *none* | `curl/8.0` | 200 |
-| D | *none* | `adsb-viz/0.1 (+mailto:…)` | **200** |
+| D | *none* | `loran/0.1 (+mailto:…)` | **200** |
 | E | image CDN hotlink w/ `Referer` | browser | **200**, `image/jpeg`, 8,349 B |
 
 Their gate is enforced on **User-Agent**, not Origin — a request carrying a valid `Origin` but an ordinary browser UA is rejected. Since **browsers forbid scripts from setting `User-Agent`** (it's a forbidden header name), the documented browser-direct path is **not usable by us**. Test C also shows the "generic library defaults may be blocked" rule is not currently enforced — but we will not rely on that.

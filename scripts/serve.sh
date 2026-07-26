@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-PORT="${ADSBVIZ_PORT:-8010}"
+PORT="${LORAN_PORT:-8010}"
 DIST="$ROOT/frontend/dist"
 
 if [[ "${1:-}" == "--rebuild" || ! -f "$DIST/index.html" ]]; then
@@ -35,14 +35,14 @@ if [[ -f "$VENV/bin/activate" ]]; then
 fi
 
 # Serving static from the API process is what makes it one origin.
-export ADSBVIZ_STATIC_DIR="$DIST"
+export LORAN_STATIC_DIR="$DIST"
 
 # Tokens can come from the shell OR from .env, which the app parses itself - so checking only
 # the shell environment reported "no access control" on a correctly protected instance, which
 # is a worse failure than saying nothing. Check both.
-if [[ -z "${ADSBVIZ_ACCESS_TOKENS:-}" ]] && ! grep -qE '^\s*ADSBVIZ_ACCESS_TOKENS=.+' "$ROOT/.env" 2>/dev/null; then
+if [[ -z "${LORAN_ACCESS_TOKENS:-}" ]] && ! grep -qE '^\s*LORAN_ACCESS_TOKENS=.+' "$ROOT/.env" 2>/dev/null; then
   cat >&2 <<'WARN'
-!! ADSBVIZ_ACCESS_TOKENS is not set in the environment or .env, so there is NO
+!! LORAN_ACCESS_TOKENS is not set in the environment or .env, so there is NO
    access control. That is correct for a LAN-only or localhost instance. Do NOT
    expose this to the internet without tokens - see docs/remote-access.md.
 WARN

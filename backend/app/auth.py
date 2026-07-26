@@ -8,7 +8,7 @@ registration, no password reset, no roles beyond "owner or not".
 
 Design, and why:
 
-* **Disabled unless configured.** With no `ADSBVIZ_ACCESS_TOKENS` set, every request is the
+* **Disabled unless configured.** With no `LORAN_ACCESS_TOKENS` set, every request is the
   owner and nothing changes. That keeps the default install exactly as single-user as CLAUDE.md
   says it is, so an open-source user is never silently running an auth system.
 * **A link is the whole login.** `?t=<token>` on the URL is exchanged once for a signed cookie.
@@ -31,7 +31,7 @@ import hmac
 import secrets
 import time
 
-COOKIE_NAME = "adsbviz_session"
+COOKIE_NAME = "loran_session"
 
 
 def _b64(raw: bytes) -> str:
@@ -64,7 +64,7 @@ class TokenAuth:
         # Deriving from the tokens keeps cookies valid across restarts with no extra config,
         # and makes a token change revoke that token's sessions.
         material = secret or "|".join(sorted(self.principals)) or secrets.token_hex(32)
-        self.key = hashlib.sha256(("adsbviz-session:" + material).encode()).digest()
+        self.key = hashlib.sha256(("loran-session:" + material).encode()).digest()
 
     @property
     def enabled(self) -> bool:

@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Keep the console copy: it is the only place the full stack survives a reload.
-    console.error("adsb-viz crashed:", error, info.componentStack);
+    console.error("loran crashed:", error, info.componentStack);
     this.setState({ stack: info.componentStack ?? null });
   }
 

@@ -48,7 +48,7 @@ export function trackToGeoJSON(track: TrackResult, label: string) {
               "when the contact came into range, so first_fix is not necessarily the start " +
               "of the flight.",
           exported_at: new Date().toISOString(),
-          source: "adsb-viz in-memory track buffer (not a durable archive)",
+          source: "loran in-memory track buffer (not a durable archive)",
         },
       },
     ],

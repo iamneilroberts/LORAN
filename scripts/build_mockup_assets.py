@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import urllib.request
 
-UA = "adsb-viz/0.1 (+mailto:dneilroberts@gmail.com)"
+UA = "loran/0.1 (+mailto:dneilroberts@gmail.com)"
 HOME_LAT, HOME_LON = 30.6944, -88.0399
 ZOOM = 8
 GRID = 3  # GRID x GRID tiles centred on home
