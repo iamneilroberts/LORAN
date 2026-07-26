@@ -195,6 +195,13 @@ single shared-secret door described above. Weather is limited to the one radar l
 
 ## Licence
 
-[MIT](LICENSE) for the software. The licence grants no rights to the *data* the software fetches
-— each provider's terms govern that, and several are non-commercial. Read the notes in `LICENSE`
-and `docs/data-sources.md` before deploying this anywhere public.
+[MIT](LICENSE) — for the **software**.
+
+It grants no rights to the **data** the software fetches. Several upstreams are non-commercial
+(airplanes.live, adsb.fi), share-alike (adsb.lol, ODbL 1.0), or forbid re-exposing their API
+(planespotters clause 8). Those terms are summarised in [`NOTICE`](NOTICE) and reviewed in full in
+[`docs/data-sources.md`](docs/data-sources.md).
+
+Being single-user and unauthenticated is part of what keeps this inside those terms, so a fork
+adding multi-user hosting or commercial use is not automatically covered and should re-check each
+provider.

@@ -1,0 +1,56 @@
+LORAN — third-party data terms
+==============================
+
+The MIT licence in LICENSE covers the SOFTWARE in this repository. It grants you
+no rights whatsoever to the DATA the software fetches at runtime. That data is
+governed by each upstream provider's own terms, and several of them are more
+restrictive than MIT.
+
+Read this before deploying this software anywhere public or commercial.
+
+Aircraft position feeds
+-----------------------
+  airplanes.live   NON-COMMERCIAL use only. 1 request/second, no SLA.
+  adsb.fi          Non-commercial.
+  adsb.lol         ODbL 1.0 — share-alike. Redistributing a derived database
+                   carries obligations; displaying positions in a browser is
+                   ordinary use, but read the licence before you export.
+
+Airframe and route detail
+-------------------------
+  adsbdb           Open, no published rate limit. This project sets its own
+                   politeness budget rather than assuming there is none.
+
+Photographs
+-----------
+  planespotters.net
+                   Photo API Terms of Use apply. Notably:
+                     * image binaries must NOT be downloaded, stored or
+                       re-hosted — this software never touches them, the
+                       browser loads them from the provider's CDN;
+                     * returned URLs must not be rewritten;
+                     * photographer attribution must be displayed;
+                     * clause 8 forbids re-exposing their API through your own
+                       API, feed, bulk export or dataset.
+
+                   That last clause is why this project's photo endpoint is
+                   owner-only by default when access tokens are configured.
+
+Basemaps and geography
+----------------------
+  GEBCO            Attribution required (bathymetry and the depth readout).
+  Esri             Attribution required, where used.
+  NOAA / NWS NEXRAD, served via Iowa State University's Mesonet
+                   US Government public domain; please credit IEM for hosting.
+  OurAirports      Public domain.
+  Natural Earth    Public domain.
+
+A note on scope
+---------------
+This software is single-user and unauthenticated BY DESIGN, and that design is
+part of what keeps it inside the non-commercial terms above. A fork that adds
+multi-user hosting, a public API, or commercial use is not automatically covered
+by those upstream terms, and should re-check each one.
+
+The full terms review, with measured response shapes and verdicts, is in
+docs/data-sources.md.

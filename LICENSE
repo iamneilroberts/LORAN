@@ -19,21 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-NOTE ON DATA: this licence covers the SOFTWARE only. It grants no rights to the
-data the software fetches at runtime, which is governed by each upstream
-provider's own terms. In particular:
-
-  * airplanes.live and adsb.fi are NON-COMMERCIAL use only.
-  * adsb.lol data is ODbL 1.0 (share-alike).
-  * planespotters.net photo metadata is subject to their Photo API Terms of Use,
-    which forbid re-exposing their API and require displayed attribution. Image
-    binaries are never downloaded, stored or re-hosted by this software.
-  * Esri, GEBCO and NOAA/NWS (via Iowa State Mesonet) require attribution.
-  * OurAirports and Natural Earth are public domain.
-
-See docs/data-sources.md for the full terms review, and note that this project
-is single-user and unauthenticated by design — which is part of what keeps it
-inside those non-commercial terms.
