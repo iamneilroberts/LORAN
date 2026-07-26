@@ -81,14 +81,14 @@ HTTP 401
 
 ```
 bash scripts/mint-link.sh
-bash scripts/mint-link.sh https://adsb.voygent.ai
+bash scripts/mint-link.sh https://loran.voygent.app
 ```
 
 ```
 !! Each URL below CONTAINS A LIVE CREDENTIAL. Anyone holding it is logged in.
 
-owner            https://adsb.voygent.ai/?t=<TOKEN>
-brother          https://adsb.voygent.ai/?t=<TOKEN>
+owner            https://loran.voygent.app/?t=<TOKEN>
+brother          https://loran.voygent.app/?t=<TOKEN>
 
 The token can also be pasted straight into the locked panel, which keeps it out of the
 URL and out of every access log between here and the browser (D-057).
@@ -260,7 +260,7 @@ restarting your container.
   browser also sees one origin. Verified through the proxy: `/api/config` unauthenticated on
   `:5173` returned `HTTP 401`, and with a cookie returned the owner payload.
 
-A request carrying `Origin: https://adsb.voygent.ai` was served normally with **no
+A request carrying `Origin: https://loran.voygent.app` was served normally with **no
 `access-control-*` headers** in the response — correct, because a browser on that hostname
 talking to that hostname never makes a cross-origin request. Adding the tunnel hostname to
 `LORAN_CORS_ORIGINS` would be cargo cult. Also note `CORSMiddleware` is configured without
@@ -318,7 +318,7 @@ voygent's credentials file and voygent's ingress rules. What its catch-all does 
 hostname, checked read-only:
 
 ```
-cloudflared --config ~/.cloudflared/config.yml tunnel ingress rule https://adsb.voygent.ai
+cloudflared --config ~/.cloudflared/config.yml tunnel ingress rule https://loran.voygent.app
 ```
 
 ```
@@ -339,17 +339,17 @@ Matched rule #1
 	service: http://localhost:8788
 ```
 
-So `adsb.voygent.ai` falls into the 404 catch-all. **Never edit that file, never
+So `loran.voygent.app` falls into the 404 catch-all. **Never edit that file, never
 `systemctl restart cloudflared-voygent`, and never `pkill cloudflared`** — the last one matches
 every tunnel on the box and has already taken voygent down once (`docs/remote-access.md` §3).
 Give LORAN its own config file and kill it by PID.
 
-### DNS: `voygent.ai` has a wildcard, and `adsb.voygent.ai` already answers
+### DNS: `voygent.ai` has a wildcard, and `loran.voygent.app` already answers
 
 ```
-dig +short adsb.voygent.ai
+dig +short loran.voygent.app
 dig +short zzz-nonexistent-test-98765.voygent.ai
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://adsb.voygent.ai/
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://loran.voygent.app/
 ```
 
 ```
@@ -360,7 +360,7 @@ curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://adsb.voygent.ai/
 HTTP 404
 ```
 
-Right now `https://adsb.voygent.ai/` returns a **404 from Cloudflare's edge** (`server:
+Right now `https://loran.voygent.app/` returns a **404 from Cloudflare's edge** (`server:
 cloudflare`, `cf-ray` present) — the hostname resolves via the wildcard but no tunnel route
 serves it. Two consequences for step 3 below:
 
@@ -371,7 +371,74 @@ serves it. Two consequences for step 3 below:
 
 ---
 
-# NOT YET VERIFIED — the remaining steps
+# FIELD NOTES — what actually happened, 2026-07-26
+
+**Remote access is LIVE and verified end to end from a second machine on the home network:
+`https://loran.voygent.app`, ~24 FPS in the browser, 50 live contacts through the tunnel.**
+Measured over the real tunnel, not inferred:
+
+| Check | Result |
+|---|---|
+| Unauthenticated `GET /api/aircraft` | `401 {"detail":"access token required"}` |
+| `Set-Cookie` over real HTTPS | `HttpOnly; Max-Age=2592000; Path=/; SameSite=lax; **Secure**` |
+| Cookie then opens the door | `principal: owner`, 50 aircraft returned |
+
+`Secure` was previously only ever confirmed with a hand-set `X-Forwarded-Proto` header. It is now
+observed through cloudflared itself.
+
+**The hostname changed from `adsb.voygent.ai` to `loran.voygent.app`, and the four traps below are
+why.** The step-by-step section that follows is kept for its structure, but **step 3 is wrong for
+a cross-zone hostname** — read these first.
+
+### Trap 1 — a Workers route silently beats DNS
+
+`adsb.voygent.ai` returned a Voygent-branded 404 on *every* path even with DNS pointed correctly at
+the tunnel and the tunnel connected. Cause: a Workers route pattern on `*voygent.ai/*` runs the
+worker **before** Cloudflare consults the DNS record, so the tunnel is never reached. Symptom to
+recognise: `server: cloudflare`, no origin headers, an application-branded 404 on every path
+including nonsense ones. Fix is a carve-out — Workers Routes → add `<host>/*` → Worker: **None**.
+
+### Trap 2 — `tunnel route dns` cannot leave the zone `cert.pem` was issued for
+
+`cloudflared tunnel route dns loran loran.voygent.app` produced:
+
+```
+INF loran.voygent.app.voygent.ai is already configured to route to your tunnel
+```
+
+`~/.cloudflared/cert.pem` is scoped to **voygent.ai**, so cloudflared treated the `.app` hostname as
+a relative name inside that zone and glued the zone on. **For a hostname in a different zone,
+create the DNS record in the dashboard by hand** rather than re-running `tunnel login`, which
+overwrites the shared `cert.pem` the production tooling uses.
+
+### Trap 3 — `--overwrite-dns` no-ops when the record already points at any tunnel you own
+
+`adsb.voygent.ai` already had a record aimed at the **voygent-desktop** tunnel. cloudflared logged
+"is already configured to route to your tunnel" and changed nothing. Editing the record in the
+dashboard is the fix; the newer UI shows these as a **Tunnel** record type with a tunnel *picker*,
+not a text CNAME target.
+
+### Trap 4 — the DNS UI calls these records "Tunnel", which is easy to delete by mistake
+
+Deleting what looked like a stale *record* deleted the *tunnel*, orphaning its credentials file and
+leaving a `cloudflared` process serving a tunnel that no longer existed. Recovery is
+`cloudflared tunnel create loran` (new UUID, new credentials file) plus a matching update to
+`~/.cloudflared/loran.yml` and a fresh DNS record.
+
+### Choosing a hostname
+
+Prefer a zone with **no wildcard DNS and no broad Workers route**. `voygent.app` qualified;
+`voygent.ai` (wildcard CNAME to a worker) and `voygen.app` (wildcard A to `192.0.2.1`, the RFC 5737
+documentation address used to make a hostname proxiable for Workers routes) both did not.
+
+### Still to clean up
+
+Three `voygent.ai` records now point at deleted tunnels and should be removed: `adsb`, `loran`, and
+the malformed `loran.voygent.app` left by Trap 2.
+
+---
+
+# ORIGINAL STEP-BY-STEP (step 3 superseded — see Trap 2)
 
 Everything below creates cloud resources or needs real HTTPS. None of it has been run. Do it in
 order. Every command is one line; copy them one at a time.
@@ -395,13 +462,13 @@ Note the UUID it prints and the credentials JSON path it writes into `~/.cloudfl
 **3. Route the hostname.**
 
 ```
-cloudflared tunnel route dns loran adsb.voygent.ai
+cloudflared tunnel route dns loran loran.voygent.app
 ```
 
 If it refuses because a record already exists (the wildcard, see above), then:
 
 ```
-cloudflared tunnel route dns --overwrite-dns loran adsb.voygent.ai
+cloudflared tunnel route dns --overwrite-dns loran loran.voygent.app
 ```
 
 **4. Write LORAN its own config file** — this is the step that keeps you away from voygent's
@@ -416,7 +483,7 @@ tunnel: <LORAN-UUID>
 credentials-file: /home/<you>/.cloudflared/<LORAN-UUID>.json
 
 ingress:
-  - hostname: adsb.voygent.ai
+  - hostname: loran.voygent.app
     service: http://127.0.0.1:8010
   - service: http_status:404
 ```
@@ -425,7 +492,7 @@ Check it parses and routes the way you expect before running anything:
 
 ```
 cloudflared --config ~/.cloudflared/loran.yml tunnel ingress validate
-cloudflared --config ~/.cloudflared/loran.yml tunnel ingress rule https://adsb.voygent.ai
+cloudflared --config ~/.cloudflared/loran.yml tunnel ingress rule https://loran.voygent.app
 ```
 
 The second should print `service: http://127.0.0.1:8010`, not `http_status:404`.
@@ -442,7 +509,7 @@ combination.
 **6. From another machine (phone on cellular is the honest test), check the open endpoint:**
 
 ```
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://adsb.voygent.ai/api/health
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://loran.voygent.app/api/health
 ```
 
 Expect `HTTP 200`. If you get 404, the edge is not routing — recheck steps 3 and 4. If you get
@@ -451,8 +518,8 @@ Expect `HTTP 200`. If you get 404, the edge is not routing — recheck steps 3 a
 **7. Check the door survived the trip**, and that the cookie now carries `Secure`:
 
 ```
-curl -s https://adsb.voygent.ai/api/config
-curl -s -D - -o /dev/null "https://adsb.voygent.ai/api/session?t=<TOKEN>"
+curl -s https://loran.voygent.app/api/config
+curl -s -D - -o /dev/null "https://loran.voygent.app/api/session?t=<TOKEN>"
 ```
 
 Expect `{"detail":"access token required","auth":"token"}` from the first, and a `set-cookie`
@@ -568,11 +635,11 @@ docker compose restart loran
 **4. Print the links.**
 
 ```
-bash scripts/mint-link.sh https://adsb.voygent.ai
+bash scripts/mint-link.sh https://loran.voygent.app
 ```
 
-**5. Send it privately.** Either the whole `https://adsb.voygent.ai/?t=<TOKEN>` link, or — better
-— send `https://adsb.voygent.ai/` and the bare token separately and have them paste it into the
+**5. Send it privately.** Either the whole `https://loran.voygent.app/?t=<TOKEN>` link, or — better
+— send `https://loran.voygent.app/` and the bare token separately and have them paste it into the
 panel.
 
 **What they experience:** they open the link, the page loads, the app trades the token for a
@@ -582,7 +649,7 @@ arrives). If they pasted the token instead, the panel closes and the same thing 
 bookmark the bare URL and it keeps working for 30 days. Their toggles and filters persist in that
 browser only.
 
-**If it does not work for them:** have them hit `https://adsb.voygent.ai/api/health` — 200 means
+**If it does not work for them:** have them hit `https://loran.voygent.app/api/health` — 200 means
 the service is up and the problem is their token; anything else means the tunnel is down.
 
 ---
@@ -639,7 +706,7 @@ voygent's.
 **Verify it is really off** from a phone on cellular:
 
 ```
-curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://adsb.voygent.ai/api/health
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://loran.voygent.app/api/health
 ```
 
 A 404 from Cloudflare (or a DNS failure) means nothing is being served. A 200 means it is still

@@ -2584,3 +2584,74 @@ over a mid-tone globe, whether the `--bg`-derived label halo still separates map
 water at 20% lightness, and whether the bathymetry re-request on theme change is a brief flicker
 or an unacceptable stall. Every value is in one block per theme in `tokens.css`, so retuning is a
 text edit and a reload.
+
+## D-067 — 2026-07-26 — REMOTE ACCESS IS LIVE at `loran.voygent.app`, and four Cloudflare traps that cost an evening
+
+**Date:** 2026-07-26
+
+Remote access works, verified end to end from a second machine on the home network: the console
+loads at `https://loran.voygent.app` at ~24 FPS with 50 live contacts through the tunnel. D-041's
+shared-secret door holds over the real transport — unauthenticated `/api/aircraft` is refused, and
+`Set-Cookie` carries `HttpOnly; Max-Age=2592000; Path=/; SameSite=lax; **Secure**`. That last flag
+had only ever been confirmed by hand-setting `X-Forwarded-Proto`; it is now observed through
+cloudflared itself, so an inference became a measurement.
+
+**The approved hostname changed from `adsb.voygent.ai` to `loran.voygent.app`.** D-041 named the
+former; it is superseded here. The name also now matches the project.
+
+**Trap 1 — a Workers route silently beats DNS, and this is the one that wasted the most time.**
+`adsb.voygent.ai` returned a Voygent-branded 404 on *every* path while DNS pointed at a connected
+tunnel whose ingress verified correctly. A Workers route pattern on `*voygent.ai/*` runs the worker
+**before** Cloudflare consults the DNS record, so the tunnel is never consulted at all. The
+recognisable signature is `server: cloudflare`, no origin headers, and an application-branded 404
+on paths that could not possibly exist. The fix is a carve-out route with Worker **None** — which
+works, and is now in place on `loran.voygent.app/*`.
+
+**Trap 2 — `tunnel route dns` cannot leave the zone its `cert.pem` was issued for.** Asking it for
+`loran.voygent.app` produced `loran.voygent.app.voygent.ai`: the cert is scoped to `voygent.ai`, so
+the `.app` hostname was treated as a relative name and the zone glued on. For a cross-zone
+hostname, **create the record in the dashboard**. Re-running `cloudflared tunnel login` would fix
+the scope but overwrites the shared `~/.cloudflared/cert.pem` that production tooling uses — the
+same shared-state hazard as `config.yml`, one file over.
+
+**Trap 3 — `--overwrite-dns` no-ops when the record already points at any tunnel on the account.**
+`adsb.voygent.ai` already aimed at the **voygent-desktop** tunnel; cloudflared logged "is already
+configured to route to your tunnel" and did nothing.
+
+**Trap 4 — the DNS UI labels these records "Tunnel", so deleting a stale record can delete the
+tunnel.** That happened, orphaning a credentials file and leaving `cloudflared` serving a tunnel
+that no longer existed. Cheap to recover — `tunnel create` yields a new UUID, then `loran.yml` and
+the DNS record both have to be updated to match — but only because the tunnel was 90 minutes old
+and had never served a request. **Production `voygent-desktop` was never touched at any point**,
+which is the one thing that had to stay true.
+
+**Hostname selection is now a documented criterion, not a preference:** prefer a zone with **no
+wildcard DNS and no broad Workers route**. `voygent.app` qualified. `voygent.ai` has a wildcard
+CNAME to a worker; `voygen.app` has a wildcard `A` to `192.0.2.1` — RFC 5737 documentation space,
+used purely to make hostnames proxiable so Workers routes can attach, i.e. Trap 1 waiting to
+happen. Reading the exported zone files is what made this decidable rather than guesswork.
+
+**A correction worth recording, because the wrong version was acted on.** `dig` showing plain
+anycast IPs and no CNAME was read as "no specific record exists, the wildcard is catching it".
+That was wrong: **Cloudflare flattens proxied CNAMEs**, so `dig` cannot see them. The caveat was
+noted and then reasoned past anyway. The zone export settled it — a specific `adsb` record had
+existed all along, pointing at the wrong tunnel. When a proxied Cloudflare zone is involved,
+**the zone export is the oracle, not `dig`.**
+
+**Unchanged and still true:** `~/.cloudflared/config.yml` is shared with the active production
+service and must never be edited; LORAN gets its own `loran.yml` and every `cloudflared` command
+passes `--config`. That rule now extends to **read-only** subcommands — `cloudflared tunnel info
+loran` without `--config` reported *voygent-desktop*, because the shared config's `tunnel:` key
+overrode the name argument.
+
+**Still open:** `LORAN_SESSION_SECRET` stays unset (setting it stops token rotation from revoking
+old cookies for up to 30 days — worse than the "adding a person logs everyone out" it fixes);
+`LORAN_PHOTO_GUEST_ACCESS=true` locally becomes a live planespotters clause-8 departure the moment
+a guest uses the link; and three `voygent.ai` records now point at deleted tunnels and want removing
+(`adsb`, `loran`, and the malformed `loran.voygent.app`).
+
+**The FPS reading is a data point, not the answer to the open question.** 24 FPS was measured on a
+*laptop* over the tunnel, against a pre-places baseline of 27 FPS from the owner's own screenshot —
+and 858 state-boundary rings (D-063) now draw by default. So the boundary cost looks mild rather
+than a regression. The outstanding question was always FPS on the homelab display itself, and a
+laptop GPU does not answer it.
