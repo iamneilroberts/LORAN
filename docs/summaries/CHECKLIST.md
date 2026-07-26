@@ -13,9 +13,10 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [x] Airfield names stop colliding at MAX (D-059)
 - [x] Identifiers toggle (D-060)
 - [x] Single-file build built, verified from `file://`, and PRESERVED as `71e3edf`
-- [ ] **Outbound links in the dossier** — planespotters page, airplanes.live/ADSBX globe, FAA registry.
-      **OWNER REQUIREMENT: these MUST also land in the single-file build**, where photos are
-      impossible — the link is the honest substitute for the missing photo
+- [x] **Outbound links in the dossier** (D-061, `9dfd973`) — airplanes.live, ADSBX,
+      planespotters `/hex/`, FAA registry. All URLs verified against a real contact.
+      Inherited by the single-file build on rebase (same `Panels.tsx`, not a vendored copy).
+      **Still unjudged on a real display:** chip wrap at 344px, border contrast, caption
 - [ ] **Route relabel + flag** — owner chose "Relabel AND flag" (see Open Questions)
 - [ ] **State + county lines**, toggled in preferences
 - [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light")
@@ -35,4 +36,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-links-boundaries-themes.md; D-053..D-060 shipped; single-file preserved unmerged at 71e3edf)_
+_Updated: 2026-07-26 — main (D-061 outbound links shipped at 9dfd973; next: route relabel + flag. Single-file still preserved unmerged at 71e3edf)_
