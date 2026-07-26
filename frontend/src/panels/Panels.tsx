@@ -180,6 +180,10 @@ export function LayerCluster() {
   const showDropLines = useStore((s) => s.showDropLines);
   const showPlaces = useStore((s) => s.showPlaces);
   const showRadar = useStore((s) => s.showRadar);
+  const showProjection = useStore((s) => s.showProjection);
+  const projMinutes = useStore((s) => s.projMinutes);
+  const projSpreadDeg = useStore((s) => s.projSpreadDeg);
+  const setProjection = useStore((s) => s.setProjection);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const toggle = useStore((s) => s.toggle);
@@ -215,6 +219,32 @@ export function LayerCluster() {
   return (
     <div className="panel p-[5px] w-[148px] pointer-events-auto">
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
+      {/* The projection envelope is the primary instrument (D-047); the slice is secondary
+          context and now defaults off. */}
+      <Item on={showProjection} label="Projection" k="showProjection"
+            note={selected ? `+${projMinutes} min · ±${projSpreadDeg}°` : "needs a selected contact"} />
+      {showProjection && selected && (
+        <div className="flex gap-[2px] mt-[3px]">
+          {[2, 5, 10].map((m) => (
+            <button key={m} onClick={() => setProjection({ minutes: m })}
+              style={{
+                font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+                background: "transparent", cursor: "pointer", padding: "2px 0",
+                border: "1px solid var(--line-bright)", borderRadius: 0,
+                color: projMinutes === m ? "var(--amber)" : "var(--off)",
+              }}>{m}M</button>
+          ))}
+          {[5, 10, 25].map((d) => (
+            <button key={`s${d}`} onClick={() => setProjection({ spreadDeg: d })}
+              style={{
+                font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+                background: "transparent", cursor: "pointer", padding: "2px 0",
+                border: "1px solid var(--line-bright)", borderRadius: 0,
+                color: projSpreadDeg === d ? "var(--amber)" : "var(--off)",
+              }}>{d}°</button>
+          ))}
+        </div>
+      )}
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       <Item on={showPlaces} label="Places" k="showPlaces" note="airfields · cities" />

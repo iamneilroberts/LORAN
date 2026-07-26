@@ -1188,3 +1188,63 @@ tiles still come from the network. "Self-contained" here means no server to run,
 A middle option worth remembering: keep a minimal backend for photos only and let the browser call
 everything else directly. That removes most of the server's reason to exist while retaining the
 one thing it is genuinely required for.
+
+---
+
+### D-047 · The ALTITUDE SLICE is demoted; a forward projection envelope replaces it
+
+**Date:** 2026-07-25
+
+Owner, looking at the live display: *"the altitude slice is not cutting it for me… the big amber
+square is just useless to me for now."* Fair. The slice answered "who else is at this flight
+level", and that was not a question the owner had; the cost was a large amber quad occluding the
+ground. D-010, D-022 and D-034 were all attempts to make it work.
+
+**Decision:** the primary instrument is now a **forward projection envelope** — asked for as a
+hurricane-style cone. The slice stays in the codebase but **defaults off**; it is still the right
+tool for "who else is at this level" if that question ever arises.
+
+**What the shape means, stated precisely, because this is where a display like this starts to
+lie:** *where the contact will be within the next N minutes IF it holds its present groundspeed
+and stays within ±SPREAD degrees of its present track.* It is a **stated assumption, not a
+forecast.** No probability is attached and the width is not an error bar — it is a parameter the
+operator sets (2/5/10 min, ±5/10/25°).
+
+The hurricane analogy is where the honesty problem lives, so it was worked through rather than
+copied:
+
+* A hurricane cone's width **is** a measured probability envelope, derived from decades of
+  forecast error. We have no equivalent error model for aircraft, and inventing a width that
+  implied one would be precisely the plausible-fake ground rule 1 forbids.
+* A true **reachable set** would be honest geometry, and was rejected as *useless* rather than
+  dishonest: at 425 kt an airliner at 25° of bank turns about 1.2°/s, so within five minutes it
+  can come all the way around. The reachable set is very nearly a disc, which tells the operator
+  nothing.
+* So the envelope is an explicit **what-if**, parameterised by the operator, and the on-screen
+  label carries the assumption — `[ +10 MIN · ±10° · 397 KT · 8,850 FT ]` — rather than just a
+  time, which would read as a prediction.
+
+**It slopes with vertical rate.** A contact descending at 1,280 fpm is 12,800 ft lower after ten
+minutes; drawing its envelope flat at the current altitude would put it in the wrong place
+vertically almost immediately, and altitude being real is the whole premise of this project. The
+label states the projected altitude whenever |V/S| ≥ 100 fpm. Verified against UAL497: 21,650 ft
+descending 1,280 fpm produced an envelope ending at 8,850 ft.
+
+**Nothing is drawn without a track and a speed.** A contact with no ground track has no direction
+to project along, so no envelope appears rather than a guessed one.
+
+Minute rungs across the envelope give it a range scale, and are geometry rather than text —
+labelling every minute would churn the glyph atlas that D-028 was about.
+
+**`coneGeometry()` is exported as a pure function** so it can be tested without a browser or a
+Cesium viewer. The project still has zero unit tests; this is deliberately written to be one of
+the first.
+
+**Persist migration matters here.** Preferences are stored in `localStorage` (D-041), so any
+browser that had already saved `showDatum: true` would have kept drawing the very square the owner
+asked to be rid of — a changed *default* does not reach anyone who has already persisted the old
+value. The store version is bumped to 2 with a migration that forces the slice off. Verified in a
+real browser: `showDatum` came back false after the migration.
+
+`verify_phase1.py` now switches the slice on explicitly before asserting it appears. The check is
+worth keeping, and a default change must not be allowed to masquerade as a broken feature.

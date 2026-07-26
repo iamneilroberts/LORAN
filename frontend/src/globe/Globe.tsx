@@ -19,6 +19,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
+import { upsertCone } from "./projectionCone";
 import { palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
@@ -28,6 +29,7 @@ import {
 } from "../state/store";
 
 const DATUM_PREFIX = "datum::";
+const CONE_PREFIX = "cone::";
 const TRACK_PREFIX = "track::";
 
 export default function Globe() {
@@ -255,8 +257,16 @@ export default function Globe() {
         st.showDatum,
         perspective,
         st.datumRadiusNm,
+        st.showProjection,
+        st.projMinutes,
+        st.projSpreadDeg,
         sel?.hex ?? "",
         sel?.alt_ft ?? "",
+        // Track, speed and vertical rate all change the envelope's shape, so they belong in
+        // the key. Rounded, because raw values differ every poll and would rebuild constantly.
+        sel?.track_deg == null ? "" : Math.round(sel.track_deg),
+        sel?.gs_kt == null ? "" : Math.round(sel.gs_kt / 5),
+        Math.round((sel?.geom_rate_fpm ?? sel?.baro_rate_fpm ?? 0) / 100),
         sel ? `${sel.lat.toFixed(2)},${sel.lon.toFixed(2)}` : "",
       ].join("|");
       if (key === lastKey) return;
@@ -289,6 +299,27 @@ export default function Globe() {
           // Solid, not grid: a dense wireframe at a shallow viewing angle moires into
           // noise and stops reading as a surface, which is its only job.
           fill: "solid",
+        });
+      }
+
+      /* --- forward projection envelope (D-047) --- */
+      // Needs a track to point along and a speed to scale by. Without either there is nothing
+      // honest to draw, so nothing is drawn.
+      const canProject = st.showProjection && sel?.alt_ft != null
+        && sel.track_deg != null && sel.gs_kt != null && sel.gs_kt > 0;
+      if (!canProject) {
+        clearByPrefix(viewer, CONE_PREFIX);
+      } else {
+        upsertCone(viewer, {
+          id: CONE_PREFIX,
+          lat: sel.lat,
+          lon: sel.lon,
+          trackDeg: sel.track_deg as number,
+          gsKt: sel.gs_kt as number,
+          altFt: sel.alt_ft as number,
+          vsFpm: sel.geom_rate_fpm ?? sel.baro_rate_fpm ?? null,
+          minutes: st.projMinutes,
+          spreadDeg: st.projSpreadDeg,
         });
       }
     });

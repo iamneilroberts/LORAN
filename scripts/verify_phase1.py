@@ -155,6 +155,13 @@ async def main():
                   f"clicked {t['hex']} at ({t['x']},{t['y']}) -> selected {sel}")
 
             if sel:
+                # The ALTITUDE SLICE is off by default from D-047 onward, so switch it on before
+                # asserting it appears. The check is still worth keeping - the slice remains the
+                # right instrument for "who else is at this level" - but a default change must
+                # not be allowed to look like a broken feature.
+                await js("(()=>{const s=window.__store.getState();"
+                         "if(!s.showDatum) s.toggle('showDatum');})()")
+                await asyncio.sleep(2.0)
                 datum = await js(
                     "JSON.stringify(window.__viewer.entities.values"
                     ".filter(e=>String(e.id).startsWith('datum::')&&e.rectangle)"

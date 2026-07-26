@@ -189,6 +189,12 @@ interface State {
   track: TrackResult | null;
   trackPending: boolean;
   showDatum: boolean;
+  /** Forward projection envelope - the primary instrument since D-047. */
+  showProjection: boolean;
+  /** How far ahead the envelope reaches, in minutes. */
+  projMinutes: number;
+  /** Half-width of the envelope in degrees either side of present track. */
+  projSpreadDeg: number;
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
@@ -212,7 +218,9 @@ interface State {
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
-  toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar") => void;
+  toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
+    | "showProjection") => void;
+  setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setFilter: (f: Partial<Filter>) => void;
   setFps: (n: number) => void;
   setCameraPitch: (deg: number) => void;
@@ -254,7 +262,15 @@ export const useStore = create<State>()(persist((set) => ({
   photoPending: false,
   track: null,
   trackPending: false,
-  showDatum: true,
+  // The ALTITUDE SLICE is off by default from D-047 onward. It stays in the codebase - it is
+  // the right instrument for "who else is at this level" - but that was not a question the
+  // owner had, and a large amber square occluding the ground is a real cost to pay for it.
+  showDatum: false,
+  showProjection: true,
+  projMinutes: 5,
+  // Deliberately narrow. A wide default would look like a confident forecast; this is an
+  // assumption the operator widens on purpose.
+  projSpreadDeg: 10,
   showDropLines: true,
   showPlaces: true,
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
@@ -302,13 +318,30 @@ export const useStore = create<State>()(persist((set) => ({
   setFps: (fps) => set({ fps }),
   setCameraPitch: (cameraPitchDeg) => set({ cameraPitchDeg }),
   setAuthRequired: (authRequired) => set({ authRequired }),
+  setProjection: ({ minutes, spreadDeg }) => set((st) => ({
+    projMinutes: minutes ?? st.projMinutes,
+    projSpreadDeg: spreadDeg ?? st.projSpreadDeg,
+  })),
 }), {
   name: "loran.prefs",
-  version: 1,
+  // Bumped for D-047. Without the migration, a browser that already stored showDatum:true
+  // would keep drawing the amber slice the owner asked to be rid of - a changed DEFAULT does
+  // not reach anyone who has already persisted the old value.
+  version: 2,
+  migrate: (persisted, from) => {
+    const p = (persisted ?? {}) as Record<string, unknown>;
+    if (from < 2) {
+      return { ...p, showDatum: false, showProjection: true, projMinutes: 5, projSpreadDeg: 10 };
+    }
+    return p;
+  },
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
   partialize: (s) => ({
     showDatum: s.showDatum,
+    showProjection: s.showProjection,
+    projMinutes: s.projMinutes,
+    projSpreadDeg: s.projSpreadDeg,
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
