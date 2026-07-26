@@ -43,18 +43,29 @@ LAN does not.
 
 Outbound-only — nothing is forwarded into your network, and TLS is handled for you.
 
+> **Use a NAMED tunnel. Account-less "quick" tunnels did not work here** (measured
+> 2026-07-25): two separate `cloudflared tunnel --url` quick tunnels registered cleanly with
+> the edge (`Registered tunnel connection … location=atl12`) and were handed
+> `*.trycloudflare.com` hostnames, but every request to those hostnames returned **HTTP 404
+> from Cloudflare with an empty body**, and uvicorn's access log showed the requests never
+> reached the origin at all. So the failure is at the edge, not in this app. Cloudflare has
+> been progressively restricting account-less tunnels; do not waste time retrying them.
+
 ```
-cloudflared tunnel login
-cloudflared tunnel create adsbviz
-cloudflared tunnel route dns adsbviz adsb.example.com
-cloudflared tunnel run --url http://127.0.0.1:8010 adsbviz
+cloudflared tunnel login            # once, opens a browser; skip if ~/.cloudflared/cert.pem exists
+cloudflared tunnel create adsb-viz
+cloudflared tunnel route dns adsb-viz adsb.example.com
+cloudflared tunnel run --url http://127.0.0.1:8010 adsb-viz
 ```
 
-For a throwaway URL with no account or DNS, this alone is enough:
-
-```
-cloudflared tunnel --url http://127.0.0.1:8010
-```
+> **Do not edit `~/.cloudflared/config.yml` if you run other tunnels.** That file is shared, and
+> on this machine it belongs to an unrelated always-on tunnel (`cloudflared-voygent.service`).
+> Pass `--url` on the command line, or use a project-local `--config` file, so this project
+> cannot disturb another one.
+>
+> For the same reason, never `pkill -f "cloudflared tunnel"` — it matches every tunnel on the
+> box. Kill by PID, or stop the specific service. (Learned the hard way: it took the voygent
+> tunnel down for ~15 seconds until systemd restarted it.)
 
 ## 4. Send the link
 
