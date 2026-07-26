@@ -1248,3 +1248,31 @@ real browser: `showDatum` came back false after the migration.
 
 `verify_phase1.py` now switches the slice on explicitly before asserting it appears. The check is
 worth keeping, and a default change must not be allowed to masquerade as a broken feature.
+
+---
+
+### D-048 · Controls move left, the dossier gets the right column, map labels get their own colour
+
+**Date:** 2026-07-25
+
+Three owner observations from the live display, all correct.
+
+**"Aircraft detail panel is still too small, doesn't show photo without scrolling."** The cause was
+layout, not size: `CameraCluster` and `LayerCluster` sat *above* the dossier in the same
+height-capped right column, so the dossier got whatever they left and the photo fell below the
+fold. Both controls move to the **left** column under `AIR TRAFFIC` (owner's choice between the
+options), and the right column is the dossier's alone. Verified: the dossier now renders through
+CO-ALT and DATUM RADIUS with the photo block in frame.
+
+**"Default text the same color as water is not good design."** Correct, and it was accidental
+rather than chosen: city labels used `--dim` (`#5a6b7a`), which is close to the shelf-water tone of
+the dark GEBCO ramp they are drawn over. Map labels now have their own token, `--map-label`
+(`#9db2c4`), lifted clear of both the water and the land ramp. `--dim` stays what it always was —
+panel chrome — and `npm run check:palette` covers the new token (12 colours).
+
+**"Translate origin and dest to names."** We were already holding the answer and hiding it: adsbdb
+returns `municipality` and `name` for both ends, and the dossier showed only the code with the name
+buried in a hover title. Origin and destination now read `San Jose SJC` / `Denver DEN`. Falls back
+to the bare code when adsbdb has no place name, and to an em-dash when it knows nothing — never an
+invented city. `airportCode()` became dead when `airportPlace()` replaced it and was removed, since
+this change is what orphaned it.

@@ -33,6 +33,7 @@ const FALLBACK: Record<string, string> = {
   "--icon-stroke-mil": "#3d0033",
   "--icon-stroke-alert": "#3a2600",
   "--icon-selected": "#ffffff",
+  "--map-label": "#9db2c4",
 };
 
 export interface Palette {
@@ -47,6 +48,7 @@ export interface Palette {
   iconStrokeMil: string;
   iconStrokeAlert: string;
   iconSelected: string;
+  mapLabel: string;
 }
 
 function read(name: string): string {
@@ -79,6 +81,7 @@ export function palette(): Palette {
     iconStrokeMil: read("--icon-stroke-mil"),
     iconStrokeAlert: read("--icon-stroke-alert"),
     iconSelected: read("--icon-selected"),
+    mapLabel: read("--map-label"),
   };
   return cache;
 }

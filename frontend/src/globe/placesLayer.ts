@@ -142,7 +142,8 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
   const placeOf = new Map<object, PlaceInfo>();
 
   const styles = airportStyles();
-  const { dim: cityLabel, off: cityDot } = palette();
+  // Map labels use --map-label, not --dim: dim is panel-chrome grey and vanished into water.
+  const { mapLabel: cityLabel, off: cityDot } = palette();
   const cityMarker = dotUri(cityDot);
 
   for (const row of airports) {

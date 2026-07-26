@@ -36,6 +36,10 @@
   --icon-stroke-mil: #3d0033;  /* outline under a magenta military icon */
   --icon-stroke-alert: #3a2600; /* outline under an amber co-altitude icon */
   --icon-selected: #ffffff;    /* the selected contact: brightest thing on the display */
+  /* City labels sat on --dim (#5a6b7a), which is nearly the colour of the shelf water they are
+     drawn over - unreadable by accident rather than by design. Map labels get their own token,
+     lifted clear of both the water and the land ramp. */
+  --map-label: #9db2c4;
 
   --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 

@@ -363,8 +363,21 @@ export function AltitudeLegend() {
 /* ---------------- right: selected contact ---------------- */
 
 /** Airport code for the dossier row; the full name goes in the hover title. */
-function airportCode(p: EnrichAirport | null | undefined): string {
-  return p?.iata ?? p?.icao ?? DASH;
+/**
+ * A human-readable origin/destination: the town, with the code after it.
+ *
+ * The codes were all we showed, and "OGG -> LAS" is only meaningful to someone who already knows
+ * the codes. adsbdb gives us municipality and name for both ends, so we were already holding the
+ * answer and hiding it in a hover title. Falls back to the code alone rather than inventing a
+ * name, and to an em-dash when adsbdb knows nothing.
+ */
+function airportPlace(p: EnrichAirport | null | undefined): string {
+  if (!p) return DASH;
+  const code = p.iata ?? p.icao ?? null;
+  const where = p.municipality ?? p.name ?? null;
+  if (!where) return code ?? DASH;
+  const short = where.length > 18 ? `${where.slice(0, 18)}\u2026` : where;
+  return code ? `${short} ${code}` : short;
 }
 
 function airportTitle(p: EnrichAirport | null | undefined): string | undefined {
@@ -648,11 +661,13 @@ export function SelectionPanel() {
         </div>
         <div className={`row ${enRoute?.origin ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.origin)}>
-          <span>Origin</span><span>{enRoute ? airportCode(enRoute.origin) : pending}</span>
+          <span>Origin</span>
+          <span style={{ fontSize: 12 }}>{enRoute ? airportPlace(enRoute.origin) : pending}</span>
         </div>
         <div className={`row ${enRoute?.destination ? "" : "row--dim"}`}
              title={airportTitle(enRoute?.destination)}>
-          <span>Dest</span><span>{enRoute ? airportCode(enRoute.destination) : pending}</span>
+          <span>Dest</span>
+          <span style={{ fontSize: 12 }}>{enRoute ? airportPlace(enRoute.destination) : pending}</span>
         </div>
         {/* "Could not ask" is a different claim from "not known". Say which one it is. */}
         {enrichFailed && (

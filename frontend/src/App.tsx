@@ -86,7 +86,14 @@ export default function App() {
       <Globe />
       {/* Chrome floats over the globe and never blocks it. */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute left-3 top-3"><TrafficPanel /></div>
+        {/* Camera and Layers live on the LEFT with the other controls (owner's call). They used
+            to sit above the dossier and stole its height, which is why the photo fell below the
+            fold. The right column is now the dossier's alone. */}
+        <div className="absolute left-3 top-3 flex flex-col gap-2">
+          <TrafficPanel />
+          <CameraCluster />
+          <LayerCluster />
+        </div>
         <div className="absolute left-3 flex flex-col gap-2" style={{ bottom: 34 }}>
           <AltitudeLegend />
           <CursorReadout />
@@ -97,8 +104,6 @@ export default function App() {
           className="absolute right-3 top-3 flex flex-col gap-3 items-end"
           style={{ maxHeight: "calc(100% - 46px)" }}
         >
-          <CameraCluster />
-          <LayerCluster />
           {/* Mutually exclusive by construction - the store clears one when the other is
               set - so these never stack and fight for the bounded height. */}
           <SelectionPanel />
