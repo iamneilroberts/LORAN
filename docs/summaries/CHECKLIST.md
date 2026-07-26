@@ -10,8 +10,13 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [x] Fix the crash D-063 shipped (D-064)
 - [x] Label overlap fixed properly (D-065) — declutter, not a fourth range tweak
 - [x] Remote-access verification + runbook written (`docs/remote-access-howto.md`)
-- [ ] **FIX THE TUNNEL DNS** — `adsb.voygent.ai` returns a Voygent 404, traffic never reaches
-      the loran tunnel. See Remaining Work #1. Single command, likely `--overwrite-dns`
+- [x] **REMOTE ACCESS LIVE** (D-067, `924088a`) — `https://loran.voygent.app`, verified from a
+      second machine: door refuses unauth, cookie carries `Secure` over real HTTPS, 50 contacts,
+      ~24 FPS. Hostname moved off `adsb.voygent.ai` (Workers route + cert-scope traps)
+- [ ] Delete 3 stale `voygent.ai` records pointing at deleted tunnels: `adsb`, `loran`,
+      `loran.voygent.app` (malformed, from the cert-scope trap)
+- [ ] Make the tunnel survive a reboot — `cloudflared-loran.service`, own config, NOT
+      `cloudflared service install` (writes the shared path). Untested
 - [ ] **Rebase + merge `worktree-agent-a359546ffb2f19480`** — LAST. D-057 renumber + duplicate-normalizer
 - [ ] Regenerate `loran.html` after the merge
 - [ ] **Push `main`** — 22 commits unpushed
@@ -31,4 +36,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-d061-d066-shipped.md; D-061..D-066 shipped, 111 frontend + 60 backend tests. NEXT: fix the tunnel DNS — one command.)_
+_Updated: 2026-07-26 — main (D-061..D-067; remote access LIVE at loran.voygent.app; 111 FE + 60 BE tests. NEXT: single-file rebase, then push — 25+ commits unpushed.)_
