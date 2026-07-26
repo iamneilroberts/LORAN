@@ -17,7 +17,11 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
       planespotters `/hex/`, FAA registry. All URLs verified against a real contact.
       Inherited by the single-file build on rebase (same `Panels.tsx`, not a vendored copy).
       **Still unjudged on a real display:** chip wrap at 344px, border contrast, caption
-- [ ] **Route relabel + flag** — owner chose "Relabel AND flag" (see Open Questions)
+- [x] **Route relabel + flag** (D-062, `24661c6`) — `Filed orig`/`Filed dest` + schedule caption;
+      bearing cross-check guarded by FL180 / 60 nm / 90°; line withdrawn on disagreement.
+      **MEASURED: adsbdb's route is wrong for ~4 contacts in 10** (9/21, all 193–634 nm off
+      their filed great circle by independent check). Recorded in `docs/data-sources.md`.
+      **Still unjudged:** amber note weight at 344px given how often it fires
 - [ ] **State + county lines**, toggled in preferences
 - [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light")
 - [ ] **Rebase + merge `worktree-agent-a359546ffb2f19480`** — LAST. Needs D-057 renumber + the
@@ -36,4 +40,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (D-061 outbound links shipped at 9dfd973; next: route relabel + flag. Single-file still preserved unmerged at 71e3edf)_
+_Updated: 2026-07-26 — main (D-061 links `9dfd973`, D-062 filed-route relabel+flag `24661c6`; next: state + county lines. Single-file still unmerged at 71e3edf)_
