@@ -27,8 +27,13 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
       cost about what places.json costs, so D-052's lazy path was machinery for nothing.
       **Persist is now v5 — themes take v6.** **Still unjudged:** line colours, thinning
       thresholds, FPS cost of 858 rings drawing by default
-- [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light").
-      **persist v5 → v6** (D-063 took v5, not themes)
+- [x] **Themes — 2 dark + 2 mid-tone** (D-066, `12ce17b`) — MIDNIGHT/CARBON dark,
+      SLATE/EMBER mid-tone. Persist v6. No light theme on purpose (D-029 ramp needs a dark
+      base). **Still unjudged:** whether the mid-tone pair are usable, lifted `--dim`/`--off`,
+      ramp over a mid-tone globe, bathymetry re-request flicker
+- [x] Label overlap FIXED properly (D-065, `b32d13d`) — screen-space declutter, not a fourth
+      range tweak. **Unjudged:** priority order (KBHM survives, BIRMINGHAM drops)
+- [x] Crash from D-063 fixed (D-064, `e7c7a97`) — shared Cesium Material
 - [ ] **Rebase + merge `worktree-agent-a359546ffb2f19480`** — LAST. Needs D-057 renumber + the
       duplicate-normalizer decision
 - [ ] Regenerate `loran.html` after the merge so it carries every fix
@@ -45,4 +50,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (D-061 links, D-062 filed-route flag, D-063 boundaries `45d034d`; next: themes, persist v5→v6. Single-file still unmerged at 71e3edf)_
+_Updated: 2026-07-26 — main (D-061..D-066 shipped; 111 frontend + 60 backend tests. NEXT: rebase + merge the single-file branch `71e3edf`, then regenerate loran.html)_
