@@ -956,3 +956,58 @@ identical.
 global 1 req/sec gate in `feeds/adsb.py` makes extra viewers queue rather than breach the
 upstream budget, so freshness degrades and compliance does not), no audit log by design, no
 protection against whoever holds the link.
+
+---
+
+### D-042 · One palette: tokens.css is the source, TypeScript derives from it
+
+**Date:** 2026-07-25
+
+Groundwork for the parked colour-scheme chooser, and a fix for real duplication that had
+started spreading.
+
+**The problem, measured:** Cesium draws with concrete colour strings and cannot read CSS custom
+properties, so every globe colour was a hex literal inside the layer that drew it — **19
+literals across 6 files**, including four tokens copied verbatim into `placesLayer.ts` when it
+was written earlier the same day. A palette in two places is a palette that drifts, and it made
+theming a hunt rather than a config change.
+
+**Decision:** `tokens.css` remains the hand-written source of visual identity, exactly as
+CLAUDE.md requires, and `frontend/src/styles/palette.ts` reads the custom properties back out at
+runtime. The direction of truth matters: defining colours in TS and injecting them into CSS
+would have inverted it and demoted the token file to generated output.
+
+- **DOM code does not use this.** React inline styles say `var(--cyan)` directly, which is why
+  `ErrorBoundary` just uses the token. `palette()` exists only for Cesium.
+- Four globe-only colours that previously existed *only* as TS literals are now real tokens:
+  `--icon-stroke`, `--icon-stroke-mil`, `--icon-stroke-alert`, `--icon-selected`.
+- **Reads are lazy, and that is load-bearing.** `palette()` memoises, and calling it at module
+  scope could run before the stylesheet applies, cache the fallbacks, and leave the globe
+  permanently on fallback values. Since the fallbacks equal the tokens, nothing would *look*
+  wrong — it would only break the future theme chooser, silently. So `placesLayer` builds its
+  styles inside `createPlacesLayer`, and `altitudePlanes` exports `amber()`/`cyan()` getters
+  rather than constants.
+- `refreshPalette()` exists and nothing calls it. It is the hook a chooser needs, and it is here
+  because the memo is precisely what would make such a chooser appear not to work. A chooser
+  would also have to rebuild any Cesium primitive holding a baked colour.
+
+**Drift is now a build failure.** `npm run check:palette` (wired into `npm run build`) parses
+both files and fails if `palette.ts`'s documented fallbacks disagree with `tokens.css`. A
+fallback that silently disagrees with the real token is worse than no fallback: the globe would
+draw one colour and the chrome another, intermittently, depending on load timing. Verified in
+both directions — it passes on 11 colours, and deliberately breaking one produced
+`--mil: tokens.css says #ff4fd8, palette.ts fallback says #ff0000` with a non-zero exit.
+
+**Verified live, not by inspection:** temporarily setting `--mil` to `#00ff00` in `tokens.css`
+made the military airfield markers render `#00ff00` on the globe. That is the proof the values
+come from CSS rather than from the fallbacks, which colour comparison alone cannot establish
+because the two are identical by design.
+
+**Still not themeable, stated rather than implied:** `DarkBathymetryProvider` remaps GEBCO
+pixels through hardcoded `SHOAL`/`MID`/`ABYSS`/`LAND_LO`/`LAND_HI` ramps. Those are left alone
+deliberately — they are algorithm constants held in parity with `scripts/make_dark_bathy.py`,
+and moving them would break that documented pairing. A light theme needs a second remap there,
+plus re-derived lightness in the altitude ramp (which assumes a near-black ground). Those two
+remain the real cost of light mode; this decision only removes the scattered-literal problem.
+
+**The chooser itself stays parked as FUTURE**, per the owner.

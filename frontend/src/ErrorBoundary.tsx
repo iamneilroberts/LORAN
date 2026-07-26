@@ -40,8 +40,9 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
 
     return (
+      // DOM, so it uses the token directly - palette() is only for Cesium (D-042).
       <div className="absolute inset-0 flex items-center justify-center p-6"
-           style={{ background: "#05070a" }}>
+           style={{ background: "var(--bg)" }}>
         <div className="panel p-4" style={{ maxWidth: 680, maxHeight: "80%", overflowY: "auto" }}>
           <div className="lbl" style={{ color: "var(--amber)", fontSize: 11 }}>
             ▸ Console halted

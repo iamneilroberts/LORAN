@@ -21,11 +21,21 @@
      altitude nothing to be encoded with. Military moved to magenta; amber is now alerts and
      measuring geometry only; altitude owns the icon hue ramp. */
   --amber: #ffb000;      /* alerts, warnings, co-altitude, the altitude slice */
-  --mil: #ff4fd8;        /* MILITARY contacts. Nothing else. */
+  --mil: #ff4fd8;        /* MILITARY — contacts in the air, and airfields on the ground (D-039) */
   --cyan: #5fd7e0;       /* civil / nominal chrome */
   --txt: #c8d6e0;
   --dim: #5a6b7a;
   --off: #3a4652;
+
+  /* ---- colours the GLOBE needs, not the chrome (D-042) ----
+     Cesium cannot read CSS custom properties, so these used to be hex literals scattered
+     through the layer modules. They live here instead, and frontend/src/styles/palette.ts
+     reads them back out at runtime, so this file stays the single source of visual identity
+     that CLAUDE.md calls for — and a future theme only has to change values here. */
+  --icon-stroke: #03181c;      /* outline under a civil icon, on near-black ground */
+  --icon-stroke-mil: #3d0033;  /* outline under a magenta military icon */
+  --icon-stroke-alert: #3a2600; /* outline under an amber co-altitude icon */
+  --icon-selected: #ffffff;    /* the selected contact: brightest thing on the display */
 
   --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 

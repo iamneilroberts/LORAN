@@ -28,6 +28,8 @@ import {
   type TileDiscardPolicy,
 } from "cesium";
 
+import { palette } from "../styles/palette";
+
 const WMS = "https://wms.gebco.net/2024/mapserv";
 const LAYER = "GEBCO_2024";
 const TILE = 256;
@@ -51,7 +53,7 @@ function blankTile(): HTMLCanvasElement {
   c.height = TILE;
   const ctx = c.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = "#05070a";
+    ctx.fillStyle = palette().bg;
     ctx.fillRect(0, 0, TILE, TILE);
   }
   return c;

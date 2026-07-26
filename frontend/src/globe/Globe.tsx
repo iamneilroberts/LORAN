@@ -18,7 +18,8 @@ import {
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
-import { AMBER, clearByPrefix, upsertPlane } from "./altitudePlanes";
+import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
+import { palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
 import { createRadarLayer } from "./radarLayer";
@@ -71,8 +72,9 @@ export default function Globe() {
     (window as unknown as { __viewer: Viewer }).__viewer = viewer;
 
     const { scene, camera } = viewer;
-    scene.globe.baseColor = Color.fromCssColorString("#05070a");
-    scene.backgroundColor = Color.fromCssColorString("#05070a");
+    const pal = palette();
+    scene.globe.baseColor = Color.fromCssColorString(pal.bg);
+    scene.backgroundColor = Color.fromCssColorString(pal.bg);
     if (scene.skyBox) scene.skyBox.show = false;
     if (scene.sun) scene.sun.show = false;
     if (scene.moon) scene.moon.show = false;
@@ -220,7 +222,7 @@ export default function Globe() {
             Cartesian3.fromDegrees(p.lon, p.lat, (p.alt_ft ?? 0) * FT_TO_M),
           ),
           width: 1.6,
-          material: Color.fromCssColorString("#5fd7e0").withAlpha(0.75),
+          material: Color.fromCssColorString(palette().cyan).withAlpha(0.75),
           // The track is a measurement, not scenery: it must stay visible where it passes
           // behind terrain rather than being silently clipped into a shorter path.
           arcType: ArcType.GEODESIC,
@@ -281,7 +283,7 @@ export default function Globe() {
           lon: sel.lon,
           radiusNm: st.datumRadiusNm,
           altFt: sel.alt_ft,
-          colour: AMBER,
+          colour: amber(),
           label: `SLICE ${Math.round(sel.alt_ft).toLocaleString()} FT · ±${st.datumRadiusNm} NM`,
           emphasis: true,
           // Solid, not grid: a dense wireframe at a shallow viewing angle moires into

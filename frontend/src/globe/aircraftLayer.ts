@@ -28,9 +28,7 @@ import {
 import { iconDataUri, silhouetteFor } from "./icons";
 import { FT_TO_M, reckon, type Aircraft } from "../state/store";
 
-const STROKE_DARK = "#03181c";
-const AMBER = "#ffb000";
-export const MIL = "#ff4fd8";
+import { palette } from "../styles/palette";
 
 /**
  * Altitude -> icon colour (D-029, supersedes D-017).
@@ -75,10 +73,11 @@ export function altitudeColour(altFt: number | null): string {
 }
 
 export function colourFor(a: Aircraft): { fill: string; stroke: string } {
+  const p = palette();
   // Military overrides the ramp: class matters more than altitude for these contacts, and
   // magenta collides with nothing else on the display.
-  if (a.military) return { fill: MIL, stroke: "#3d0033" };
-  return { fill: altitudeColour(a.alt_ft), stroke: STROKE_DARK };
+  if (a.military) return { fill: p.mil, stroke: p.iconStrokeMil };
+  return { fill: altitudeColour(a.alt_ft), stroke: p.iconStroke };
 }
 
 /*
@@ -185,6 +184,7 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
 
   function update(list: Aircraft[], elapsedS: number, opts: UpdateOpts) {
     seen.clear();
+    const pal = palette();
 
     for (const a of list) {
       if (!a.hex || a.alt_ft === null) continue;
@@ -200,10 +200,12 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
         !isSel &&
         Math.abs(a.alt_ft - opts.datumAltFt) <= opts.separationFt;
 
-      const base = co ? { fill: AMBER, stroke: "#3a2600" } : colourFor(a);
+      const base = co
+        ? { fill: pal.amber, stroke: pal.iconStrokeAlert }
+        : colourFor(a);
       const image = iconDataUri(
         silhouetteFor(a.type, a.category),
-        isSel ? "#ffffff" : base.fill,
+        isSel ? pal.iconSelected : base.fill,
         base.stroke,
       );
 
@@ -252,7 +254,7 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
         }
         slot.label.position = pos;
         slot.label.fillColor = Color.fromCssColorString(
-          co || a.military ? AMBER : "#ffffff",
+          co || a.military ? pal.amber : pal.iconSelected,
         );
         if (text !== slot.lastText) {
           slot.label.text = text;
@@ -268,7 +270,7 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
       if (toFt !== null && Math.abs(toFt - a.alt_ft) > 1) {
         const foot = Cartesian3.fromDegrees(lon, lat, toFt * FT_TO_M);
         const colour = Color.fromCssColorString(
-          co ? AMBER : isSel ? "#ffffff" : base.fill,
+          co ? pal.amber : isSel ? pal.iconSelected : base.fill,
         ).withAlpha(co || isSel ? 0.65 : 0.28);
         if (!slot.line) {
           slot.line = lines.add({

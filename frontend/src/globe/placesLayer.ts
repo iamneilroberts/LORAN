@@ -28,6 +28,7 @@ import {
 } from "cesium";
 
 import placesData from "../data/places.json";
+import { palette } from "../styles/palette";
 import type { PlaceInfo } from "../state/store";
 
 /**
@@ -45,10 +46,8 @@ const KIND_LARGE = 0;
 const KIND_MEDIUM = 1;
 const KIND_MILITARY = 2;
 
-const MIL = "#ff4fd8";
-const CYAN = "#5fd7e0";
-const DIM = "#5a6b7a";
-const OFF = "#3a4652";
+/* Colours come from tokens.css via palette() (D-042) - see airportStyles() below for why
+   they are read lazily rather than at module scope. */
 
 /*
  * How far out each class of place stays on screen, in metres of camera distance.
@@ -91,27 +90,34 @@ function dotUri(colour: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/*
- * Military airfields take --mil magenta, the same accent military CONTACTS use (D-029).
- * They cannot be confused with each other: a contact is an aircraft silhouette in the air,
- * an airfield is a filled square on the ground. Civil fields are cyan, cities are dim -
- * the whole point is that ground reference stays subordinate to the traffic above it.
- */
-/*
- * Colour encodes CLASS, size encodes importance. Airfield codes are cyan or magenta and
- * cities are dim, so the two can never be confused — which they were when medium airfields
- * shared the cities' `--dim`, making KMOB and KBFM read as though they were town names.
- * Large versus medium is carried by marker and type size instead, not by dimming the label.
- */
-const AIRPORT_STYLE: Record<
-  number, { marker: string; label: string; size: number; font: number }
-> = {
-  [KIND_LARGE]: { marker: squareUri(CYAN, false), label: CYAN, size: 13, font: 12 },
-  [KIND_MEDIUM]: { marker: squareUri(CYAN, false), label: CYAN, size: 10, font: 11 },
-  [KIND_MILITARY]: { marker: squareUri(MIL, true), label: MIL, size: 12, font: 12 },
-};
+type AirportStyle = { marker: string; label: string; size: number; font: number };
 
-const CITY_MARKER = dotUri(OFF);
+/**
+ * Marker and label styling per airfield class.
+ *
+ * Military airfields take `--mil` magenta, the same accent military CONTACTS use (D-029). The
+ * two cannot be confused: a contact is an aircraft silhouette in the air, an airfield is a
+ * filled square on the ground.
+ *
+ * Colour encodes CLASS, size encodes importance. Airfield codes are cyan or magenta and cities
+ * are dim, so the two can never be mistaken for one another — which they were when medium
+ * airfields shared the cities' `--dim`, making KMOB and KBFM read as town names (D-039). Large
+ * versus medium is carried by marker and type size, never by dimming the label.
+ *
+ * Built lazily, and this matters: `palette()` reads computed CSS custom properties, so calling
+ * it at module scope could run before the stylesheet applies, memoise the fallbacks, and leave
+ * the globe permanently on fallback colours. Fallbacks equal the tokens today, so nothing would
+ * look wrong - it would only break the future theme chooser, silently. Building at layer
+ * construction keeps the read after first paint.
+ */
+function airportStyles(): Record<number, AirportStyle> {
+  const { mil, cyan } = palette();
+  return {
+    [KIND_LARGE]: { marker: squareUri(cyan, false), label: cyan, size: 13, font: 12 },
+    [KIND_MEDIUM]: { marker: squareUri(cyan, false), label: cyan, size: 10, font: 11 },
+    [KIND_MILITARY]: { marker: squareUri(mil, true), label: mil, size: 12, font: 12 },
+  };
+}
 
 export interface PlacesLayer {
   setShow: (on: boolean) => void;
@@ -135,9 +141,13 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
   // nothing to say about it that the label does not already say.
   const placeOf = new Map<object, PlaceInfo>();
 
+  const styles = airportStyles();
+  const { dim: cityLabel, off: cityDot } = palette();
+  const cityMarker = dotUri(cityDot);
+
   for (const row of airports) {
     const [lat, lon, code, kind, name, municipality, region, country, elevationFt, iata] = row;
-    const style = AIRPORT_STYLE[kind];
+    const style = styles[kind];
     if (!style) continue;
     const position = Cartesian3.fromDegrees(lon, lat, 0);
     const far = kind === KIND_LARGE ? FAR_LARGE
@@ -190,7 +200,7 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
 
     billboards.add({
       position,
-      image: CITY_MARKER,
+      image: cityMarker,
       width: 8,
       height: 8,
       distanceDisplayCondition: ddc,
@@ -201,7 +211,7 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       text: name.toUpperCase(),
       font: "400 10px 'JetBrains Mono', ui-monospace, monospace",
       style: LabelStyle.FILL,
-      fillColor: Color.fromCssColorString(DIM),
+      fillColor: Color.fromCssColorString(cityLabel),
       // City names go BELOW their dot, centred; airfield codes go to the RIGHT of their
       // square. A city and its airport sit within a few km of each other, so sharing an
       // anchor made pairs like KMGM/MONTGOMERY and KBIX/BILOXI overprint into mush.

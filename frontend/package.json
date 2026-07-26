@@ -6,8 +6,9 @@
   "scripts": {
     "cesium:assets": "node -e \"const f=require('fs');['Workers','Assets','Widgets','ThirdParty'].forEach(d=>f.cpSync('node_modules/cesium/Build/Cesium/'+d,'public/cesium/'+d,{recursive:true}))\"",
     "dev": "npm run cesium:assets && vite",
-    "build": "npm run cesium:assets && tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build": "npm run cesium:assets && npm run check:palette && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check:palette": "node ../scripts/check_palette.mjs"
   },
   "dependencies": {
     "cesium": "^1.124.0",

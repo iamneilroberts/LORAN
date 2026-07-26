@@ -27,9 +27,15 @@ import {
 } from "cesium";
 
 import { FT_TO_M, NM_TO_M } from "../state/store";
+import { palette } from "../styles/palette";
 
-export const AMBER = Color.fromCssColorString("#ffb000");
-export const CYAN = Color.fromCssColorString("#5fd7e0");
+/*
+ * Getters rather than constants (D-042): these read tokens.css through palette(), and a
+ * module-scope const would freeze the value before the stylesheet applies. Cesium Color
+ * objects are cheap to make and these are called on user actions, not per frame.
+ */
+export const amber = (): Color => Color.fromCssColorString(palette().amber);
+export const cyan = (): Color => Color.fromCssColorString(palette().cyan);
 
 function rectAround(lat: number, lon: number, radiusNm: number): Rectangle {
   const dLat = (radiusNm * NM_TO_M) / 111320;

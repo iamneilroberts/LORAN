@@ -22,6 +22,10 @@
 - [x] **Map markers** — airfields + city labels, vendored and processed at build time (D-023, D-032)
 - [x] Military airfields in `--mil` magenta via a name heuristic; false negatives documented (D-033)
 - [x] `PLACES` layer toggle; zoom thinning via DistanceDisplayCondition; label anchors separated
+- [x] **One palette** (D-042) — tokens.css is the source, `styles/palette.ts` reads it back for
+      Cesium. Removed 19 hex literals across 6 files (incl. 4 tokens duplicated in placesLayer).
+      Four globe-only colours became real tokens. `npm run check:palette` fails the BUILD on
+      drift; proved live by making `--mil` green and seeing the globe follow.
 - [x] **Remote access** — token-per-person → HMAC-signed HttpOnly cookie, `?t=` link login with
       the token scrubbed from the URL, single-origin static serving via `scripts/serve.sh`,
       Cloudflare-tunnel runbook, honest ACCESS-TOKEN-REQUIRED state, prefs sticky per browser in
@@ -70,6 +74,10 @@
       run `scripts/serve.sh`, and start `cloudflared`. See `docs/remote-access.md`.
       Owner ruled: serve photos to both people, so set `ADSBVIZ_PHOTO_GUEST_ACCESS=true` in the
       LOCAL `.env` only — the repo default stays compliant.
-- [ ] FUTURE: colour scheme chooser incl. light mode — needs a second ramp (current lightness assumes near-black ground)
+- [ ] FUTURE (parked, owner's call): colour scheme chooser incl. light mode. Groundwork is DONE
+      (D-042 — one palette, `refreshPalette()` hook exists and is unused). Remaining real cost:
+      a second ramp in `DarkBathymetryProvider` (its GEBCO remap is held in parity with
+      `scripts/make_dark_bathy.py`) and re-derived lightness in the altitude hue ramp, which
+      assumes a near-black ground. A dark-VARIANT chooser is much cheaper than light mode.
 
 _Updated: 2026-07-25 — phase2-dossier_
