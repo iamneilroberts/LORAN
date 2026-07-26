@@ -1542,3 +1542,34 @@ look half-broken. Fixed regardless of whether the chooser ships.
 4 of the plane tests and 1 cone test fail and the tests covering the pre-existing behaviour still
 pass. The guard was likewise proved both ways with a throwaway `data-theme="probe"` block —
 complete themes pass, a typo'd or incomplete one fails — and the probe reverted.
+
+---
+
+## D-054 — 2026-07-26 — The left column gets one height budget instead of two opposing stacks
+
+Owner report: "some placement problems with the control panels left side", with the ALTITUDE
+legend showing LAYERS' text ghosting through it.
+
+Not a rendering fault. `App.tsx` positioned the left chrome as **two independent absolute stacks**:
+one anchored `top-3` growing downward (Traffic, Camera, Layers) and one anchored `bottom: 34`
+growing upward (Altitude legend, cursor readout). Neither knew the other existed, so nothing
+stopped them meeting in the middle. Because the spec forbids opaque cards, the overlap did not
+occlude — it showed through, so LAYERS' toggle text appeared inside the altitude swatches and read
+as a corrupted legend rather than as a layout problem.
+
+It surfaced now because `LayerCluster` has been growing: the projection preset row (D-047), the
+small-fields toggle (D-052) and the DENSITY row (D-049) are all conditional, so the panel is
+tallest exactly when the most is switched on.
+
+The left column is now **one flex column from `top-3` to `bottom: 34`**, with a `flex-1` spacer
+holding the legend and readout at the bottom. `LayerCluster` carries `minHeight: 0` +
+`overflowY: auto` so it is the panel that scrolls when the column runs short — it is the one whose
+height is variable, and the controls around it have fixed content. `minHeight: 0` is load-bearing:
+a flex item defaults to `min-height: auto` and will overflow its container rather than shrink. Same
+fix, and same reason, as the dossier when it grew a photo.
+
+`items-start` because each panel sets its own width (210 / 148 / 176 px); the default `stretch`
+would have squared them off to the widest and misaligned the column.
+
+This makes the collision impossible rather than unlikely. The previous arrangement was only ever
+correct for viewports tall enough, and nothing declared what "tall enough" was.

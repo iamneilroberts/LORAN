@@ -88,13 +88,28 @@ export default function App() {
       <div className="absolute inset-0 pointer-events-none">
         {/* Camera and Layers live on the LEFT with the other controls (owner's call). They used
             to sit above the dossier and stole its height, which is why the photo fell below the
-            fold. The right column is now the dossier's alone. */}
-        <div className="absolute left-3 top-3 flex flex-col gap-2">
+            fold. The right column is now the dossier's alone.
+
+            ONE column spanning the viewport, not two opposing stacks. This used to be a `top-3`
+            stack growing down and a `bottom-34` stack growing up, neither aware of the other, so
+            on a short viewport the Layers panel simply drew over the legend. Because panels are
+            translucent by spec, the result was Layers' text ghosting through the altitude swatches
+            - which reads as a corrupted legend rather than as a layout problem. A shared height
+            budget makes the collision impossible instead of unlikely; the right column has had one
+            since the dossier grew a photo.
+
+            `items-start` because every panel sets its own width (210/148/176) and stretching them
+            to the widest would misalign the whole column. */}
+        <div
+          className="absolute left-3 top-3 flex flex-col gap-2 items-start"
+          style={{ bottom: 34 }}
+        >
           <TrafficPanel />
           <CameraCluster />
           <LayerCluster />
-        </div>
-        <div className="absolute left-3 flex flex-col gap-2" style={{ bottom: 34 }}>
+          {/* Holds the legend and readout at the bottom, and collapses first when height is
+              tight, so the controls above keep their natural size for as long as possible. */}
+          <div className="flex-1" />
           <AltitudeLegend />
           <CursorReadout />
         </div>

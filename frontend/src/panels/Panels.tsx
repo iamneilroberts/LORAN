@@ -221,7 +221,13 @@ export function LayerCluster() {
   const sliceNote = needsSel ?? (hasSlicePerspective(pitchDeg) ? undefined : "needs a tilted view");
 
   return (
-    <div className="panel p-[5px] w-[148px] pointer-events-auto">
+    /* The one panel in the left column that GROWS: the projection presets, the small-fields
+       toggle and the density row all appear conditionally, so its height depends on what is
+       switched on. It is therefore the one allowed to scroll when the column runs short.
+       `minHeight: 0` is load-bearing - a flex item defaults to `min-height: auto` and refuses
+       to shrink below its content, overflowing its container instead (same fix as the dossier). */
+    <div className="panel p-[5px] w-[148px] pointer-events-auto"
+         style={{ minHeight: 0, overflowY: "auto" }}>
       <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Layers</div>
       {/* The projection envelope is the primary instrument (D-047); the slice is secondary
           context and now defaults off. */}
