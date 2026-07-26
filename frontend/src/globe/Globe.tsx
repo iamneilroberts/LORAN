@@ -27,6 +27,7 @@ import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
 import { createBoundariesLayer } from "./boundariesLayer";
 import { createRadarLayer } from "./radarLayer";
+import { api } from "../api";
 import {
   DEFAULT_THEME, FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
 } from "../state/store";
@@ -199,10 +200,7 @@ export default function Globe() {
       useStore.getState().setDepth(useStore.getState().depthM, true);
       depthTimer = window.setTimeout(async () => {
         try {
-          const r = await fetch(`/api/depth?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
-          if (!r.ok) throw new Error(String(r.status));
-          const d = await r.json();
-          useStore.getState().setDepth(d.elevation_m ?? null, false);
+          useStore.getState().setDepth(await api.depth(lat, lon), false);
         } catch {
           // No value is better than a plausible one.
           useStore.getState().setDepth(null, false);

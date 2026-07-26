@@ -2838,3 +2838,144 @@ preferences column off the bottom of a 1000 px viewport on the first attempt.
 directly responsible for complying with this policy", and requires an LLM suggesting it to point
 at the policy and explain the restrictions. The restrictions were put to the owner in full and the
 decision was theirs before any code was written.
+---
+
+## D-070 — 2026-07-26 — The single-file build exists and works. Two upstreams and the photos are the price.
+
+**Date:** 2026-07-26
+
+**Renumbered from D-057 on merge.** This work was written on a branch cut at `2408885`, where
+D-057 was still free; `main` meanwhile spent that number on the token paste field. The entry and
+its four in-code citations (`frontend/src/api.ts`, `frontend/src/data/upstream.ts`,
+`frontend/scripts/build-cesium-workers.mjs`, `frontend/vite.config.single.ts`) moved to D-070
+together. **Its own commit message still reads "(D-057 in this branch)"** and was left alone
+rather than rewritten with an interactive rebase — this note is the pointer. Note that `App.tsx`
+and `docs/remote-access-howto.md` still cite D-057 and are *correct*: those refer to main's token
+feature, not to this one.
+
+D-046 measured the idea and logged it as FUTURE. This built it: `npm run build:single` produces
+`frontend/dist-single/loran.html`, **8.88 MB, one file, no server**, verified rendering 99 real
+contacts from a `file://` page in Chrome 149.
+
+`npm run build` is untouched and still emits exactly one JS chunk, one CSS file and an
+`index.html`, as before.
+
+### What D-046 got wrong: only ONE of the three ADS-B feeds is reachable
+
+D-046 tested airplanes.live and inferred the family. Measured properly, with `Origin: null`, and
+confirmed in a real browser at a real `file://` origin:
+
+| Upstream | HTTP | `Access-Control-Allow-Origin` | Browser-direct? |
+|---|---|---|---|
+| airplanes.live | 200 | `*` | **yes** |
+| adsb.lol | 200 | *absent* | **no** |
+| adsb.fi | 200 | *absent* | **no** |
+| adsbdb | 200 | `*` | yes |
+| GEBCO WMS (GetMap + GetFeatureInfo) | 200 | `*` | yes |
+| NEXRAD / Iowa State Mesonet | 200 | `*` | yes |
+| planespotters | 403 | `*` | no — gate is `User-Agent` |
+
+adsb.lol and adsb.fi send **no CORS header at all**, and answer `OPTIONS` with 405. No origin can
+read them from a browser. **The single-file build therefore has no feed failover** — the property
+the three-source design existed to provide is gone, not degraded. When airplanes.live fails, the
+status bar reads `ADS-B OFFLINE` and that is the whole story.
+
+That is not hypothetical: airplanes.live was observed **intermittently returning a response with
+no ACAO header** during testing, while `curl` against the same URL a moment later carried it.
+Presumed rate-limiting or a WAF; a browser sees it as a hard CORS failure. Every open page now
+polls for itself, so this build makes that more likely, not less.
+
+### Cesium from `file://`: classic workers only, and the ergonomics are all wrong by default
+
+The hard part was never the feeds. A page opened from disk has an opaque origin, so its blob URLs
+are `blob:null/...`. Measured in Chrome 149 from a real `file://` page:
+
+| technique | result |
+|---|---|
+| classic worker from a `blob:` URL | **works** |
+| classic worker from a `data:` URL | **works** |
+| **module** worker from a `blob:` URL | **blocked** — *"Refused to cross-origin redirects of the top-level worker script"* |
+| `importScripts("blob:null/...")` | **blocked** — *"Not allowed to load local resource"* |
+
+Cesium 1.143 lands squarely in the blocked column twice over: `TaskProcessor.createWorker` sets
+`options.type = "module"` for same-origin worker paths, and its own embedded-workers path
+(`CESIUM_WORKERS`) bootstraps with `importScripts(blobUrl)`. Pointing `CESIUM_BASE_URL` at a CDN
+does not help either — that path also builds a **module** worker from a blob.
+
+The fix is to give Cesium workers that are classic *and* wholly inlined:
+
+* `frontend/scripts/build-cesium-workers.mjs` bundles all worker entry points into one classic
+  IIFE registering `self.CesiumWorkers[id]`. 47 workers, **0.94 MB** — the shared Cesium core
+  dedupes to one copy. Each worker module installs `self.onmessage` as an import side effect, so
+  they cannot simply be bundled side by side; the generator leans on ES module evaluation order
+  (depth-first, in import order) with a one-line wrapper per worker to capture each handler before
+  the next overwrites it. The registry has to be initialised in its own module imported first —
+  a module body runs *after* its imports, so initialising it in the entry body is too late.
+* `frontend/scripts/vite-plugin-cesium-inline.mjs` rewrites that bootstrap to concatenate the
+  bundle into the worker source and drop `type: "module"`. It also patches `buildModuleUrl` to
+  return `data:` URLs for the runtime assets. Both patches are exact string matches that **throw
+  if they stop matching**, so a Cesium upgrade fails the build instead of silently shipping a file
+  that opens to a black screen.
+
+Only three Cesium assets are ever requested — established by loading the normal build and reading
+the network log, not by guessing: `approximateTerrainHeights.json`, `IAU2006_XYS/*.json` and
+`Images/ion-credit.png`. `Assets/Textures/` (2.6 MB of stock NaturalEarthII) is deliberately left
+out; this app draws GEBCO instead, so nothing can ask for it. Draco/KTX2/I3S/gaussian-splat
+workers are also omitted — they decode 3D Tiles and glTF payloads this app never loads, and they
+embed Emscripten builds that `require("fs")`.
+
+**GEBCO's CORS is still the load-bearing surprise, and it holds at `Origin: null`.** Verified by
+calling `DarkBathymetryProvider.requestImage` directly in the file:// page: a real 256×256 tile
+came back and `getImageData` succeeded — the canvas is **not** tainted, so the per-pixel depth
+remap works with no server.
+
+### The switch
+
+`frontend/src/api.ts` is the single place that decides where data comes from, behind a
+compile-time `SINGLE_FILE` constant. Verified by grep on both artifacts: the normal build contains
+**zero** references to `api.airplanes.live`, and the single-file build contains **zero** `/api/*`
+fetches. Neither ships the other's code, and the app is not forked.
+`frontend/src/data/upstream.ts` is the browser-side equivalent of `backend/app/feeds/*.py`;
+**the backend stays the reference implementation** if the two ever disagree.
+
+### What this file honestly cannot do
+
+* **No photos.** planespotters gate on a `User-Agent` carrying a contact address, and
+  `User-Agent` is a forbidden header that browser script cannot set. Their clause 8 also forbids
+  downloading, storing, re-hosting or rewriting the image binaries, so embedding them was never
+  available either (D-009). The dossier states *"No photos in the single-file build — needs a
+  server"* rather than showing an empty frame. Owner accepted this price in D-046.
+* **No feed failover** — see above.
+* **No shared upstream cache.** The backend served every browser from one fetch; each page now
+  polls for itself. Rate limiting is enforced per page in `upstream.ts`: upstream calls are
+  serialised through a gate with a 1.1 s floor for airplanes.live (their documented limit is
+  1 req/sec) and 0.2 s for adsbdb, which also caches hits *and* misses exactly as the backend did.
+  Two open copies are two clients; nothing coordinates them.
+* **The track is only as old as the page.** The server ring buffer is gone; the client rebuilds
+  one from positions it has actually observed, and reports `buffer_window_s` as time-since-open
+  rather than the nominal 30 minutes, so the panel can never imply history it does not have.
+* **No small-airfield tier.** That data is a separate 3.5 MB file fetched on demand (D-052) and
+  there is no sibling file to fetch. The LAYERS panel withholds the toggle and says
+  *"Small fields — not in the single-file build"* rather than offering one that can only fail.
+* **No Phase 5 recorder and no token door.** Both need a server by definition.
+* **It is not offline.** The app code is self-contained; the data and map tiles still come from
+  the network. "Self-contained" here means no server to run, not no network.
+
+### Verified, and what was not
+
+Opened from `file://` in Chrome 149: globe renders, 3 classic blob workers construct with no
+error, **99 real contacts** appear and cross-check against a direct `curl` of the same endpoint,
+operator grouping and military colouring are right, selecting a contact returns real adsbdb
+enrichment (`a809f8`/JIA5185 → N617NN, Bombardier CL-600-2D24, PSA Airlines, KPHL→KBGR), the
+client track buffer fills, and attribution for GEBCO, airplanes.live, adsbdb and OurAirports /
+Natural Earth is intact. Console shows no errors.
+
+**Not visually confirmed: the GEBCO basemap painted on the globe.** The only browser available
+here runs software WebGL (SwiftShader) and rendered ~13 frames in two minutes, so the globe
+surface never requested imagery. The *served* build renders identically black in the same
+environment, which isolates this as a limitation of the test browser rather than a difference
+between the two builds — and the tile fetch/decode/untainted-canvas-read path was verified
+directly, which is the only part that could plausibly differ at a `file://` origin. Worth one
+look on real hardware before anyone trusts the basemap in this build.
+
+`vite-plugin-singlefile` was added as a **devDependency** for this and nothing else.

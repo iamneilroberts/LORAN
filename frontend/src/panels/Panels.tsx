@@ -15,6 +15,7 @@ import { downloadGeoJSON } from "./trackExport";
 import { externalLinks } from "./externalLinks";
 import { checkFiledRoute } from "../data/routeCheck";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
+import { api, isSingleFile } from "../api";
 
 const DASH = "—";
 
@@ -345,7 +346,14 @@ export function LayerCluster() {
       {/* Small strips are OFF by default (D-052): 42,698 markers, and their data is a
           separate 3.5 MB file that is only fetched once this is switched on. The note says so,
           because a several-second first load would otherwise look like a broken toggle. */}
-      {showPlaces && (
+      {/* The single-file build has no sibling file to fetch, so the tier simply is not there.
+          Said plainly, and the toggle is withheld rather than offered and left to fail. */}
+      {showPlaces && isSingleFile && (
+        <div className="lbl px-[10px] py-[2px]" style={{ fontSize: 9, color: "var(--off)" }}>
+          Small fields — not in the single-file build
+        </div>
+      )}
+      {showPlaces && !isSingleFile && (
         <Item on={showSmallAirports} label="Small fields" k="showSmallAirports"
               note={showSmallAirports ? "42,698 · loads on first use" : "off · +3.5 MB to enable"} />
       )}
@@ -514,12 +522,9 @@ function useEnrichment(hex: string | null, callsign: string | null) {
   useEffect(() => {
     if (!hex) return;
     let cancelled = false;
-    const q = new URLSearchParams({ hex: hex.toUpperCase() });
-    if (callsign) q.set("callsign", callsign.toUpperCase());
 
     useStore.getState().setEnrichment(null, true);
-    fetch(`/api/enrich?${q.toString()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    api.enrich(hex, callsign)
       .then((d: Enrichment) => { if (!cancelled) useStore.getState().setEnrichment(d, false); })
       .catch((e) => {
         if (cancelled) return;
@@ -538,11 +543,7 @@ function fetchTrack(hex: string, quiet = false): Promise<TrackResult | null> {
   // A refresh is quiet: flipping the panel back to "…" every few seconds would make a track
   // that is working look like one that keeps failing.
   if (!quiet) useStore.getState().setTrack(null, true);
-  return fetch(`/api/track?hex=${hex.toUpperCase()}`)
-    .then((r) => (r.ok
-      ? (r.json() as Promise<TrackResult>)
-      : Promise.reject(new Error(`HTTP ${r.status}`))))
-    .catch(() => null);
+  return api.track(hex).catch(() => null);
 }
 
 /**
@@ -602,12 +603,9 @@ function usePhoto(hex: string | null, registration: string | null) {
   useEffect(() => {
     if (!hex) return;
     let cancelled = false;
-    const q = new URLSearchParams({ hex: hex.toUpperCase() });
-    if (registration) q.set("reg", registration.toUpperCase());
 
     useStore.getState().setPhoto(null, true);
-    fetch(`/api/photo?${q.toString()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    api.photo(hex, registration)
       .then((d: PhotoResult) => { if (!cancelled) useStore.getState().setPhoto(d, false); })
       .catch((e) => {
         if (cancelled) return;
@@ -636,6 +634,9 @@ function PhotoBlock({ result, pending }: { result: PhotoResult | null; pending: 
 
   let note: string | null = null;
   if (pending) note = "Loading photo…";
+  // The single-file build has no photos at all and must say THAT, not "unavailable" - which
+  // would read as a passing outage and leave the operator waiting for something to come back.
+  else if (isSingleFile) note = "No photos in the single-file build — needs a server";
   else if (result && result.errors.length) note = "planespotters unavailable";
   else if (broke) note = "Photo unavailable from CDN";
   else if (result && !p) note = "No photo on file";

@@ -8,6 +8,7 @@ import { CameraCluster } from "./panels/CameraCluster";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
+import { api } from "./api";
 
 /** Viewport-scoped-ish polling. The radius is a preference (`radiusNm` in the store, D-055),
  *  not a constant; the camera-derived radius lands with Phase 6's camera cluster. Backend
@@ -27,7 +28,7 @@ async function claimSession(): Promise<void> {
   const token = url.searchParams.get("t");
   if (!token) return;
   try {
-    await fetch(`/api/session?t=${encodeURIComponent(token)}`);
+    await api.claimSession(token);
   } catch { /* the 401 state below is what tells the user, not a console message */ }
   url.searchParams.delete("t");
   window.history.replaceState({}, "", url.pathname + url.search + url.hash);
@@ -167,8 +168,7 @@ export default function App() {
 
     claimSession().then(() => {
       if (stop) return;
-      fetch("/api/config")
-        .then((r) => r.json())
+      api.config()
         .then((c) => c?.home && useStore.getState().setHome(c.home))
         .catch(() => {});
       poll();
@@ -181,19 +181,20 @@ export default function App() {
       // teardown/recreate of the setTimeout chain.
       const { home, radiusNm } = useStore.getState();
       try {
-        const r = await fetch(
-          `/api/aircraft?lat=${home.lat}&lon=${home.lon}&radius=${radiusNm}`,
-        );
+        // Both sides of the merge here: the branch's `api` indirection, which is what lets the
+        // single-file build swap in browser-direct upstream fetches, carrying main's `radiusNm`
+        // preference (D-055) rather than the branch's fixed RADIUS_NM constant, which no longer
+        // exists. Dropping either would silently undo a shipped feature.
+        const { authRequired, payload } = await api.aircraft(home.lat, home.lon, radiusNm);
         // 401 is not a feed failure and must not be reported as one - the feeds are fine,
         // the caller is not authorised.
-        if (r.status === 401) {
+        if (authRequired) {
           useStore.getState().setAuthRequired(true);
           if (!stop) window.setTimeout(poll, 5000);
           return;
         }
         useStore.getState().setAuthRequired(false);
-        if (!r.ok) throw new Error(String(r.status));
-        const d = await r.json();
+        const d = payload!;
         useStore.getState().setAircraft(d.aircraft ?? [], d.source, !!d.degraded, d.errors ?? []);
       } catch (e) {
         // Say it out loud in the status bar rather than leaving a stale frame looking live.
@@ -204,9 +205,7 @@ export default function App() {
 
     const health = window.setInterval(async () => {
       try {
-        const r = await fetch("/api/health");
-        const d = await r.json();
-        useStore.getState().setFeeds(d?.feeds?.adsb ?? []);
+        useStore.getState().setFeeds(await api.feeds());
       } catch { /* status bar already reflects the failed poll */ }
     }, 10000);
 
