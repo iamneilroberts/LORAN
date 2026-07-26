@@ -16,6 +16,7 @@
  */
 import {
   BillboardCollection,
+  BoundingSphere,
   Cartesian2,
   Cartesian3,
   Color,
@@ -23,12 +24,15 @@ import {
   HorizontalOrigin,
   LabelCollection,
   LabelStyle,
+  Occluder,
+  SceneTransforms,
   VerticalOrigin,
   type Scene,
 } from "cesium";
 
 import placesData from "../data/places.json";
 import { palette } from "../styles/palette";
+import { PRIORITY, cityPriority, declutter, type LabelBox } from "./declutter";
 import type { PlaceInfo } from "../state/store";
 
 /**
@@ -161,6 +165,8 @@ export interface PlacesLayer {
   setSmallAirports: (on: boolean) => void;
   /** What the small-airport tier is doing, so the UI can be honest about a slow first load. */
   smallAirportState: () => "off" | "loading" | "ready" | "failed";
+  /** Re-run label decluttering. Call on camera settle, not per frame (D-065). */
+  declutterLabels: (scene: Scene) => void;
   /** The airfield under the cursor, or null. Marker AND label are both hit targets. */
   pick: (scene: Scene, pos: Cartesian2) => PlaceInfo | null;
   destroy: () => void;
@@ -210,6 +216,38 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     far: number;
     isName?: boolean;
   }[] = [];
+
+  /**
+   * Every LABEL, with what the declutter pass needs to lay it out (D-065).
+   *
+   * Markers are deliberately absent: a 10 px square is small enough that overlapping ones read
+   * as a cluster rather than as mush, and hiding markers would hide the PLACE, not just its
+   * name. Only the text declutters.
+   *
+   * `w`/`h` are estimated from the character count rather than measured. JetBrains Mono is
+   * monospaced, so a 0.6 em advance is accurate to within a pixel or two, and measuring 13,000
+   * labels through a canvas context on every camera settle would cost far more than the small
+   * inaccuracy is worth.
+   */
+  const labelled: {
+    label: { show: boolean };
+    position: Cartesian3;
+    far: number;
+    isName: boolean;
+    priority: number;
+    w: number;
+    h: number;
+    /** Pixel offset applied to the anchor, matching the label's own pixelOffset. */
+    ox: number;
+    oy: number;
+    /** HorizontalOrigin.CENTER (cities) vs LEFT (airfields). */
+    centred: boolean;
+    /** VerticalOrigin.CENTER (airfield codes) vs TOP (names, cities). */
+    middle: boolean;
+  }[] = [];
+
+  const CHAR_W = 0.6;
+  const LINE_H = 1.25;
 
   for (const row of airports) {
     const [lat, lon, code, kind, name, municipality, region, country, elevationFt, iata] = row;
@@ -287,9 +325,24 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       placeOf.set(nameLabel, info);
       // `far`, not `nameFar`: setDensity derives the pinned name range from the tier's code
       // range via `airfieldRanges()`, so this entry carries the same base the code entries do.
+      const nameFontPx = Math.max(9, style.font - 2);
+      labelled.push({
+        label: nameLabel, position, far, isName: true,
+        priority: PRIORITY.airfieldName,
+        w: shortName.length * CHAR_W * nameFontPx, h: nameFontPx * LINE_H,
+        ox: Math.round(style.size / 2) + 3, oy: 4, centred: false, middle: false,
+      });
       ranged.push({ prim: nameLabel, far, isName: true });
     }
 
+    labelled.push({
+      label, position, far, isName: false,
+      priority: kind === KIND_LARGE ? PRIORITY.largeAirport
+        : kind === KIND_MILITARY ? PRIORITY.militaryAirport
+        : PRIORITY.mediumAirport,
+      w: code.length * CHAR_W * style.font, h: style.font * LINE_H,
+      ox: Math.round(style.size / 2) + 3, oy: 0, centred: false, middle: true,
+    });
     ranged.push({ prim: marker, far }, { prim: label, far });
     // Both are hit targets: the code is a bigger, easier thing to hit than a 10px square.
     placeOf.set(marker, info);
@@ -324,6 +377,12 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       verticalOrigin: VerticalOrigin.TOP,
       pixelOffset: new Cartesian2(0, 6),
       distanceDisplayCondition: ddc,
+    });
+    labelled.push({
+      label: cityLabelPrim, position, far, isName: false,
+      priority: cityPriority(scalerank),
+      w: name.length * CHAR_W * 10, h: 10 * LINE_H,
+      ox: 0, oy: 6, centred: true, middle: false,
     });
     ranged.push({ prim: cityDotPrim, far }, { prim: cityLabelPrim, far });
   }
@@ -416,6 +475,67 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
         const rangeFar = r.isName ? airfieldRanges(r.far, mult).nameFar : r.far * mult;
         r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, rangeFar);
       }
+    },
+    /**
+     * Hide labels that would overprint a more important one (D-065).
+     *
+     * Called on camera SETTLE, never per frame. The work is proportional to the labels
+     * currently in range, and the two filters before projection are what keep it cheap: a
+     * distance compare rejects everything the DistanceDisplayCondition is already hiding, and
+     * a horizon test rejects everything on the far side of the planet. Only what survives both
+     * gets projected to window coordinates, which is the expensive step.
+     */
+    declutterLabels: (s: Scene) => {
+      if (!labels.show) return;
+      const camera = s.camera.positionWC;
+      // The globe as an occluding sphere at the ellipsoid's minimum radius. Using the minimum
+      // makes the test slightly conservative near the poles - it will keep a few labels that
+      // are in fact just over the horizon, which is the harmless direction to be wrong in.
+      const occluder = new Occluder(
+        new BoundingSphere(Cartesian3.ZERO, s.globe.ellipsoid.minimumRadius), camera,
+      );
+
+      const boxes: LabelBox[] = [];
+      const owners: typeof labelled = [];
+
+      for (const entry of labelled) {
+        // Matches what setDensity wrote into the DistanceDisplayCondition, so this pass and
+        // Cesium's own range culling can never disagree about what is on screen.
+        const effFar = entry.isName
+          ? airfieldRanges(entry.far, density).nameFar
+          : entry.far * density;
+        if (Cartesian3.distance(camera, entry.position) > effFar) {
+          // Out of range: Cesium is already hiding it, so leave `show` alone rather than
+          // fighting the DDC. Setting it true here is what lets a label come back when the
+          // camera moves closer again.
+          entry.label.show = true;
+          continue;
+        }
+        if (!occluder.isPointVisible(entry.position)) {
+          entry.label.show = false;
+          continue;
+        }
+        const win = SceneTransforms.worldToWindowCoordinates(s, entry.position);
+        if (!win) {
+          // Projection fails for a point behind the camera, and for EVERY point if this runs
+          // before the first render. Show rather than hide: an un-decluttered label is a much
+          // better failure than a map with no names on it at all, which is what hiding here
+          // would produce if the pass ever ran too early.
+          entry.label.show = true;
+          continue;
+        }
+        boxes.push({
+          x: win.x + entry.ox - (entry.centred ? entry.w / 2 : 0),
+          y: win.y + entry.oy - (entry.middle ? entry.h / 2 : 0),
+          w: entry.w,
+          h: entry.h,
+          priority: entry.priority,
+        });
+        owners.push(entry);
+      }
+
+      const keep = declutter(boxes);
+      for (let i = 0; i < owners.length; i++) owners[i].label.show = keep[i];
     },
     setSmallAirports: (on: boolean) => {
       if (on && smallState === "off") {

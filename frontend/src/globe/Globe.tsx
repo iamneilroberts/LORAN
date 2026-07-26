@@ -116,6 +116,20 @@ export default function Globe() {
       },
     });
 
+    /* --- label decluttering, on camera SETTLE (D-065) --- */
+    // moveEnd, not postRender: the pass projects every in-range label to window coordinates,
+    // which is far too much to do 30 times a second, and labels cannot overlap differently
+    // until the camera has actually moved. An initial run covers the opening view, which
+    // produces no moveEnd of its own.
+    //
+    // Density and the small-airport tier both change what is in range without moving the
+    // camera, so those call it too - see the places subscription below.
+    const redeclutter = () => places.declutterLabels(scene);
+    camera.moveEnd.addEventListener(redeclutter);
+    // The FIRST pass waits for a render. Window projection needs a populated frame state, so
+    // running it here - before anything has drawn - would fail for every label at once.
+    let declutteredOnce = false;
+
     /* --- cursor lat/lon, and a debounced real depth lookup --- */
     const handler = new ScreenSpaceEventHandler(scene.canvas);
     let depthTimer: number | undefined;
@@ -165,6 +179,10 @@ export default function Globe() {
 
     const onTick = () => {
       const st = useStore.getState();
+      if (!declutteredOnce) {
+        declutteredOnce = true;
+        redeclutter();
+      }
 
       // Published only when it actually moves a degree. Writing camera pitch to the store on
       // every frame would wake every subscriber 30 times a second for nothing.
@@ -253,6 +271,7 @@ export default function Globe() {
       if (st.showPlaces !== lastShowPlaces) {
         lastShowPlaces = st.showPlaces;
         places.setShow(st.showPlaces);
+        redeclutter();
       }
       if (st.showStates !== lastStates || st.showCounties !== lastCounties) {
         lastStates = st.showStates;
@@ -262,6 +281,7 @@ export default function Globe() {
       if (st.placeDensity !== lastDensity) {
         lastDensity = st.placeDensity;
         places.setDensity(st.placeDensity);
+        redeclutter();
       }
       if (st.showSmallAirports !== lastSmall) {
         lastSmall = st.showSmallAirports;
@@ -393,6 +413,7 @@ export default function Globe() {
       unsub();
       unsubTrack();
       unsubPlaces();
+      camera.moveEnd.removeEventListener(redeclutter);
       scene.postRender.removeEventListener(onTick);
       handler.destroy();
       layer.destroy();

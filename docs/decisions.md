@@ -2423,3 +2423,81 @@ that **nothing in the loop ever loaded the page**, and a layer that constructs C
 cannot be signed off by a suite that cannot construct Cesium primitives. Until there is a smoke
 check that actually boots the app, new globe-layer code should be loaded in a browser once before
 it is called done.
+
+## D-065 — 2026-07-26 — LABELS: stop tuning ranges and declutter in screen space, because ranges cannot fix co-located places
+
+**Date:** 2026-07-26
+
+The owner reported airport and city names still overprinting each other, with a screenshot: `KBNA`
+over `NASHVILLE`, `KBHM` over `BIRMINGHAM` over `BIRMINGHAM-SHUT…`, `KTUP`/`TUPELO`,
+`KMEI`/`MERIDIAN`, `KMOB`/`MOBILE`, and a pile of Nashville suburbs on top of one another.
+
+**This is the fourth attempt at this problem, and the first three were the wrong instrument.**
+D-037 capped city scalerank at 7. D-049 uncapped it and added the DENSITY control. D-059 pinned
+the airfield NAME range so it stopped scaling with density. Every one of those tuned a *range* —
+and a range answers "how far away is this worth naming?", which is simply not the question.
+**Memphis the city and KMEM the airport are about two miles apart and always will be.** At every
+camera height where either is worth naming, both are, and both draw on the same pixels. No
+threshold anywhere fixes that, which is why three attempts did not.
+
+**What fixes it is what paper cartography and every real map renderer do:** lay labels out in
+priority order and drop any that would overlap something already placed. **Cesium has no
+declutter API for `LabelCollection`** — verified against its type definitions, the word does not
+appear anywhere in them — so this is ours.
+
+**The pure part is `declutter.ts`: boxes in, keep/drop out.** It cannot see Cesium, a camera or
+the DOM, so the whole decision is testable in the node environment this suite runs in (D-051).
+Greedy, highest priority first. Greedy is not optimal — a perfect packing is NP-hard and nobody
+needs one — but it has the property that actually matters when panning a map: **the most
+important label in any cluster always survives.** An optimiser that fitted more labels by
+dropping `KMEM` in favour of two minor towns would be a worse map.
+
+**Priority is an aviation judgement, not a cartographic one.** An airfield identifier outranks
+the town beside it: given `KMEM` over `MEMPHIS`, the code is what an operator is scanning for.
+Large 100 / military 95 / medium 80, then cities by Natural Earth scalerank (75 down to 40),
+then small strips at 30, and the airfield **NAME** last at 10 — it is the only label here that is
+purely redundant, naming the same object its own code just named, so losing it costs repetition
+and nothing else. Cities are bounded strictly between medium (80) and small (30), so no city ever
+displaces a real airfield and every city outranks a bare strip.
+
+**Ordering is a total order, deliberately.** Ties break by input index, so two identical frames
+produce identical output. Without that, equal-priority labels could swap survivors between
+frames and flicker while panning — which would read as a rendering fault rather than a design.
+
+**It runs on camera SETTLE, never per frame.** `camera.moveEnd`, plus explicit re-runs when
+DENSITY or the places toggle changes what is in range without moving the camera. Two filters run
+before the expensive step: a distance compare rejects everything the `DistanceDisplayCondition`
+is already hiding (using the *same* formula `setDensity` writes, so the two can never disagree
+about what is on screen), and an `Occluder` horizon test rejects everything on the far side of
+the planet. Only survivors get projected to window coordinates. A 64 px grid keeps the overlap
+test off O(n²), which matters at MAX density with small fields on — that is thousands of labels,
+not hundreds.
+
+**Boxes are estimated, not measured.** JetBrains Mono is monospaced, so a 0.6 em advance is
+accurate to a pixel or two; measuring 13,000 labels through a canvas context on every settle
+would cost far more than that inaccuracy is worth. Markers are deliberately **not** decluttered:
+a 10 px square reads as a cluster rather than mush when crowded, and hiding a marker would hide
+the *place*, not just its name. Only text declutters.
+
+**Two failure modes were chosen to fail visible rather than blank**, which is the whole risk of a
+feature that hides things:
+- If window projection fails — it does for any point behind the camera, and for *every* point if
+  the pass runs before the first render — the label is **shown**, not hidden. An un-decluttered
+  map is a far better failure than a map with no names on it.
+- The first pass is deferred to the first `postRender` rather than run at setup, because window
+  projection needs a populated frame state. Running it at setup would have hidden every label on
+  the opening view until the camera first moved.
+
+**Thirteen tests**, built around the trap that the easy assertion here is worthless: "some labels
+were dropped" is true of any broken implementation, including one that drops everything. So the
+tests pin *which* label survives — the low-priority box is deliberately listed first, so a naive
+first-wins implementation fails — that non-overlapping labels are never touched, that a dropped
+label's clear neighbour still gets through (dropping is per-collision, not "clear the
+neighbourhood"), that a box wider than the grid cell still collides correctly, that
+edge-touching is allowed, and that repeated calls are identical.
+
+**What the owner still has to judge on a real display**, and this one genuinely needs eyes: the
+priorities are a value judgement, not a fact. Whether losing `BIRMINGHAM` to keep `KBHM` is the
+right trade at a glance, whether airfield names disappearing so readily is a loss or a relief,
+and whether labels appearing and vanishing on camera settle reads as intentional or as flicker.
+The ranking constants are all in one exported block precisely so they are cheap to retune.
