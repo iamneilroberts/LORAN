@@ -22,8 +22,13 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
       **MEASURED: adsbdb's route is wrong for ~4 contacts in 10** (9/21, all 193–634 nm off
       their filed great circle by independent check). Recorded in `docs/data-sources.md`.
       **Still unjudged:** amber note weight at 344px given how often it fires
-- [ ] **State + county lines**, toggled in preferences
-- [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light")
+- [x] **State + county lines** (D-063, `45d034d`) — 858 state rings worldwide (ON), 3,619 US
+      county rings (OFF). MEASURED first: both bundled at 0.01° (+492 KiB gz) because counties
+      cost about what places.json costs, so D-052's lazy path was machinery for nothing.
+      **Persist is now v5 — themes take v6.** **Still unjudged:** line colours, thinning
+      thresholds, FPS cost of 858 rings drawing by default
+- [ ] **Themes — 2 dark + 2 mid-tone** ("light mode doesn't have to be super light").
+      **persist v5 → v6** (D-063 took v5, not themes)
 - [ ] **Rebase + merge `worktree-agent-a359546ffb2f19480`** — LAST. Needs D-057 renumber + the
       duplicate-normalizer decision
 - [ ] Regenerate `loran.html` after the merge so it carries every fix
@@ -40,4 +45,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (D-061 links `9dfd973`, D-062 filed-route relabel+flag `24661c6`; next: state + county lines. Single-file still unmerged at 71e3edf)_
+_Updated: 2026-07-26 — main (D-061 links, D-062 filed-route flag, D-063 boundaries `45d034d`; next: themes, persist v5→v6. Single-file still unmerged at 71e3edf)_
