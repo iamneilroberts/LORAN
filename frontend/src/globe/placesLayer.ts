@@ -214,6 +214,36 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       pixelOffset: new Cartesian2(Math.round(style.size / 2) + 3, 0),
       distanceDisplayCondition: ddc,
     });
+    // The airfield's NAME, under its code. Kept to a SHORTER range than the code deliberately:
+    // the code is the identifier you scan for at a distance, the name is what you want once you
+    // have found it, and drawing 5,275 names at full range would bury the map. far/4 means a
+    // name appears only when its airfield is already the local subject.
+    //
+    // The trailing "Airport" is dropped (4,292 of 5,275 carry it) purely to control label width -
+    // that is trimming a redundant suffix for display, not altering what we were told. The full
+    // name is still shown verbatim in the click-through panel (D-038).
+    const shortName = name.replace(/\s+(Airport|Airfield|Aerodrome)$/i, "").trim();
+    if (shortName) {
+      const nameFar = far / 4;
+      const nameLabel = labels.add({
+        position,
+        text: shortName.toUpperCase(),
+        font: `400 ${Math.max(9, style.font - 2)}px 'JetBrains Mono', ui-monospace, monospace`,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        // Same hue as the code, dimmed: it is the same object's label, not a second place.
+        fillColor: Color.fromCssColorString(style.label).withAlpha(0.72),
+        outlineColor: halo,
+        outlineWidth: 2,
+        horizontalOrigin: HorizontalOrigin.LEFT,
+        verticalOrigin: VerticalOrigin.TOP,
+        pixelOffset: new Cartesian2(Math.round(style.size / 2) + 3, 4),
+        distanceDisplayCondition: new DistanceDisplayCondition(0, nameFar),
+      });
+      // Clicking the name selects the same airfield the code does.
+      placeOf.set(nameLabel, info);
+      ranged.push({ prim: nameLabel, far: nameFar });
+    }
+
     ranged.push({ prim: marker, far }, { prim: label, far });
     // Both are hit targets: the code is a bigger, easier thing to hit than a 10px square.
     placeOf.set(marker, info);

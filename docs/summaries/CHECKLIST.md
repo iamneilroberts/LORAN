@@ -31,6 +31,13 @@
 
 ## Open — next up
 
+- [ ] **PUSH: 3 commits unpushed** (b4a887e, e307ae2, c23afb6) — origin/main still at 9441961
+- [ ] **Airport NAMES under airfield codes** — implemented, UNCOMMITTED, unjudged on a real
+      display. Range far/4, trailing "Airport" trimmed. Adds up to 5,275 labels: watch FPS/overlap
+- [ ] **"Origin airport display is not working"** (owner 2026-07-26) — undiagnosed. Dossier ORIGIN
+      renders fine, so likely the MAP; the LAYERS note says "filed route" but only the DESTINATION
+      leg is drawn. A straight origin line would be misread as the flown path (that is the TRACK)
+
 - [x] Dossier squeeze fixed — Camera + Layers moved LEFT, dossier owns the right column (D-048)
 - [x] Map labels no longer the water's colour — new `--map-label` token (D-048)
 - [x] Origin/dest read as places: "San Jose SJC", "Denver DEN" (D-048)
@@ -103,4 +110,4 @@
       (D-042); real cost is rebuilding Cesium layers on switch, a second `DarkBathymetryProvider`
       ramp, and re-derived altitude-ramp lightness.
 
-_Updated: 2026-07-26 — main (D-051 vitest+pytest, 69 tests; D-050 destination line; D-049 track/labels/density)_
+_Updated: 2026-07-26 — main (handoff pause-2026-07-26-finish-board-vessels.md written; airport names uncommitted)_
