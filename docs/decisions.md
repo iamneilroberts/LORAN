@@ -1499,3 +1499,46 @@ the name sits below the code at a quarter of the code's range, because the code 
 you scan for at a distance and the name is what you want once you have found it. The trailing
 "Airport" is trimmed for width (4,292 of 5,275 carry it); the full name is still shown verbatim in
 the click-through panel (D-038).
+
+---
+
+## D-053 — 2026-07-26 — The palette guard is scoped to `:root`, and the upsert reuse paths repaint
+
+Groundwork for the theme chooser (dark variants, owner's call). No theme exists yet; this is the
+three things that had to be true before one could.
+
+**`scripts/check_palette.mjs` scraped tokens with a whole-file regex.** Its comment claimed
+"custom properties defined on `:root`", but it was not scoped to `:root` at all, and `Map.set`
+overwrites — so the LAST definition of each name in the file won. Adding any
+`:root[data-theme="…"]` block therefore made the guard compare `palette.ts` against *that theme's*
+colours, and D-042 wired the guard into `npm run build`, so the build went red pointing at the
+palette rather than at the theme block that caused it. The scrape is now brace-matched to the one
+default `:root` block, and it fails if there is not exactly one.
+
+**The guard also now validates every theme block**, because a theme is only useful if it is a
+complete palette: a property CSS ignores (`--cyanx`) and a colour the theme forgets both render a
+theme half-applied, which is very hard to tell from a rendering bug. Every
+`:root[data-theme=…]` block must define every colour `palette.ts` reads, and may not introduce a
+name `:root` does not declare. Non-colour tokens (`--mono`, `--pad`) are free to inherit. Still
+zero dependencies — still a regex plus a brace scan.
+
+**Two upsert reuse paths never reapplied colour.** `upsertPlane` and `upsertCone` mutate entities
+in place rather than destroying and re-adding them, because recreating a labelled entity thirty
+times a minute churns Cesium's SDF glyph atlas badly enough to drop characters out of an altitude
+readout (D-015/D-028). The hazard that discipline introduces is the mirror image: a property the
+mutate branch forgets keeps the value it was CREATED with for the entity's whole life.
+
+- `altitudePlanes.ts` updated coordinates, height and label text, but not the rectangle material,
+  the outline colour, or the label fill. The material is now rebuilt on mutate rather than
+  recoloured in place, which also handles `fill`/`emphasis` changing — those swap the material
+  class outright, so recolouring could not have worked.
+- `projectionCone.ts` already reapplied the palette colour to the fill and every stroke; only the
+  label was missed, so a palette change repainted the envelope but not its readout.
+
+Both are latent today — every call passes the same colour — and would have made any theme switch
+look half-broken. Fixed regardless of whether the chooser ships.
+
+**Covered by 9 new tests** (frontend 33 → 42), mutation-checked per D-051: with the fixes reverted,
+4 of the plane tests and 1 cone test fail and the tests covering the pre-existing behaviour still
+pass. The guard was likewise proved both ways with a throwaway `data-theme="probe"` block —
+complete themes pass, a typo'd or incomplete one fails — and the probe reverted.

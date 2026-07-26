@@ -224,6 +224,10 @@ export function upsertCone(viewer: Viewer, s: ConeSpec): Entity[] {
       // Only assign when it actually changed - see the glyph-atlas note above.
       const current = labelE.label.text?.getValue?.(viewer.clock.currentTime);
       if (current !== labelText) labelE.label.text = labelText as never;
+      // Unconditional, like the fill and strokes above: the glyph-atlas caution applies to the
+      // TEXT (it rebuilds glyphs), not to the colour. Without this the label kept the colour it
+      // was created with, so a palette change repainted the envelope but not its readout.
+      labelE.label.fillColor = col as never;
     }
   }
   touched.push(labelE);

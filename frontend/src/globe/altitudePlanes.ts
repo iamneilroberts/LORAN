@@ -85,18 +85,14 @@ export function upsertPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
     );
   };
 
-  const existing = viewer.entities.getById(s.id);
-  const existingLabel = viewer.entities.getById(`${s.id}::label`);
-  if (existing && existingLabel) {
-    if (existing.rectangle) {
-      existing.rectangle.coordinates = rect as never;
-      existing.rectangle.height = heightM as never;
-    }
-    existingLabel.position = centreOf(rect) as never;
-    if (existingLabel.label) existingLabel.label.text = labelText as never;
-    return [existing, existingLabel];
-  }
-
+  /*
+   * Built before the reuse check so the mutate branch can reapply it too. Everything derived
+   * from s.colour has to be re-set on mutate: the branch used to update geometry and label text
+   * only, so an entity kept the colour it was CREATED with for as long as it lived. That is
+   * invisible while the palette is fixed, and turns a palette change into a half-repainted
+   * display. Rebuilding rather than recolouring in place also handles s.fill/s.emphasis
+   * changing, which swaps the material class outright.
+   */
   const material =
     style === "solid"
       ? new ColorMaterialProperty(s.colour.withAlpha(s.emphasis ? 0.18 : 0.09))
@@ -106,6 +102,24 @@ export function upsertPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
           lineCount: new Cartesian2(10, 10),
           lineThickness: new Cartesian2(1.0, 1.0),
         });
+  const outlineColour = s.colour.withAlpha(s.emphasis ? 0.95 : 0.55);
+
+  const existing = viewer.entities.getById(s.id);
+  const existingLabel = viewer.entities.getById(`${s.id}::label`);
+  if (existing && existingLabel) {
+    if (existing.rectangle) {
+      existing.rectangle.coordinates = rect as never;
+      existing.rectangle.height = heightM as never;
+      existing.rectangle.material = material as never;
+      existing.rectangle.outlineColor = outlineColour as never;
+    }
+    existingLabel.position = centreOf(rect) as never;
+    if (existingLabel.label) {
+      existingLabel.label.text = labelText as never;
+      existingLabel.label.fillColor = s.colour as never;
+    }
+    return [existing, existingLabel];
+  }
 
   const plane = viewer.entities.add({
     id: s.id,
@@ -114,7 +128,7 @@ export function upsertPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
       height: heightM,
       material,
       outline: true,
-      outlineColor: s.colour.withAlpha(s.emphasis ? 0.95 : 0.55),
+      outlineColor: outlineColour,
       outlineWidth: 2,
     },
   });

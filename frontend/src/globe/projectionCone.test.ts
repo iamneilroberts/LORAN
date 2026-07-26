@@ -7,10 +7,22 @@
  * Written against real numbers rather than array shapes on purpose. Asserting `outline.length`
  * would pass just as happily if every point were at the aircraft's own position.
  */
-import { Cartographic, Cartesian3 } from "cesium";
-import { describe, expect, it } from "vitest";
+import { Cartographic, Cartesian3, Color, EntityCollection, JulianDate, type Viewer } from "cesium";
+import { describe, expect, it, vi } from "vitest";
 
-import { coneGeometry, type ConeSpec } from "./projectionCone";
+import { coneGeometry, upsertCone, type ConeSpec } from "./projectionCone";
+
+/*
+ * The envelope's colour comes from the palette, not from its spec, so exercising the reuse path
+ * means changing what the palette reports between calls - which is exactly what a theme switch
+ * does (set the attribute, then refreshPalette()). Stubbing the module keeps the real
+ * `amber()` -> `Color.fromCssColorString` path under test; only the source value moves.
+ */
+const themed = vi.hoisted(() => ({ amber: "#ffb000" }));
+vi.mock("../styles/palette", () => ({
+  palette: () => ({ amber: themed.amber, cyan: "#5fd7e0" }),
+  refreshPalette: () => {},
+}));
 
 const KT_TO_MS = 0.514444;
 const FT_TO_M = 0.3048;
@@ -129,5 +141,76 @@ describe("coneGeometry", () => {
     const first = g.outline[0];
     const last = g.outline[g.outline.length - 1];
     expect(haversine(first, last)).toBeCloseTo(0, 0);
+  });
+});
+
+/**
+ * The reuse path repaints, it does not just re-position.
+ *
+ * `upsertCone` mutates in place for the same glyph-atlas reason as `upsertPlane`. The fill and
+ * the strokes already reapplied the palette colour on mutate; the LABEL did not, so it kept the
+ * colour it was created with and a palette change repainted the envelope but not its readout.
+ */
+describe("upsertCone reuse path", () => {
+  const TIME = JulianDate.now();
+
+  function fakeViewer(): Viewer {
+    return {
+      entities: new EntityCollection(),
+      clock: { currentTime: TIME },
+    } as unknown as Viewer;
+  }
+
+  function rgbOf(c: Color): [number, number, number] {
+    return [c.red, c.green, c.blue];
+  }
+
+  /** Draw once under the default palette, then again under `next`. */
+  function repaintWith(next: string): Viewer {
+    themed.amber = "#ffb000";
+    const viewer = fakeViewer();
+    upsertCone(viewer, BASE);
+    themed.amber = next;
+    upsertCone(viewer, BASE);
+    return viewer;
+  }
+
+  const RED: [number, number, number] = rgbOf(Color.fromCssColorString("#ff0000"));
+
+  it("repaints the label", () => {
+    const viewer = repaintWith("#ff0000");
+    const label = viewer.entities.getById("testlabel");
+    expect(rgbOf(label!.label!.fillColor!.getValue(TIME) as Color)).toEqual(RED);
+  });
+
+  it("repaints the fill and the strokes", () => {
+    const viewer = repaintWith("#ff0000");
+
+    const fill = viewer.entities.getById("testfill");
+    const material = fill!.polygon!.material as unknown as {
+      color: { getValue(t: JulianDate): Color };
+    };
+    expect(rgbOf(material.color.getValue(TIME))).toEqual(RED);
+
+    for (const suffix of ["edge", "ctr"]) {
+      const stroke = viewer.entities.getById(`test${suffix}`);
+      const m = stroke!.polyline!.material as unknown as {
+        color: { getValue(t: JulianDate): Color };
+      };
+      expect(rgbOf(m.color.getValue(TIME))).toEqual(RED);
+    }
+  });
+
+  it("reuses the entities rather than recreating them", () => {
+    themed.amber = "#ffb000";
+    const viewer = fakeViewer();
+    const first = upsertCone(viewer, BASE);
+    const before = viewer.entities.values.length;
+    // Turn, don't extend: changing `minutes` changes the RUNG COUNT, so the entity total moves
+    // for a legitimate reason and would not tell us anything about reuse.
+    const second = upsertCone(viewer, { ...BASE, trackDeg: 100 });
+
+    expect(second[0]).toBe(first[0]);
+    expect(viewer.entities.values.length).toBe(before);
   });
 });
