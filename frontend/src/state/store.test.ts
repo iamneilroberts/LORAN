@@ -16,7 +16,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { MAX_RADIUS_NM, migratePrefs, RANGE_PRESETS_NM, useStore } from "./store";
+import {
+  DEFAULT_THEME, isThemeName, MAX_RADIUS_NM, migratePrefs, RANGE_PRESETS_NM, THEMES, useStore,
+} from "./store";
 
 describe("setRadiusNm", () => {
   it("clamps a value above the ceiling down to MAX_RADIUS_NM", () => {
@@ -64,6 +66,12 @@ describe("migratePrefs", () => {
     expect(migrated.showAllLabels).toBe(true);
   });
 
+  it("from < 6 adds the theme without touching an already-current payload", () => {
+    const migrated = migratePrefs({ showStates: false }, 5);
+    expect(migrated.theme).toBe(DEFAULT_THEME);
+    expect(migrated.showStates).toBe(false);
+  });
+
   it("chains: a v1 payload picks up the v2, v3, v4 and v5 fields, not just the newest", () => {
     const migrated = migratePrefs({ showDatum: true }, 1);
     // v2 step (D-047) - proves the chain did not break when v3 and v4 were added on top of it.
@@ -78,5 +86,40 @@ describe("migratePrefs", () => {
     // v5 step (D-063).
     expect(migrated.showStates).toBe(true);
     expect(migrated.showCounties).toBe(false);
+    // v6 step (D-066).
+    expect(migrated.theme).toBe(DEFAULT_THEME);
+  });
+});
+
+describe("themes", () => {
+  it("ships two dark and two mid-tone, which is what was asked for", () => {
+    expect(THEMES.filter((t) => t.kind === "dark")).toHaveLength(2);
+    expect(THEMES.filter((t) => t.kind === "mid")).toHaveLength(2);
+  });
+
+  it("defaults to a theme it actually ships", () => {
+    expect(isThemeName(DEFAULT_THEME)).toBe(true);
+  });
+
+  it("names are unique, so the chooser cannot render two identical buttons", () => {
+    const names = THEMES.map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("rejects a theme name this build does not ship", () => {
+    // A hand-edited or downgraded localStorage must not leave the document carrying a
+    // data-theme with no matching block, which would render half-styled.
+    for (const bad of ["solarized", "", "MIDNIGHT", null, 7, undefined]) {
+      expect(isThemeName(bad)).toBe(false);
+    }
+  });
+
+  it("setTheme falls back to the default rather than storing an unknown name", () => {
+    const store = useStore.getState();
+    store.setTheme("carbon");
+    expect(useStore.getState().theme).toBe("carbon");
+    store.setTheme("nonesuch" as never);
+    expect(useStore.getState().theme).toBe(DEFAULT_THEME);
+    store.setTheme(DEFAULT_THEME);
   });
 });

@@ -6,7 +6,8 @@ import {
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
-import { useStore } from "./state/store";
+import { DEFAULT_THEME, useStore } from "./state/store";
+import { applyTheme } from "./styles/palette";
 
 /** Viewport-scoped-ish polling. The radius is a preference (`radiusNm` in the store, D-055),
  *  not a constant; the camera-derived radius lands with Phase 6's camera cluster. Backend
@@ -153,6 +154,13 @@ function LockedPanel() {
 
 export default function App() {
   const denied = useStore((s) => s.authRequired);
+
+  // The persisted theme has to reach the document BEFORE Globe mounts and reads the palette,
+  // or the first frame is painted from the default tokens and only corrects on the next change.
+  const theme = useStore((s) => s.theme);
+  useEffect(() => {
+    applyTheme(theme, DEFAULT_THEME);
+  }, [theme]);
 
   useEffect(() => {
     let stop = false;

@@ -96,3 +96,23 @@ export function palette(): Palette {
 export function refreshPalette(): void {
   cache = null;
 }
+
+/**
+ * Put a theme on the document and drop the memo, in that order (D-066).
+ *
+ * The order is the whole point. `refreshPalette()` only clears the cache; the next `palette()`
+ * call re-reads the custom properties through `getComputedStyle`, which forces a style recalc
+ * and therefore sees the new attribute - but only if the attribute is already set. Reversing
+ * these two lines would repopulate the memo from the OLD theme and leave the globe painted in
+ * the previous palette until something else invalidated it.
+ *
+ * The default theme is applied by REMOVING the attribute rather than setting it, so a browser
+ * that has never touched the control renders from the plain `:root` block exactly as before.
+ */
+export function applyTheme(theme: string, defaultTheme: string): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (theme === defaultTheme) root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+  refreshPalette();
+}

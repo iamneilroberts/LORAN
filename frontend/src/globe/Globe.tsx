@@ -22,13 +22,13 @@ import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { upsertCone } from "./projectionCone";
 import { clearDestination, upsertDestination } from "./destinationLine";
 import { checkFiledRoute } from "../data/routeCheck";
-import { palette } from "../styles/palette";
+import { applyTheme, palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
 import { createBoundariesLayer } from "./boundariesLayer";
 import { createRadarLayer } from "./radarLayer";
 import {
-  FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
+  DEFAULT_THEME, FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
 } from "../state/store";
 
 const DATUM_PREFIX = "datum::";
@@ -90,7 +90,8 @@ export default function Globe() {
     // Aircraft and planes sit above the ellipsoid; terrain depth-testing clips them.
     scene.globe.depthTestAgainstTerrain = false;
 
-    scene.imageryLayers.addImageryProvider(new DarkBathymetryProvider());
+    // Held, because a theme change has to re-request these tiles - see repaintTheme below.
+    let bathymetry = scene.imageryLayers.addImageryProvider(new DarkBathymetryProvider());
 
     const layer = createAircraftLayer(scene);
     // Static ground reference, built once here and thereafter only shown or hidden (D-032).
@@ -114,6 +115,36 @@ export default function Globe() {
         pitch: CMath.toRadians(-32),   // tilted: altitude is visible as height, not as nothing
         roll: 0,
       },
+    });
+
+    /* --- theme (D-066) --- */
+    // Most of the globe rethemes for free: the aircraft icons are cached by colour STRING, and
+    // the planes, cone and destination line re-derive their colours on every update tick, so
+    // dropping the palette memo is enough for all of them. Only the two build-once layers and
+    // the scene's own background have to be told.
+    let lastTheme = s0.theme;
+    const repaintTheme = (theme: string) => {
+      applyTheme(theme, DEFAULT_THEME);
+      const p = palette();
+      scene.globe.baseColor = Color.fromCssColorString(p.bg);
+      scene.backgroundColor = Color.fromCssColorString(p.bg);
+      places.recolour();
+      boundaries.recolour();
+      // The bathymetry provider bakes --bg into the tiles it generates and Cesium caches them,
+      // so nothing short of re-requesting repaints the water. Only THIS layer is swapped, by
+      // its own reference - `imageryLayers.removeAll()` would also destroy the radar's layer
+      // while radarLayer went on holding a reference to it, which is D-064's mistake again:
+      // its `setShow(true)` would see a non-null `layer` and never rebuild, and its next
+      // `drop()` would call remove() on a destroyed object.
+      scene.imageryLayers.remove(bathymetry, true);
+      bathymetry = scene.imageryLayers.addImageryProvider(new DarkBathymetryProvider());
+      // Re-added on top, so put it back underneath the radar overlay where it belongs.
+      scene.imageryLayers.lowerToBottom(bathymetry);
+    };
+    const unsubTheme = useStore.subscribe((st) => {
+      if (st.theme === lastTheme) return;
+      lastTheme = st.theme;
+      repaintTheme(st.theme);
     });
 
     /* --- label decluttering, on camera SETTLE (D-065) --- */
@@ -413,6 +444,7 @@ export default function Globe() {
       unsub();
       unsubTrack();
       unsubPlaces();
+      unsubTheme();
       camera.moveEnd.removeEventListener(redeclutter);
       scene.postRender.removeEventListener(onTick);
       handler.destroy();

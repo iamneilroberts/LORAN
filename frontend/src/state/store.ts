@@ -198,6 +198,8 @@ interface State {
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
+  /** Active theme (D-066). Applied as a data-theme attribute on <html>. */
+  theme: ThemeName;
   /** State/province lines, worldwide (D-063). ON by default - coarse, cheap, and the reference
    *  that makes "where is that contact" answerable without hunting. */
   showStates: boolean;
@@ -250,6 +252,7 @@ interface State {
   setFetchFailed: (errors: string[]) => void;
   setFeeds: (f: FeedStatus[]) => void;
   setHome: (h: { lat: number; lon: number; label: string }) => void;
+  setTheme: (t: ThemeName) => void;
   setCursor: (c: { lat: number; lon: number } | null) => void;
   setDepth: (m: number | null, pending: boolean) => void;
   select: (hex: string | null) => void;
@@ -310,6 +313,32 @@ export const RANGE_PRESETS_NM = [60, 120, 180, 250] as const;
  * before it produced), so a v1 payload still picks up the v2 fields on its way through, then
  * the v3 field, then the v4 field - it does not jump straight from 1 to 4 missing a step.
  */
+/**
+ * The shipped themes (D-066). `midnight` is the default `:root` block in tokens.css and is
+ * applied by REMOVING the data-theme attribute, not by setting it - so a browser that has never
+ * touched this control renders exactly what it always did.
+ *
+ * There is no light theme on purpose. D-029 encodes altitude as an HSL ramp at lightness 52-68,
+ * which needs a background darker than the ramp; a genuinely light background would flatten the
+ * most information-dense thing on the display. "Mid-tone" is as far as this goes, which is what
+ * the owner asked for.
+ */
+export const THEMES = [
+  { name: "midnight", label: "Midnight", kind: "dark" },
+  { name: "carbon", label: "Carbon", kind: "dark" },
+  { name: "slate", label: "Slate", kind: "mid" },
+  { name: "ember", label: "Ember", kind: "mid" },
+] as const;
+
+export type ThemeName = (typeof THEMES)[number]["name"];
+
+export const DEFAULT_THEME: ThemeName = "midnight";
+
+/** True for a name this build actually ships, so a hand-edited localStorage cannot theme-404. */
+export function isThemeName(v: unknown): v is ThemeName {
+  return typeof v === "string" && THEMES.some((t) => t.name === v);
+}
+
 export function migratePrefs(persisted: unknown, from: number): Record<string, unknown> {
   let p = (persisted ?? {}) as Record<string, unknown>;
   if (from < 2) {
@@ -320,6 +349,11 @@ export function migratePrefs(persisted: unknown, from: number): Record<string, u
   }
   if (from < 4) {
     p = { ...p, showAllLabels: false };
+  }
+  if (from < 6) {
+    // Themes arrived AFTER the boundary toggles, so v6 not v5 - the earlier handoff had
+    // reserved v5 for this and D-063 got there first.
+    p = { ...p, theme: DEFAULT_THEME };
   }
   if (from < 5) {
     // States ON, counties OFF - the shipped defaults (D-063). A browser that persisted prefs
@@ -368,6 +402,7 @@ export const useStore = create<State>()(persist((set) => ({
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
+  theme: DEFAULT_THEME,
   // Boundaries (D-063). States ON: 858 rings, coarse, and the reference that makes "which
   // state is that contact over" answerable at a glance. Counties OFF: 3,619 rings reads as
   // texture rather than information until the camera is close, and it is US-only.
@@ -401,6 +436,9 @@ export const useStore = create<State>()(persist((set) => ({
   setFetchFailed: (errors) => set({ lastFetchOk: false, errors }),
   setFeeds: (feeds) => set({ feeds }),
   setHome: (home) => set({ home }),
+  // Guarded rather than trusted: a persisted payload from a build that shipped a theme this one
+  // does not would otherwise style the display with a data-theme that has no matching block.
+  setTheme: (theme) => set({ theme: isThemeName(theme) ? theme : DEFAULT_THEME }),
   setCursor: (cursor) => set({ cursor }),
   setDepth: (depthM, depthPending) => set({ depthM, depthPending }),
   // Changing selection drops the old dossier immediately. Showing one contact's
@@ -434,7 +472,7 @@ export const useStore = create<State>()(persist((set) => ({
   setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  version: 5,
+  version: 6,
   migrate: migratePrefs,
   // The allow-list IS the safety property. Anything not named here is never written to disk,
   // so no amount of future state can accidentally start persisting live positions.
@@ -446,6 +484,7 @@ export const useStore = create<State>()(persist((set) => ({
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
+    theme: s.theme,
     showStates: s.showStates,
     showCounties: s.showCounties,
     showDestination: s.showDestination,

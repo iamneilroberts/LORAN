@@ -167,6 +167,8 @@ export interface PlacesLayer {
   smallAirportState: () => "off" | "loading" | "ready" | "failed";
   /** Re-run label decluttering. Call on camera settle, not per frame (D-065). */
   declutterLabels: (scene: Scene) => void;
+  /** Repaint after a theme change. Call AFTER refreshPalette() (D-066). */
+  recolour: () => void;
   /** The airfield under the cursor, or null. Marker AND label are both hit targets. */
   pick: (scene: Scene, pos: Cartesian2) => PlaceInfo | null;
   destroy: () => void;
@@ -230,7 +232,11 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
    * inaccuracy is worth.
    */
   const labelled: {
-    label: { show: boolean };
+    label: { show: boolean; fillColor: Color; outlineColor: Color };
+    /** What colour role this label plays, for the theme recolour pass (D-066). */
+    role: "code" | "name" | "city";
+    /** Airfield tier for a code/name label; ignored for a city. */
+    kind: number;
     position: Cartesian3;
     far: number;
     isName: boolean;
@@ -245,6 +251,9 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     /** VerticalOrigin.CENTER (airfield codes) vs TOP (names, cities). */
     middle: boolean;
   }[] = [];
+
+  /** Markers carry their colour baked into a data URI, so a theme change must re-issue it. */
+  const markers: { prim: { image: string }; kind: number | "city" }[] = [];
 
   const CHAR_W = 0.6;
   const LINE_H = 1.25;
@@ -327,7 +336,7 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       // range via `airfieldRanges()`, so this entry carries the same base the code entries do.
       const nameFontPx = Math.max(9, style.font - 2);
       labelled.push({
-        label: nameLabel, position, far, isName: true,
+        label: nameLabel, position, far, isName: true, role: "name", kind,
         priority: PRIORITY.airfieldName,
         w: shortName.length * CHAR_W * nameFontPx, h: nameFontPx * LINE_H,
         ox: Math.round(style.size / 2) + 3, oy: 4, centred: false, middle: false,
@@ -336,13 +345,14 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
     }
 
     labelled.push({
-      label, position, far, isName: false,
+      label, position, far, isName: false, role: "code", kind,
       priority: kind === KIND_LARGE ? PRIORITY.largeAirport
         : kind === KIND_MILITARY ? PRIORITY.militaryAirport
         : PRIORITY.mediumAirport,
       w: code.length * CHAR_W * style.font, h: style.font * LINE_H,
       ox: Math.round(style.size / 2) + 3, oy: 0, centred: false, middle: true,
     });
+    markers.push({ prim: marker, kind });
     ranged.push({ prim: marker, far }, { prim: label, far });
     // Both are hit targets: the code is a bigger, easier thing to hit than a 10px square.
     placeOf.set(marker, info);
@@ -379,11 +389,12 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
       distanceDisplayCondition: ddc,
     });
     labelled.push({
-      label: cityLabelPrim, position, far, isName: false,
+      label: cityLabelPrim, position, far, isName: false, role: "city", kind: -1,
       priority: cityPriority(scalerank),
       w: name.length * CHAR_W * 10, h: 10 * LINE_H,
       ox: 0, oy: 6, centred: true, middle: false,
     });
+    markers.push({ prim: cityDotPrim, kind: "city" });
     ranged.push({ prim: cityDotPrim, far }, { prim: cityLabelPrim, far });
   }
 
@@ -476,6 +487,45 @@ export function createPlacesLayer(scene: Scene): PlacesLayer {
         r.prim.distanceDisplayCondition = new DistanceDisplayCondition(0, rangeFar);
       }
     },
+    /**
+     * Re-read the palette and repaint everything this layer baked at build time (D-066).
+     *
+     * Unlike the aircraft, planes and cone - which re-derive their colours on every update tick
+     * and therefore retheme for free the moment the palette memo is dropped - these primitives
+     * are created once and never rebuilt (D-032). Their colours are frozen at construction, and
+     * the markers' colours are frozen INSIDE a data URI, so a theme change has to re-issue the
+     * image as well as the fill.
+     *
+     * Colours are reassigned in place. Nothing is removed and re-added: destroying labels
+     * repeatedly corrupts Cesium's glyph atlas, which this codebase has already been bitten by
+     * (see upsertPlane), and a theme chooser the owner flicks between four values is exactly
+     * the workload that would expose it.
+     */
+    recolour: () => {
+      const styles = airportStyles();
+      const { mapLabel, off, bg } = palette();
+      const newHalo = Color.fromCssColorString(bg).withAlpha(0.85);
+      const cityFill = Color.fromCssColorString(mapLabel);
+      const cityDotImage = dotUri(off);
+
+      for (const m of markers) {
+        m.prim.image = m.kind === "city" ? cityDotImage : styles[m.kind]?.marker ?? m.prim.image;
+      }
+      for (const entry of labelled) {
+        if (entry.role === "city") {
+          entry.label.fillColor = cityFill;
+        } else {
+          const style = styles[entry.kind];
+          if (!style) continue;
+          const base = Color.fromCssColorString(style.label);
+          // The name keeps the code's hue at 0.72 alpha - it is the same object's label, not a
+          // second place (see its construction above). Recolouring must preserve that.
+          entry.label.fillColor = entry.role === "name" ? base.withAlpha(0.72) : base;
+        }
+        entry.label.outlineColor = newHalo;
+      }
+    },
+
     /**
      * Hide labels that would overprint a more important one (D-065).
      *

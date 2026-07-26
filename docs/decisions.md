@@ -2501,3 +2501,86 @@ priorities are a value judgement, not a fact. Whether losing `BIRMINGHAM` to kee
 right trade at a glance, whether airfield names disappearing so readily is a loss or a relief,
 and whether labels appearing and vanishing on camera settle reads as intentional or as flicker.
 The ranking constants are all in one exported block precisely so they are cheap to retune.
+
+## D-066 — 2026-07-26 — THEMES: two dark, two mid-tone, and no light one on purpose
+
+**Date:** 2026-07-26
+
+The theme chooser was blocked from D-042 until D-053 fixed `check_palette.mjs`, which scraped
+tokens with a whole-file regex despite claiming `:root` — so *any* `:root[data-theme=…]` block
+failed the build. That guard now validates theme blocks instead of being defeated by them, and
+adding three of them passes it, which is the first real confirmation that D-053's fix works.
+
+**Four themes: MIDNIGHT (the existing default), CARBON (dark, neutral), SLATE (mid-tone, cool),
+EMBER (mid-tone, warm).** The owner's brief was two dark and two mid-tone — "light mode doesn't
+have to be super light."
+
+**There is no light theme, and that is a design decision rather than an omission.** D-029 encodes
+altitude as an HSL ramp at lightness 52–68. That ramp needs a background darker than it is; on a
+light background the whole ramp collapses toward the page and the single most information-dense
+thing on the display stops encoding anything. "Mid-tone" is as far as this can go without
+re-deriving D-029, and the two mid-tone themes sit around lightness 20%, which leaves the ramp
+its full separation. This is stated in `tokens.css`, in `store.ts` and in the chooser's own
+comment, because it will otherwise read as a missing feature to whoever asks next.
+
+**These are not background swaps, and that is the substantive work.** `--dim` (`#5a6b7a`) and
+`--off` (`#3a4652`) are *darker* than the midnight background on purpose. Drop a mid-tone
+background behind them and they invert — the "present but not the thing to look at" tokens become
+invisible rather than subordinate, taking every inactive toggle, every unit suffix and the county
+lines with them. So SLATE and EMBER re-tune every value against their own background:
+`--dim` lifts to `#9aa8b5`/`#a89a8c` and `--off` to `#71818f`/`#7d7165`, above the background
+instead of below it, and the accents lift too because a mid-tone base eats saturation.
+
+**Icon outlines stay dark in every theme.** `--icon-stroke` and friends separate an icon from
+what is *underneath* it, and what is underneath is the globe — dark water and dark land — not the
+chrome. Lightening them with the background would have been the obvious symmetry and would have
+erased the outline exactly where it does its job.
+
+**Most of the globe rethemes for free, which is why this is tractable at all.** The aircraft icons
+are data URIs cached by colour *string*, so a new palette produces new cache keys and new icons
+with no invalidation logic; the altitude planes, projection cone and destination line re-derive
+their colours from `palette()` on every update tick. Dropping the memo is enough for all of them.
+Only three things had to be told explicitly: the scene's own background, and the two build-once
+layers — `placesLayer` (D-032 builds it once and never rebuilds) and `boundariesLayer`.
+
+**`placesLayer.recolour()` reassigns in place rather than rebuilding.** Markers carry their colour
+baked inside a data URI, so a theme change has to re-issue the image as well as the fill. Nothing
+is removed and re-added: destroying labels repeatedly corrupts Cesium's glyph atlas, which this
+codebase has already been bitten by, and a chooser the owner flicks between four values is
+precisely the workload that would expose it. The airfield NAME's 0.72 alpha is preserved through
+the repaint — it is the same object's label, not a second place.
+
+**Ordering in `applyTheme()` is load-bearing.** The attribute is set *before* the memo is dropped.
+`refreshPalette()` only clears the cache; the next `palette()` re-reads through `getComputedStyle`,
+which forces a style recalc and sees the new attribute — but only if it is already set. Reversed,
+those two lines would repopulate the memo from the *old* theme and leave the globe painted in the
+previous palette until something else invalidated it. The default is applied by **removing** the
+attribute, so a browser that never touches the control renders from plain `:root` exactly as before.
+
+**A near-repeat of D-064 was caught before it shipped.** The bathymetry provider bakes `--bg` into
+the tiles it generates and Cesium caches them, so the water only repaints if the tiles are
+re-requested. The obvious way to do that is `scene.imageryLayers.removeAll()` — which also
+**destroys the radar's layer while `radarLayer` goes on holding a reference to it**. Its
+`setShow(true)` would then see a non-null `layer` and never rebuild, and its next `drop()` would
+call `remove()` on a destroyed object: D-064's exact failure, one file over. Only the bathymetry
+layer is swapped, by its own held reference, and lowered back to the bottom afterwards.
+
+**Persist bumped 5 → 6.** The earlier handoff reserved v5 for themes; D-063 got there first, so
+themes take v6 and the migration comment says so. `theme` was added to the `partialize`
+allow-list (D-041). `setTheme` **validates rather than trusts**: a persisted payload from a build
+shipping a theme this one does not would otherwise leave the document carrying a `data-theme`
+with no matching block, rendering half-styled.
+
+**Six new tests, mutation-checked** — `setTheme` made to trust its input, the v6 migration step
+deleted, and `isThemeName` made to accept anything were each applied and confirmed to fail the
+intended test. The suite also pins that two dark and two mid-tone actually ship, that names are
+unique (so the chooser cannot render two identical buttons), and that the default is a theme this
+build really has.
+
+**What the owner still has to judge on a real display**, and for a theme feature this is most of
+it: whether SLATE and EMBER are actually usable rather than merely legible, whether the lifted
+`--dim`/`--off` still read as subordinate or now compete, whether the D-029 altitude ramp holds up
+over a mid-tone globe, whether the `--bg`-derived label halo still separates map labels from the
+water at 20% lightness, and whether the bathymetry re-request on theme change is a brief flicker
+or an unacceptable stall. Every value is in one block per theme in `tokens.css`, so retuning is a
+text edit and a reload.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LayerCluster } from "./Panels";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS } from "./trafficCollapse";
+import { THEMES, useStore } from "../state/store";
 
 /**
  * Docked preferences pane (D-058, reversing the D-056 overlay).
@@ -30,6 +31,51 @@ import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS } from "./trafficCollapse";
  * off hides "Small fields" beneath it). So `hovering` stays true for as long as the cursor stays
  * put, which is exactly the "still fiddling" signal that should keep it open.
  */
+/**
+ * Theme chooser (D-066). Two dark, two mid-tone, grouped and labelled as such because that is
+ * the distinction the owner asked for and the one that decides whether a theme suits the room.
+ *
+ * No light option is offered, and that is a design decision rather than an omission: D-029
+ * encodes altitude as an HSL ramp at lightness 52-68, which needs a background darker than the
+ * ramp itself. A light background would flatten the densest instrument on the display.
+ */
+function ThemeChooser() {
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
+
+  const swatch = (t: (typeof THEMES)[number]) => (
+    <button
+      key={t.name}
+      onClick={() => setTheme(t.name)}
+      title={`${t.label} — ${t.kind === "dark" ? "dark" : "mid-tone"}`}
+      style={{
+        font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+        background: "transparent", cursor: "pointer", padding: "3px 0",
+        border: `1px solid ${theme === t.name ? "var(--amber)" : "var(--line-bright)"}`,
+        borderRadius: 0,
+        color: theme === t.name ? "var(--amber)" : "var(--off)",
+        textTransform: "uppercase",
+      }}
+    >
+      {t.label}
+    </button>
+  );
+
+  return (
+    <div className="p-[5px]" style={{ borderTop: "1px solid var(--line)" }}>
+      <div className="lbl px-[3px]" style={{ fontSize: 9 }}>Theme</div>
+      <div className="lbl px-[3px] mt-[3px]" style={{ fontSize: 8, color: "var(--off)" }}>Dark</div>
+      <div className="flex gap-[2px]">
+        {THEMES.filter((t) => t.kind === "dark").map(swatch)}
+      </div>
+      <div className="lbl px-[3px] mt-[3px]" style={{ fontSize: 8, color: "var(--off)" }}>Mid-tone</div>
+      <div className="flex gap-[2px]">
+        {THEMES.filter((t) => t.kind === "mid").map(swatch)}
+      </div>
+    </div>
+  );
+}
+
 export function PreferencesPanel() {
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
@@ -52,6 +98,7 @@ export function PreferencesPanel() {
         <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Preferences</span>
       </div>
       {!collapsed && <LayerCluster />}
+      {!collapsed && <ThemeChooser />}
     </div>
   );
 }

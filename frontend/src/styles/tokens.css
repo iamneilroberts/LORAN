@@ -49,6 +49,92 @@
   --pad: 10px;
 }
 
+/* ============================ ALTERNATE THEMES (D-066) ============================
+ *
+ * The default `:root` above IS the first theme, MIDNIGHT. Three alternates follow: one more
+ * dark, and two mid-tone - the owner's brief was "light mode doesn't have to be super light",
+ * and it must not be, because D-029 encodes altitude as an HSL ramp at lightness 52-68. That
+ * ramp needs a background darker than it is. A genuinely light theme would flatten the single
+ * most information-dense thing on the display, so none is offered.
+ *
+ * Each block is a COMPLETE palette, which `npm run check:palette` enforces - every colour
+ * palette.ts reads must be present, and no name may be invented. That guard is why themes were
+ * blocked until D-053 fixed its scoping.
+ *
+ * These are NOT background swaps. `--dim` and `--off` are DARKER than the midnight background
+ * on purpose; drop a mid-tone background behind them and they invert into invisibility. Every
+ * value below is re-tuned against its own background rather than inherited.
+ */
+
+/* ---- CARBON: dark, neutral. Midnight with the blue cast taken out, so amber and magenta
+        read warmer against it and the globe's own blues stop competing with the chrome. ---- */
+:root[data-theme="carbon"] {
+  --bg: #0a0a0b;
+  --bg-panel: rgba(16, 16, 18, 0.9);
+  --line: #242427;
+  --line-bright: #333338;
+
+  --amber: #ffb000;
+  --mil: #ff4fd8;
+  --cyan: #5fd7e0;
+  --txt: #d2d2d4;
+  --dim: #6d6d72;
+  --off: #45454a;
+
+  --icon-stroke: #0e0e10;
+  --icon-stroke-mil: #3d0033;
+  --icon-stroke-alert: #3a2600;
+  --icon-selected: #ffffff;
+  --map-label: #f0f0f2;
+}
+
+/* ---- SLATE: mid-tone, cool. A lit room rather than a darkened one. Every accent is lifted
+        because a mid background eats saturation, and --dim/--off are inverted to sit ABOVE
+        the background instead of below it. ---- */
+:root[data-theme="slate"] {
+  --bg: #2b333d;
+  --bg-panel: rgba(34, 41, 50, 0.9);
+  --line: #3f4a57;
+  --line-bright: #55636f;
+
+  --amber: #ffc033;
+  --mil: #ff6fe0;
+  --cyan: #7fe4ec;
+  --txt: #e6edf3;
+  --dim: #9aa8b5;
+  --off: #71818f;
+
+  /* Icon outlines stay DARK, not light. Their job is to separate an icon from whatever is
+     under it, and the globe beneath a mid-tone chrome is still dark water and dark land. */
+  --icon-stroke: #121820;
+  --icon-stroke-mil: #3d0033;
+  --icon-stroke-alert: #3a2600;
+  --icon-selected: #ffffff;
+  --map-label: #ffffff;
+}
+
+/* ---- EMBER: mid-tone, warm. The same lift as SLATE on a brown-grey base, for daylight at a
+        desk where a cool grey reads as washed out. ---- */
+:root[data-theme="ember"] {
+  --bg: #332e2a;
+  --bg-panel: rgba(40, 35, 31, 0.9);
+  --line: #4a423b;
+  --line-bright: #63594f;
+
+  --amber: #ffc44d;
+  --mil: #ff7ae0;
+  --cyan: #6fdde6;
+  --txt: #efe7de;
+  --dim: #a89a8c;
+  --off: #7d7165;
+
+  --icon-stroke: #1a1512;
+  --icon-stroke-mil: #3d0033;
+  --icon-stroke-alert: #3a2600;
+  --icon-selected: #ffffff;
+  --map-label: #fdf6ee;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root { height: 100%; }
