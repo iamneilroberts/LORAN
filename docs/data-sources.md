@@ -1,6 +1,6 @@
 # Data Sources — Phase 0 Recon
 
-**Date probed:** 2026-07-25
+**Date probed:** 2026-07-25 · **geocoding added 2026-07-26 (§6a)**
 **Area of interest:** Mobile, AL (30.6944 N, −88.0399 W) — Gulf Coast / Caribbean
 **Method:** live HTTP calls from this machine, not recalled from training data. Every HTTP status and payload below was actually observed. Where I could *not* verify something, it says so explicitly.
 
@@ -25,6 +25,10 @@
 | **Esri World Imagery** | `services.arcgisonline.com/…/World_Imagery` | none | undocumented | Esri ToS | **USE — satellite** |
 | **GEBCO WMS** | `wms.gebco.net/2024/mapserv` | none | undocumented | GEBCO, attribution | **USE — bathymetry + depth readout** |
 | NOAA NCEI DEM | `gis.ngdc.noaa.gov/…/DEM_global_mosaic/ImageServer/identify` | none | undocumented | US public domain | **USE — depth cross-check** |
+| **Nominatim** | `nominatim.openstreetmap.org/search?q=…` | none, **UA must identify the app** | **1 req/sec absolute**, per application | **ODbL**, attribution mandatory | **USE — address → home position, proxied (§6a)** |
+| Photon (komoot) | `photon.komoot.io/api/?q=…` | none | none published | OSM / ODbL | **REJECT — wrong building on the first address test (§6a.2)**; documented failover |
+| geocode.earth (Pelias) | `api.geocode.earth/v1/search` | key | 10 req/s | commercial | **REJECT — $100/mo minimum** |
+| Cloudflare geocoding | — | — | — | — | **DOES NOT EXIST — IP geolocation only (§6a.2)** |
 | Cesium ion | — | token | — | — | **NOT REQUIRED** (see §6) |
 
 ---
@@ -416,6 +420,174 @@ Values are **metres, negative below sea level**. Land returns positive elevation
 
 ---
 
+## 6a. Geocoding — turning a typed address into a home position
+
+**Date probed: 2026-07-26.** Added after the owner asked for address entry on top of D-068's manual
+lat/lon and browser geolocation. Same method as the rest of this file — every status code, payload
+and policy line below was actually observed, not recalled.
+
+### 6a.1 Nominatim (OpenStreetMap) — USE, proxied, with hard behavioural limits
+
+`GET https://nominatim.openstreetmap.org/search?q={query}&format=jsonv2&limit={n}`
+
+Free-text query for `150 Government St, Mobile, AL` returned **HTTP 200 in 1.58 s**:
+
+```json
+[{"place_id":382353032,
+  "licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type":"way","osm_id":860818842,
+  "lat":"30.6901170","lon":"-88.0411905",
+  "category":"place","type":"house","place_rank":30,
+  "addresstype":"place",
+  "display_name":"150, Government Street, Downtown, Mobile County Commission District 1, Mobile, Mobile County, Alabama, 36602, United States",
+  "boundingbox":["30.6900670","30.6901670","-88.0412405","-88.0411405"]}]
+```
+
+That is the exact house, not the street centroid. Also verified live:
+
+| Probe | Query | Result |
+|---|---|---|
+| Landmark | `Mobile Regional Airport` | `30.6926918, -88.2413386`, `type: aerodrome` — **works, and matters more than street addresses for this app** |
+| Structured | `street=150 Government St&city=Mobile&state=AL` | same house as the free-text query |
+| `addressdetails=1` | — | adds `{city, county, state, ISO3166-2-lvl4, country, country_code}` — good candidate labels |
+| `limit=50` | `Springfield` | **36** returned; the cap is the match count, not the limit |
+| No match | `zzzzqqqnotaplace12345` | **HTTP 200 with `[]`** — an empty array, *not* a 404 |
+
+**The empty-result shape is the same trap as planespotters (§4.2): a miss is a 200, so any
+"if response.ok then success" logic silently succeeds with nothing.**
+
+**Ambiguity is real and must be surfaced.** `Springfield` returned 10 results at `limit=10`:
+
+```
+Springfield, Sangamon County, Illinois      39.7990175  -89.6439575  administrative
+Springfield, Hampden County, Massachusetts  42.1018764  -72.5886727  administrative
+Springfield, Greene County, Missouri        37.2081729  -93.2922715  administrative
+Springfield, Clark County, Ohio             39.9234046  -83.8101380  administrative
+Springfield, Lane County, Oregon            44.0462362 -123.0220289  administrative
+… plus VT, KY, GA, and TWO Fairfax County, Virginia entries
+```
+
+Note the last pair: **two candidates whose `display_name` is character-identical**, differing only by
+`type` (`census` vs `city`) and by ~0.5 km of position. A candidate list keyed on `display_name`
+alone will render two indistinguishable rows. Include `type` and the coordinates in the row.
+
+#### The usage policy is the binding constraint, and it is stricter than the HTTP behaviour
+
+Read from <https://operations.osmfoundation.org/policies/nominatim/> on 2026-07-26. **None of this
+is enforced at the HTTP layer** — a stock `curl/8.0` UA and a Chrome UA both returned 200. As with
+planespotters test C, absence of enforcement is not permission.
+
+| # | Policy text | Consequence for LORAN |
+|---|---|---|
+| 1 | "No heavy uses (an **absolute maximum of 1 request per second**)" | Same ceiling the ADS-B poller already respects. Limit is **per application**, not per user: "the sum of traffic by all your users should not exceed the limits." |
+| 2 | "Provide a valid HTTP Referer or User-Agent identifying the application (**stock User-Agents as set by http libraries will not do**)" | Reuse `LORAN_USER_AGENT` (`config.py:40`) — the same contact-carrying UA planespotters needs (D-009). Do not invent a second one. |
+| 3 | "**Clearly display attribution** as suitable for your medium" | Mandatory. Joins Esri / GEBCO / OurAirports in the `Attribution` component. The response's own `licence` field gives the wording: *Data © OpenStreetMap contributors, ODbL 1.0*. |
+| 4 | "Data is provided under the **ODbL** license which requires to share alike" | Already true of adsb.lol; no new obligation in kind. |
+| 5 | "If at all possible, **set up a proxy** and also **enable caching** of requests" | **The policy itself asks for the proxy.** Settles proxied-vs-direct — see §6a.3. |
+| 6 | "Apps must make sure that they **can switch the service at our request at any time** — switching should be possible **without requiring a software update**" | **The endpoint must be an env var, not a constant.** Fits D-019 (everything via `.env`). |
+| 7 | **"Auto-complete search … is strictly forbidden and will get you banned.** This is not yet supported by Nominatim and you must not implement such a service on the client side using the API." | **Address entry must be submit-triggered — Enter or a button. No type-ahead, no debounced-keystroke lookup.** The single most likely way to build this wrong. |
+| 8 | "Systematic queries … **periodic requests from apps are considered bulk geocoding** and as such are strongly discouraged" | One lookup per deliberate operator action. Never on a timer, never prefetched. |
+| 9 | "**Reselling of geocoding results** … Applications whose primary function is related to geocoding must run their own service" | LORAN's primary function is traffic display, not geocoding. Compliant — but the backend endpoint stays private, exactly as clause 8 of planespotters requires of the photo route. |
+| 10 | "this usage policy **may change without notice**" | Geocoding absence must be a normal state, never an error screen. Same posture as planespotters clause 10. |
+
+**One further clause applies to how this feature came to be specified, and it is quoted here in
+full because it names the situation directly:**
+
+> **Usage in LLMs** — "LLMs may only suggest this service, if they prominently point to this usage
+> policy and explain the restrictions of use to the user. Code generated by LLMs must adhere to all
+> terms laid out in this policy. The public Nominatim API must not be built into, offered through,
+> suggested by, or automatically generated by no-code, low-code, or vibe-coding platforms as a
+> generic geocoding, address lookup, place search, or map search service. Use of the public API is
+> only permitted where **the application developer has made a deliberate, informed decision** to use
+> it and is directly responsible for complying with this policy."
+
+The restrictions were put to the owner in full before any code was written, and the decision to use
+the public API is the owner's, not the assistant's. That is the condition this clause sets, and it
+is why this section exists before the implementation rather than after it.
+
+### 6a.2 Alternatives, priced
+
+| Option | Auth | Cost | Rate limit | Verdict |
+|---|---|---|---|---|
+| **Nominatim** | none | free | 1 req/s absolute, published | **USE** |
+| **Photon** (komoot) | none | free | **none published** — "please be fair, extensive usage will be throttled" | **REJECT — accuracy, see below** |
+| **Pelias** self-hosted | none | free + ops | none | **REJECT — disproportionate** |
+| **geocode.earth** (hosted Pelias) | key | **$100/mo** minimum (Lite, 150k req/mo); trial is 2 weeks | 10 req/s | **REJECT — cost** |
+| **Cloudflare** | — | — | — | **DOES NOT EXIST** — Cloudflare offers IP *geolocation* (visitor location headers), not address geocoding. Checked because the handoff listed it; there is no such product. |
+
+**Photon was the serious contender and it lost on accuracy, measured.** Same query, same moment:
+
+| Feed | `150 Government St, Mobile, AL` → top hit |
+|---|---|
+| Nominatim | **150 Government Street** — the exact house, `30.6901, -88.0412` |
+| Photon | **Government Street Presbyterian Church, housenumber 300** — `30.6895, -88.0445`, the wrong building; second hit was a bus stop on *Old* Government Street Road, **~17 km away** |
+
+Photon is tuned for search-as-you-type over places and is very good at that — its `Springfield`
+candidates were cleaner than Nominatim's (five distinct cities, no duplicate pair). But this feature
+resolves *one deliberate address*, where precision beats interactivity, and Photon put the pin on the
+wrong building at the very first realistic test. Its other attractions cut against us too: the
+typeahead it exists to serve is exactly what Nominatim forbids, and building on it would tempt the
+banned pattern. It also publishes **no numeric rate limit and no availability guarantee**, which is
+weaker ground than Nominatim's explicit 1 req/s.
+
+Pelias self-hosted requires **Elasticsearch 7.5+, Node 22+, SQLite, and libpostal (~4 GB of data
+downloads alone)** per its own requirements doc — a full search cluster to resolve an address the
+owner types perhaps twice. Rejected as disproportionate, not as bad software.
+
+**Photon stays documented as the failover target**, because policy clause 6 requires we be able to
+switch providers without a software update. Its response is GeoJSON, not Nominatim's flat array —
+so a switch is a normalizer change, not a URL change. Noted now so it is not a surprise later.
+
+### 6a.3 Proxied, not direct — and what the single-file build does
+
+**Direct-from-browser is technically possible here, unlike planespotters.** Measured:
+
+| Test | Origin | User-Agent | Result |
+|---|---|---|---|
+| A | none | `loran/0.1 (+mailto:…)` | 200 |
+| B | none | `curl/8.0` (stock) | 200 — *gate not enforced, but policy clause 2 still forbids it* |
+| C | `http://localhost:5173` | `loran/0.1 (+mailto:…)` | 200, **`access-control-allow-origin: *`** |
+| D | `http://localhost:5173` | Chrome 126 | 200 |
+
+CORS is permissive and the header is emitted only when `Origin` is present — which is why it is
+absent from a plain `curl -D -`. So the browser *could* call it directly.
+
+**We proxy anyway**, for four reasons, in descending order of force:
+
+1. **The policy asks for it** (clause 5) and asks for caching in the same breath.
+2. **The 1 req/s limit is per application, summed across users.** Only the backend can enforce a
+   ceiling that spans the owner and the one shared guest (D-041). A browser can only rate-limit itself.
+3. **A browser cannot set `User-Agent`** — it is a forbidden header name. A direct browser call would
+   identify itself as Chrome, violating clause 2. This is the same wall that forced the planespotters
+   architecture (§4.2), reached by a different route.
+4. It is the project's existing default (CLAUDE.md, "Backend exists to"), so it needs no exception.
+
+**The single-file build has no backend, so address entry does not exist there.** It must say so —
+the same honest treatment photos already get (`"No photos in the single-file build — needs a
+server"`), not a field that appears and fails. Manual lat/lon and browser geolocation from D-068 are
+pure-client and continue to work there, so the single-file build is not left without a way to set home.
+
+**Caching:** a geocode result is stable, like adsbdb enrichment. Cache the normalized result keyed on
+the trimmed, case-folded query. Policy clause "Results must be cached on your side. Clients sending
+repeatedly the same query may be classified as faulty and blocked" makes this a requirement, not an
+optimisation.
+
+**Failure states, which are four different things and must not collapse into one** — the standard
+D-068 set for geolocation:
+
+| State | Signal | Behaviour |
+|---|---|---|
+| No match | 200 with `[]` | "No match for that address." Home **unchanged**. |
+| Ambiguous | >1 result | Present the candidate list with `type` + coordinates; operator chooses. **Never silently take the first hit.** |
+| Rate-limited / blocked | 429, or 403 | Say so distinctly; home unchanged. |
+| Network down | connection error / timeout | Say so distinctly; home unchanged. |
+
+**An address that resolves to nothing must not leave the old centre in place behind a success-looking
+UI.** Resolution ends at the existing `setHomeOverride({lat, lon})`, so store, persistence, camera
+re-aim and fetch re-centring are already built and tested.
+
+---
+
 ## 7. Things I could not verify
 
 Listed plainly, because these are where I could be wrong:
@@ -426,6 +598,9 @@ Listed plainly, because these are where I could be wrong:
 4. **OpenSky licensing/attribution.** Their API docs simply don't state it. Moot given the reject verdict.
 5. **Esri tile-service terms for application use.** Keyless in practice; I did not find a definitive statement blessing unauthenticated app use.
 6. **Rate limits under sustained load.** I tested 5 calls at 1/sec against airplanes.live, all 200. I did not run a long soak, so I haven't seen the throttle behaviour, and I don't know what a 429 from them looks like. The client must handle it gracefully regardless.
+7. **Nominatim's throttle response.** I deliberately did **not** try to trigger it — exceeding a published 1 req/s ceiling to see what the block looks like is the one probe that risks the ban it is testing for. So the rate-limited branch in §6a.3 is written against the policy's stated behaviour, not an observed 429. It must be coded defensively and treated as untested until seen in the wild.
+8. **Whether the attribution wording must be verbatim.** The policy says "clearly display attribution as suitable for your medium" without specifying a string. I am using the `licence` field the API itself returns (*Data © OpenStreetMap contributors, ODbL 1.0*), which is the safest reading, but I did not find a definitive statement that a shorter credit would be non-compliant.
+9. **Photon's actual throttle threshold.** Unpublished by design — "extensive usage will be throttled" is the whole of it. Moot while it is only the documented failover, but it means the failover has no measurable safety margin.
 
 ---
 

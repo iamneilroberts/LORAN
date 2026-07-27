@@ -3,8 +3,9 @@
 _Mirrored from the shared handoff. Source of truth for a resumed session._
 
 ## Checklist
-- [ ] Geocoding recon → `docs/data-sources.md` entry with a real verdict (endpoint, limit, terms, UA)
-- [ ] Decide proxied-vs-direct, and what the single-file build does instead
+- [x] Geocoding recon → `docs/data-sources.md` §6a — Nominatim USE, Photon/Pelias/geocode.earth rejected, Cloudflare geocoding does not exist
+- [x] Decide proxied-vs-direct, and what the single-file build does instead — **proxied** (policy asks for it; per-app limit; browsers can't set UA); single-file build omits address entry, keeps D-068 lat/lon + geolocation
+- [ ] **OWNER GATE:** Nominatim policy requires the *developer's* deliberate informed decision (LLM clause) — approve before any code
 - [ ] Build address entry into `HomeChooser`; ends at the existing `setHomeOverride`
 - [ ] Handle ambiguity explicitly — candidate list or refuse, never silently first-hit
 - [ ] New decision entry, including **why a geocoded name is allowed where D-068 forbids one**
