@@ -32,12 +32,20 @@ echo "== building and starting, BUILD_SHA=${SHA}"
 BUILD_SHA="$SHA" docker compose up --build -d
 
 echo "== waiting for ${BASE}/api/health"
+REPORTED=""
 for _ in $(seq 1 60); do
-  if REPORTED="$(curl -fsS "$BASE/api/health" 2>/dev/null \
-                 | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build_sha") or "")')"
-  then
-    break
-  fi
+  # The early failures are expected, not errors: for the first second or two the container is
+  # not listening, curl returns nothing, and json.load on empty input raises. Swallow it rather
+  # than printing a traceback that looks like the deploy broke when it is just still starting.
+  REPORTED="$(curl -fsS "$BASE/api/health" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("build_sha") or "")
+except Exception:
+    pass
+' 2>/dev/null)" || true   # `|| true` because set -e would otherwise abort on the first
+                          # not-listening-yet curl, which is the normal case, not a failure.
+  [[ -n "$REPORTED" ]] && break
   sleep 1
 done
 
