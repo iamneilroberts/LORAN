@@ -1,9 +1,9 @@
 # Session Handoff: LORAN — D-053..D-060 shipped; links, boundaries, themes, then the single-file merge
 
 **Date:** 2026-07-26 at 14:05
-**Repo:** /home/neil/dev/adsb-viz-phase2-dossier
+**Repo:** ~/dev/adsb-viz-phase2-dossier
 **Branch:** `main`
-**Worktree:** `/home/neil/dev/adsb-viz-phase2-dossier` — **RESUME HERE, do not create a new branch**
+**Worktree:** `~/dev/adsb-viz-phase2-dossier` — **RESUME HERE, do not create a new branch**
 **Uncommitted changes:** no (working tree clean at `b3d7bc6`)
 **Supersedes:** `pause-2026-07-26-themes-remote-access.md` — its theme plan and remote-access runbook
 are still the reference; everything it listed as "do this first" is now DONE.
@@ -158,7 +158,7 @@ worktree-agent-a359546ffb2f19480 == 71e3edf  (UNMERGED, based at 2408885)
 - **How to check:**
   - Scrollbar fix: select a contact, watch the right-aligned values while CO-ALT ticks. No horizontal jump.
   - Prefs collapse: open the pane, click toggles slowly for >8 s. It must not collapse.
-  - GEBCO in the single file: open `file:///home/neil/loran-single.html` on real hardware, look for bathymetry, not a black sphere.
+  - GEBCO in the single file: open `file://$HOME/loran-single.html` on real hardware, look for bathymetry, not a black sphere.
   - Normalizer drift: diff `frontend/src/data/upstream.ts` against `backend/app/feeds/adsb.py` for `dbFlags` bits and the `alt_baro: "ground"` case.
   - Suites: `bash scripts/test.sh` → 61 + 60. **And always `cd frontend && npx tsc --noEmit`.**
   - Cookie over HTTPS: `curl -sS -D - -o /dev/null 'https://adsb.voygent.ai/api/session?t=<token>' | grep -i set-cookie` → needs **both** `Secure` and `HttpOnly`.
@@ -234,15 +234,15 @@ working; only the GEBCO bathymetry ramp needs a second look.
 - `db4d1ce` (font-smoothing) · `6c2c652` (D-057) · `d80195b` (D-056) · `dbd3514` (D-055)
 - `cf08b75` (D-054) · `8bbc38c` (D-053) · `2408885` (previous main)
 - `71e3edf` (single-file build, **UNMERGED**, branch `worktree-agent-a359546ffb2f19480`)
-- `/home/neil/dev/adsb-viz/.claude/worktrees/agent-a359546ffb2f19480` (that branch's worktree — TEMPORARY)
-- `/home/neil/loran-single.html` (8.5 MiB artifact, copied out; **built before `b01c73c` and `b3d7bc6`**)
+- `~/dev/adsb-viz/.claude/worktrees/agent-a359546ffb2f19480` (that branch's worktree — TEMPORARY)
+- `~/loran-single.html` (8.5 MiB artifact, copied out; **built before `b01c73c` and `b3d7bc6`**)
 - `375c226` (`master`, stale) · `bb0b589` (`phase2-dossier`, stale)
 - `https://github.com/iamneilroberts/LORAN` (PUBLIC, default `main`, MIT)
-- `/home/neil/dev/adsb-viz-phase2-dossier` (worktree, `main` — **resume here**)
-- `/home/neil/.claude/coordination/adsb-viz/handoffs` (shared handoff dir)
+- `~/dev/adsb-viz-phase2-dossier` (worktree, `main` — **resume here**)
+- `~/.claude/coordination/adsb-viz/handoffs` (shared handoff dir)
 - `adsb.voygent.ai` (APPROVED hostname — **still not created**)
-- `71bc66de-4433-44f6-b6bf-5304f28d2578` (voygent-desktop tunnel — **DO NOT DISTURB**)
-- `d253e0d3-d573-496a-91e1-bfeb5c567cef` (voygent-desktop-cloud tunnel)
+- `<voygent-desktop-tunnel-uuid>` (voygent-desktop tunnel — **DO NOT DISTURB**)
+- `<voygent-desktop-cloud-tunnel-uuid>` (voygent-desktop-cloud tunnel)
 - `~/.cloudflared/config.yml` (**SHARED — do not edit**) · `~/.cloudflared/cert.pem` (login done)
 - `cloudflared` 2025.9.1 · `cloudflared-voygent.service` (active)
 - `bash scripts/test.sh` → **61 frontend + 60 backend** · `npm run check:palette` → "12 colours match"
@@ -268,7 +268,7 @@ working; only the GEBCO bathymetry ramp needs a second look.
 
 Resume this work. **First, re-create the TodoWrite list** from the `## Checklist` above (one entry
 per `- [ ]`; mark `- [x]` done or omit) — if `docs/summaries/CHECKLIST.md` is newer, prefer it.
-**This handoff documents an EXISTING worktree** — `cd /home/neil/dev/adsb-viz-phase2-dossier` and
+**This handoff documents an EXISTING worktree** — `cd ~/dev/adsb-viz-phase2-dossier` and
 resume on branch `main`; do NOT create a new branch. Run `git status` /
 `git branch --show-current` and warn on any mismatch.
 

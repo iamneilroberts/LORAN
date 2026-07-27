@@ -1,8 +1,8 @@
 # Session Handoff: LORAN — four fixes, then remote access and themes
 **Date:** 2026-07-25 at 21:52
-**Repo:** /home/neil/dev/adsb-viz-phase2-dossier
+**Repo:** ~/dev/adsb-viz-phase2-dossier
 **Branch:** `main` ← this worktree was switched off `phase2-dossier` during the last session
-**Worktree:** `/home/neil/dev/adsb-viz-phase2-dossier` — **RESUME HERE, do not create a new branch**
+**Worktree:** `~/dev/adsb-viz-phase2-dossier` — **RESUME HERE, do not create a new branch**
 **Uncommitted changes:** no
 **Supersedes:** `pause-2026-07-25-remote-access.md` (same day, narrower scope). This file is
 authoritative; the older one only covers remote access and predates D-048.
@@ -224,9 +224,9 @@ that replaced the altitude slice, and a layout/colour fix batch.
 - `5d83233` · `8c369d4` (Docker) · `4e6a0f1` · `cb0017d` · `bb0b589` · `92bec1a` (rename) · `2f55862` · `93e9b9f` · `9b62734` (remote access) · `0dc5c66` (radar) · `9ec391e` · `7942fe9` · `5f79a01`
 - `375c226` (`master`, stale) · `bb0b589` (`phase2-dossier`) · `afb9b25` (GitHub stub commit)
 - `https://github.com/iamneilroberts/LORAN` (PUBLIC, default `main`, MIT detected)
-- `/home/neil/dev/adsb-viz-phase2-dossier` (worktree, on `main` — **resume here**)
-- `/home/neil/dev/adsb-viz` (main clone, on `master`, coordination/docs only)
-- `/home/neil/.claude/coordination/adsb-viz` (shared coord dir: journal + handoffs)
+- `~/dev/adsb-viz-phase2-dossier` (worktree, on `main` — **resume here**)
+- `~/dev/adsb-viz` (main clone, on `master`, coordination/docs only)
+- `~/.claude/coordination/adsb-viz` (shared coord dir: journal + handoffs)
 - `LORAN_ACCESS_TOKENS=owner:<OWNER_TOKEN — REDACTED, see .env>,brother:<GUEST_TOKEN — REDACTED, see .env>`
 - owner link: `http://localhost:5173/?t=<OWNER_TOKEN — REDACTED, see .env>`
 - `LORAN_OWNER_PRINCIPAL=owner` · `LORAN_PHOTO_GUEST_ACCESS=true` (local only; repo default `false`)
@@ -256,7 +256,7 @@ Resume this work. **First, re-create the TodoWrite list** from the `## Checklist
 section above (one TodoWrite entry per `- [ ]` unchecked item; mark `- [x]` items
 done or omit them) — if `docs/summaries/CHECKLIST.md` exists and is newer, prefer
 it. **This handoff documents an EXISTING worktree** — `cd
-/home/neil/dev/adsb-viz-phase2-dossier` and resume on branch `main`; do NOT create
+~/dev/adsb-viz-phase2-dossier` and resume on branch `main`; do NOT create
 a new branch. Then run `git status` / `git branch --show-current` to confirm state
 matches this handoff (warn on any mismatch). **Evaluate each "Stale if" condition
 in the header**: if any holds, say which, treat the claims it covers as stale, and

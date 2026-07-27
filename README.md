@@ -198,7 +198,15 @@ Works today:
   thinned by zoom, clickable
 - Optional NEXRAD radar, self-refreshing while visible so a stale frame is never left on screen
 - Optional token access for remote viewing, with preferences persisted per browser
+- State and county boundaries, four dark themes, and a per-browser home you can set by typing
+  coordinates, using browser geolocation, or **typing an address** — the last one via a proxied,
+  submit-only geocoder whose ambiguous results you pick from rather than having one chosen for you
+- **A single-file build.** `npm run build:single` emits one ~11 MB `loran.html` that runs from
+  `file://` with no server at all, talking to the feeds browser-direct. Photos, address lookup and
+  the small-airfield tier need a backend and say so rather than failing silently
 - Measured **22–27 FPS** at 77–89 contacts on the developer's hardware (WebGL2)
+- **275 tests** — 165 frontend (vitest) + 110 backend (pytest) — including a shared fixture that
+  holds the browser-direct normalizer and the backend one to the same contract
 
 Not built yet:
 
@@ -206,11 +214,29 @@ Not built yet:
   coverage at Mobile; the plan is a self-hosted RTL-SDR AIS receiver, which needs a marine-VHF
   antenna
 - **Phase 5, the recording archive** — SQLite recorder, retention, scrubber
-- **Phase 6** — compass, FPS readout, status-bar polish
-- Docker Compose; viewport-scoped fetch; **unit tests** (currently zero — verification is
-  end-to-end against live traffic, which is honest but fragile)
+- **Phase 6** — compass and FPS readout. The rest of the chrome shipped early, because remote
+  access needed it
+- **Viewport-scoped fetch** — Phase 1 debt. The fetch radius is a preset you choose, not a value
+  derived from where the camera is actually looking
+- **CI.** The suites exist and pass; nothing runs them but a person. Three separate incidents have
+  now had the same shape — green checks against an artefact nobody was serving
 
 ## Verify it
+
+```
+bash scripts/test.sh
+```
+
+165 frontend tests (vitest) and 110 backend tests (pytest). Among them, `fixtures/adsb/` holds one
+set of real captured feed records and their expected normalized output, asserted by **both**
+suites — so the browser-direct normalizer used by the single-file build cannot drift from the
+backend's without something going red.
+
+```
+cd frontend && npx tsc --noEmit
+```
+
+The only gate that catches JSX errors, and worth running on its own.
 
 ```
 python3 scripts/verify_phase1.py

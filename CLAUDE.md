@@ -73,6 +73,7 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 | OurAirports | airfield markers, **build time only** | none | — | public domain |
 | Natural Earth | city labels, **build time only** | none | — | public domain |
 | NEXRAD via Iowa State Mesonet | weather radar, **off by default** | none | — | US public domain, credit IEM |
+| Nominatim (OSM) | address → home position, **proxied** | none, **UA must identify the app** | **1 req/s absolute, per app** | ODbL, attribution mandatory |
 | OpenSky | **REJECTED** | — | 400 credits/day anon | — |
 | Cesium ion | **NOT REQUIRED** | — | — | — |
 
@@ -88,7 +89,14 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 - `seen_pos` (seconds since fix) observed up to ~50 s. Age out or dead-reckon honestly.
 - **planespotters returns HTTP 403 unless the User-Agent contains a contact URL or email.**
   A photo miss returns `{"photos":[]}`, not a 404 — render an honest no-photo state.
-- **Attribution must be displayed** for Esri, GEBCO, and planespotters photos.
+- **Attribution must be displayed** for Esri, GEBCO, planespotters photos, and OpenStreetMap.
+- **Nominatim forbids auto-complete outright and bans for it.** Address entry is submit-triggered
+  only — never `onChange`, never debounced. Its endpoint is an env var because the policy requires
+  switching providers without a software update. Address lookup is live only when
+  `LORAN_USER_AGENT` carries a real contact: they answer **403 to placeholder domains**. See D-069.
+- **`adsb.py` and `upstream.ts` normalize the same records and must not drift.** A shared fixture
+  (`fixtures/adsb/`) is asserted by both pytest and vitest. If one goes red, the question is which
+  implementation is wrong — not how to refresh the fixture. See D-071.
 - Cesium runs keyless: `Ion.defaultAccessToken = null` + `EllipsoidTerrainProvider`.
 
 ---
@@ -98,20 +106,23 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 Sequential. Stop and wait for sign-off after each.
 
 - **Phase 0 — Recon.** ✅ Complete. `docs/data-sources.md`. No app code.
-- **Phase 1 — Globe + live aircraft.** Dark bathymetric basemap, aircraft at true altitude,
-  heading-rotated, coloured by altitude band, viewport-scoped fetch, client-side dead reckoning,
-  cursor lat/lon/depth readout.
-- **Phase 2 — Selection + dossier.** Right-hand panel, adsbdb + photo enrichment,
+- **Phase 1 — Globe + live aircraft.** ✅ Complete, with one debt: **viewport-scoped fetch was
+  never built** — the radius is a preset (D-055), not derived from the camera. Dark bathymetric
+  basemap, aircraft at true altitude, heading-rotated, coloured by altitude band, client-side dead
+  reckoning, cursor lat/lon/depth readout.
+- **Phase 2 — Selection + dossier.** ✅ Complete. Right-hand panel, adsbdb + photo enrichment,
   track path / clear track / export GeoJSON.
-- **Phase 3 — Altitude shells.** **Datum plane pinned to the selected aircraft's altitude** is the
-  primary instrument; fixed airspace bands are secondary context. Relative colouring (amber within
-  ±1000 ft) + drop-lines to the datum + numeric pair readout. Design: `docs/design-altitude.md`.
+- **Phase 3 — Altitude shells.** ✅ Complete. **Datum plane pinned to the selected aircraft's
+  altitude** is the primary instrument; fixed airspace bands are secondary context. Relative
+  colouring (amber within ±1000 ft) + drop-lines to the datum + numeric pair readout. Design:
+  `docs/design-altitude.md`.
 - **Phase 4 — Vessels.** ⛔ **DEFERRED — blocked on a data source, not on code.** aisstream.io
   measured **zero coverage** at Mobile (`docs/data-sources.md` §5.1a). Recommended remedy is a
   self-hosted RTL-SDR AIS receiver feeding local NMEA. Nothing else in the project depends on this.
 - **Phase 5 — Archive.** SQLite recorder, retention policy, scrubber, unmistakable live/replay
   distinction. Query plan reviewed before build.
-- **Phase 6 — Chrome.** Status bar, feed chips, FPS, camera cluster, compass, layer toggles.
+- **Phase 6 — Chrome.** 🔶 Partly built ahead of order, because remote access needed it: status
+  bar, feed chips, camera cluster and layer toggles all ship. **Compass and FPS readout do not.**
 
 ~~Default altitude bands need a third stratum.~~ Retired by D-010 — the datum plane works at any
 altitude, so the two spec'd bands stand. See `docs/design-altitude.md`.

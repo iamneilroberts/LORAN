@@ -285,12 +285,12 @@ cloudflared tunnel list
 
 ```
 cert.pem   present    -> you are already logged in; SKIP `cloudflared tunnel login`
-71bc66de-4433-44f6-b6bf-5304f28d2578.json   (voygent-desktop credentials)
+<voygent-desktop-tunnel-uuid>.json   (voygent-desktop credentials)
 config.yml (SHARED - see hazard below)
 
 ID                                    NAME                   CONNECTIONS
-71bc66de-4433-44f6-b6bf-5304f28d2578  voygent-desktop        1xatl01, 1xatl08, 1xatl12, 1xatl13
-d253e0d3-d573-496a-91e1-bfeb5c567cef  voygent-desktop-cloud  (none)
+<voygent-desktop-tunnel-uuid>  voygent-desktop        1xatl01, 1xatl08, 1xatl12, 1xatl13
+<voygent-desktop-cloud-tunnel-uuid>  voygent-desktop-cloud  (none)
 ```
 
 **There is no `loran` tunnel.** That is the missing last mile.
@@ -301,8 +301,8 @@ d253e0d3-d573-496a-91e1-bfeb5c567cef  voygent-desktop-cloud  (none)
 running `cloudflared tunnel run voygent-desktop`). Its full contents:
 
 ```
-tunnel: 71bc66de-4433-44f6-b6bf-5304f28d2578
-credentials-file: /home/<you>/.cloudflared/71bc66de-4433-44f6-b6bf-5304f28d2578.json   # home dir redacted
+tunnel: <voygent-desktop-tunnel-uuid>
+credentials-file: /home/<you>/.cloudflared/<voygent-desktop-tunnel-uuid>.json   # home dir redacted
 
 ingress:
   - hostname: mcp.voygent.ai

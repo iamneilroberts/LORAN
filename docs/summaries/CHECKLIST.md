@@ -32,8 +32,8 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Vessels — BLOCKED until the Nooelec SMArt v5 arrives, then the D-018 measure-first gate
 - [ ] Rename working dirs + coord dir from `adsb-viz` to `loran`
 - [ ] Prune the merged single-file worktree (`/branch done`, delete `worktree-agent-a359546ffb2f19480`)
-- [ ] Build the shared normalizer fixture (`upstream.ts` vs `adsb.py`) — owner chose this
-- [ ] Scrub `/home/neil` from the two tracked handoffs in `docs/summaries/`
+- [x] Shared normalizer fixture built (D-071) — found and fixed **five** real divergences plus a poll-killing crash
+- [x] Scrub absolute home paths from the two tracked handoffs in `docs/summaries/` (owner chose scrub over gitignore)
 - [ ] Decide what `master` (`375c226`) and `phase2-dossier` (`bb0b589`) are for
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
