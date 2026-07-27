@@ -3037,3 +3037,94 @@ When a test goes red the question is which implementation is wrong, not how to r
 **Verified by mutation, not by assertion.** Reverting `upstream.ts` to its old `dbFlags` handling
 turns exactly one test red — the `dbFlags: "1"` case — and restoring it turns it green. A parity
 fixture that cannot fail is decoration.
+
+---
+
+## D-072 — 2026-07-26 — MOBILE: the non-goal is reversed narrowly, and the phone gets a GLANCE view, not the console
+
+**Date:** 2026-07-26
+
+CLAUDE.md and README both list **"No mobile layout"** as a non-goal. The owner has now asked for a
+mobile version twice. This is the narrow reversal, in the same shape as D-040 (weather) and D-041
+(the shared-secret door): say exactly what is being reversed, and refuse to let it grow.
+
+**First, a correction to the premise.** The owner asked to "review the research about a mobile
+version". **There is no mobile research.** Every "mobile" string in this repo is either *Mobile,
+Alabama* — the home coordinates — or the one-line non-goal. The whole of the prior thinking was
+Open Question 6, carried unanswered across three handoffs: *"Mobile: glance or work? Tailscale
+answers 'me'; only cloudflared+tokens answers 'my brother'."*
+
+That question conflates two things, and separating them dissolves half of it:
+
+- **Access — already solved, and the answer is not Tailscale.** D-067 put the console on
+  `loran.voygent.app` through cloudflared and D-041 added the token door. A phone with the link
+  works today. Tailscale was the alternative from *before* the tunnel existed; it answers only
+  "me", while the tunnel already answers "my brother". **Nothing to build. That half is closed by
+  work already shipped**, and the open question should have been retired when D-067 landed.
+- **Layout — genuinely open.** This entry is about that and nothing else.
+
+**Measured, and one diagnosis corrected.** Three attempts to emulate a 390 CSS-px viewport all
+reported `innerWidth` **482**. I first wrote that off as CDP clamping. **It was not.** The glance
+view, built later in the same session, reports exactly **390** under the identical override — the
+only difference being that it never mounts Cesium. **The Cesium canvas was forcing the layout
+viewport wider than the device.** So the desktop console does not merely look bad on a phone; it
+actively prevents the page from laying out at the phone's real width, which is a stronger finding
+than the one it replaces. The console measurements below are therefore from a **482 px** viewport —
+a *generous* phone — and a real 390 is strictly worse.
+
+**Nobody has looked at this on an actual handset**, and that gap is why option A is not ruled out
+on measurement alone.
+
+At 482 px, with a contact selected, the dossier does not crowd the layout — **it overlaps the
+traffic panel, camera cluster, preferences pane, altitude legend and cursor readout at the same
+time.** Because panels are deliberately translucent (CLAUDE.md: "never opaque cards"), they show
+through one another and the text stops being readable. Attribution wraps to four lines into the
+dossier's link buttons. The globe is invisible at the exact moment a contact has been selected to
+look at. There is **no `@media` rule anywhere** in the frontend, and the fixed widths — dossier
+344 px, panels 210/176/148 px — mean the dossier alone is 88% of a 390 px screen.
+
+**The layout does not degrade on a phone; it collapses. And the translucency that makes it good on
+a desktop is precisely what makes the overlap illegible.**
+
+**Three options were weighed:**
+
+| | | |
+|---|---|---|
+| **A. Responsive console** | Reflow every panel into drawers/sheets under a breakpoint, plus touch handling for Cesium | Largest change, highest regression risk to the desktop layout — which *is* the product — and it fights the mission-control intent |
+| **B. Glance view** | A separate narrow read-only route: what is overhead, how many, any military, is the feed alive. **No globe** | **CHOSEN** |
+| **C. Do nothing** | Keep the non-goal | Honest, but the owner has asked twice |
+
+**Why B.** The globe is the expensive part on a phone — Cesium, WebGL, a multi-megabyte bundle,
+battery — and it is also the part a 390 px screen serves worst. The word the owner used across
+three handoffs was *glance*. A view answering "what is overhead right now, is any of it military,
+is the feed alive" needs no globe at all. It cannot regress the desktop layout because it does not
+touch it, and it is the honest fit for a device that gets looked at for ten seconds.
+
+**What this reversal is NOT.** It is not a responsive console; the desktop layout is untouched and
+stays cursor-and-wide-screen by design. It is not a second app, an offline mode, notifications, or
+an alerting engine — **alerting remains a non-goal and "is anything military overhead" must not
+grow into a push notification.** It is not a reason to make Cesium touch-friendly. If a future
+session finds itself reflowing `Panels.tsx` under a breakpoint, that is option A and needs its own
+decision.
+
+**Constraints that carry over unchanged:** unknown values render as an em-dash and an offline feed
+says so (ground rules 1 and 3); the token door and `require_session` already cover any new route;
+attribution follows the *data shown*, not the layout — a view with no map tiles and no photos owes
+GEBCO and planespotters nothing, but still owes airplanes.live and adsbdb for what it does display.
+
+**Shipped, and verified at a real 390×844:** `frontend/src/panels/GlanceView.tsx`, reached by
+appending `#m` to the URL (`https://host/?t=TOKEN#m`). A hash, not a route: the app has no router,
+adding one is a dependency decision (rule 2), and `/m` would not resolve against the static mount.
+`App.tsx` returns it **before** `<Globe/>`, so Cesium never mounts — confirmed by
+`document.querySelectorAll('canvas').length === 0` on the built container — while every polling
+effect still runs, so the store fills exactly as it does on the desktop.
+
+Contents: contact count, military count, feed source and liveness, and the **twelve nearest**
+contacts with callsign, type, distance in nm, eight-point bearing and altitude. Nearest-first is
+the only ordering that matters on a phone. `GND` for on-ground, em-dash for an unknown type,
+and "No contacts in range" and "No data — the feed is not answering" as separate strings.
+
+**Known and deliberate for now:** the Cesium *code* is still in the bundle even though it never
+executes on this path — making it a lazy import is the obvious follow-up and is not done. The
+attribution line sits below twelve rows, so it is reached by scrolling rather than being on
+first paint; acceptable for the medium, worth revisiting if the list grows.

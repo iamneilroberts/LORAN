@@ -5,6 +5,7 @@ import {
   StatusBar, TrafficPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
+import { GlanceView, isGlanceRoute } from "./panels/GlanceView";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
@@ -156,6 +157,16 @@ function LockedPanel() {
 export default function App() {
   const denied = useStore((s) => s.authRequired);
 
+  // `#m` selects the phone view (D-072). Tracked in state rather than read once, so switching
+  // between the two on the same device does not need a reload - and so the desktop console is
+  // reachable from a phone by dropping the hash, rather than being locked out of it.
+  const [glance, setGlance] = useState(isGlanceRoute());
+  useEffect(() => {
+    const onHash = () => setGlance(isGlanceRoute());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   // The persisted theme has to reach the document BEFORE Globe mounts and reads the palette,
   // or the first frame is painted from the default tokens and only corrects on the next change.
   const theme = useStore((s) => s.theme);
@@ -211,6 +222,11 @@ export default function App() {
 
     return () => { stop = true; window.clearInterval(health); };
   }, []);
+
+  // The phone view (D-072). Returned BEFORE the globe, so `<Globe/>` never mounts and Cesium never
+  // initialises on a phone - no WebGL context, no tile requests, no battery cost. Every effect
+  // above still runs, so the poll that fills the store is unaffected; only the tree differs.
+  if (glance) return <GlanceView />;
 
   return (
     <div className="relative h-full w-full">

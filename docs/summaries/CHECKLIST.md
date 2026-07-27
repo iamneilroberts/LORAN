@@ -28,7 +28,10 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Extend tests: `adsb.py` failover/envelope, `build_places.py`
 - [ ] Fix the HARNESS depth assertion in `verify_phase1.py` (8/9) — do NOT loosen it
 - [ ] Viewport-scoped fetch (Phase 1 debt — fixed radius, ignores the camera)
-- [ ] Mobile: decide glance-vs-work, then Tailscale + measure on the actual phone
+- [x] Mobile: decided — **glance** (D-072). Tailscale is REDUNDANT (D-067/D-041 already solved access)
+- [x] Mobile: glance view built (`GlanceView.tsx`, reached via `#m`) — verified 390x844, zero Cesium canvases
+- [ ] Mobile: owner sign-off, and measure on an ACTUAL phone (all evidence so far is emulated)
+- [ ] Mobile: make Cesium a lazy import so the phone never downloads it
 - [ ] Vessels — BLOCKED until the Nooelec SMArt v5 arrives, then the D-018 measure-first gate
 - [ ] Rename working dirs + coord dir from `adsb-viz` to `loran`
 - [ ] Prune the merged single-file worktree (`/branch done`, delete `worktree-agent-a359546ffb2f19480`)
@@ -38,4 +41,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main @ 98593f7 (D-069 geocoding + D-070 single-file build MERGED; 138 FE + 82 BE tests. NEXT: shared normalizer fixture, scrub docs/summaries, make docs true, push 32 commits.)_
+_Updated: 2026-07-26 — main (D-072 mobile glance view built; handoff pause-2026-07-26-cleanup-ci-mobile.md. NEXT: prune merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_
