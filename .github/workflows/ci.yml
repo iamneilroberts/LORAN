@@ -24,9 +24,6 @@ on:
     # push-to-main is the honest match for how it is actually used.
     branches:
       - main
-      # TEMPORARY, remove before merging: a workflow only becomes dispatchable once it is on the
-      # default branch, so this is the only way to get a real run of it beforehand.
-      - ci
   # Lets a run be re-triggered by hand from the Actions tab without an empty commit.
   workflow_dispatch:
 
