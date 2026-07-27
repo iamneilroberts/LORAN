@@ -392,7 +392,7 @@ export function LayerCluster() {
  * call and nothing to wait for, so unlike the aircraft dossier there is no pending state:
  * a blank field means the SOURCE is blank, and it renders as an em-dash.
  */
-export function PlacePanel() {
+export function PlacePanel({ fullWidth = false }: { fullWidth?: boolean } = {}) {
   const p = useStore((s) => s.selectedPlace);
   const selectPlace = useStore((s) => s.selectPlace);
   if (!p) return null;
@@ -401,7 +401,7 @@ export function PlacePanel() {
 
   return (
     <div
-      className={`panel panel--dossier w-[344px] pointer-events-auto ${p.military ? "panel--mil" : ""}`}
+      className={`panel panel--dossier ${fullWidth ? "w-full" : "w-[344px]"} pointer-events-auto ${p.military ? "panel--mil" : ""}`}
       style={{ minHeight: 0, overflowY: "auto" }}
     >
       <div className="panel-h">
@@ -745,7 +745,7 @@ function TrackBlock({ hex, label }: { hex: string; label: string }) {
   );
 }
 
-export function SelectionPanel() {
+export function SelectionPanel({ fullWidth = false }: { fullWidth?: boolean } = {}) {
   const hex = useStore((s) => s.selectedHex);
   const aircraft = useStore((s) => s.aircraft);
   const sepFt = useStore((s) => s.separationFt);
@@ -818,7 +818,7 @@ export function SelectionPanel() {
 
   return (
     <div
-      className={`panel panel--dossier w-[344px] pointer-events-auto ${a.military ? "panel--mil" : ""}`}
+      className={`panel panel--dossier ${fullWidth ? "w-full" : "w-[344px]"} pointer-events-auto ${a.military ? "panel--mil" : ""}`}
       // minHeight:0 is what actually lets a flex child shrink below its content height;
       // without it the panel refuses to scroll and overflows its container instead.
       style={{ minHeight: 0, overflowY: "auto" }}

@@ -8,7 +8,8 @@ import { CameraCluster } from "./panels/CameraCluster";
 import { GlanceView } from "./panels/GlanceView";
 import { ProbeView } from "./panels/ProbeView";
 import { useEnrichment } from "./data/useEnrichment";
-import { currentView, goTo, isNarrow } from "./routes";
+import { currentView, isNarrow } from "./routes";
+import { MobileMapChrome } from "./panels/MobileMapChrome";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
@@ -261,30 +262,28 @@ export default function App() {
     );
   }
 
+  // The phone gets a DIFFERENT chrome, not a shrunken one (D-076 Stage 2). Six panels at once is
+  // a desktop answer; at 390px they overlap into an unreadable stack, and because panels are
+  // translucent by spec the overlap ghosts through itself. Arriving from the list must land on
+  // the aircraft, so this composition starts with the globe and almost nothing else.
+  //
+  // Stage 1 floated a LIST button at top-right here. It landed exactly on the dossier's own close
+  // control and made the dossier undismissable - which is why LIST now lives inside the mobile
+  // top bar instead of over the panel it was covering.
+  if (narrow) {
+    return (
+      <div className="relative h-full w-full">
+        <Globe />
+        <MobileMapChrome />
+        <StatusBar />
+        {denied && <LockedPanel />}
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full w-full">
       <Globe />
-      {/* The way back to the list, on narrow screens only (D-076). Without it the list is a
-          one-way door: tapping a contact would strand you on a console you cannot navigate at
-          this width until Stage 2 lands. The phone's BACK gesture also works, because the views
-          are hash-routed - this is the visible affordance for people who do not think to use it.
-
-          Not rendered at all on a desktop: the console IS the desktop product and a LIST button
-          would be chrome nobody there asked for. */}
-      {narrow && (
-        <button
-          onClick={() => goTo("list")}
-          className="absolute lbl"
-          style={{
-            top: 8, right: 8, zIndex: 20, pointerEvents: "auto",
-            minHeight: 40, minWidth: 64, fontSize: 11,
-            border: "1px solid var(--line-bright)", color: "var(--cyan)",
-            background: "rgba(5,7,10,.86)",
-          }}
-        >
-          ‹ LIST
-        </button>
-      )}
       {/* Chrome floats over the globe and never blocks it. */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Camera lives on the LEFT with the other controls (owner's call). It used to sit above
