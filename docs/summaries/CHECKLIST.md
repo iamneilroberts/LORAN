@@ -15,8 +15,9 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
       `sha-<short>` AND `main`, on `main` only. Needs `packages: write`; **flip the package to
       public by hand after the first push** — GHCR defaults new packages to private
 - [x] Smoke job asserts the booted container reports the SHA that was just built
-- [ ] `loran.html` as a RELEASE ASSET — deferred until someone needs a file rather than a link;
-      the note must state it has no photos, no address entry, and is browser-direct
+- [x] `loran.html` as a RELEASE ASSET — shipped in **v1.0** (2026-07-27), attached to the release
+      rather than committed. Note states no photos, no address entry, no small-airfield tier,
+      browser-direct with no shared cache, slow bathymetry from file://, fragile on Cesium bumps
 - [x] Decide whether CI runs on push, PR, or both (there are no PRs today — everything lands
       straight on `main`)
 - [ ] Optional, from incident 5: fail a commit that adds files outside an expected set
@@ -37,4 +38,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 
 ---
 
-_Updated: 2026-07-27 — branch `ci` @ 4572e0f. CI SHIPPED: jobs `test` (196+113) and `build + smoke`, both green on a real runner. `docker build` measured ~35 s cold with zero cached layers — NO buildx cache needed. BUILD_SHA now rides to /api/health, so `curl -s <host>/api/health | jq .build_sha` answers 'what is live?'. GHCR publish dropped by decision. See D-077._
+_Updated: 2026-07-27 — main @ 3666a8e, v1.0 tagged and released. **Air traffic is DONE for now** (owner's call). CI shipped (D-077): jobs `test` (196+113) and `build + smoke`, green on every push to main; BUILD_SHA at /api/health; scripts/deploy.sh verifies the deploy; favicon + apple-touch-icon shipped. NEXT WORK IS VESSELS/AIS, blocked on the Nooelec SMArt v5 SDR arriving, then the D-018 measure-first gate._
