@@ -25,7 +25,7 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] **Tunnel systemd unit — WRITTEN, NOT INSTALLED** (needs sudo). Container already survives
       reboot (`restart: unless-stopped` + docker enabled); cloudflared does NOT — it is a bare
       foreground process. Unit drafted in the session scratchpad; **not** committed because it
-      hardcodes `/home/neil` (D-019). Do NOT use `cloudflared service install` — it targets the
+      hardcodes an absolute home path (D-019). Do NOT use `cloudflared service install` — it targets the
       SHARED `~/.cloudflared/config.yml`
 - [x] `docs/summaries/` decided: **scrub the files** (owner, 2026-07-26) — NOT YET DONE
 - [x] Sweep `adsb.voygent.ai` → `loran.voygent.app` in `docs/remote-access.md` — clean; remaining
