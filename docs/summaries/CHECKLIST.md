@@ -7,6 +7,15 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] **CI job `build`**: `docker build .` — and do NOT re-run palette/tsc/vite separately
 - [ ] **CI job `smoke`**: boot the image, poll `/api/health`, load `/`, **fail on any console
       error**, assert served asset hash == built hash. Must pass with zero contacts
+- [ ] **Stamp the image with the commit SHA** and expose it at `/api/health` — closes the
+      "what is actually live?" gap that incidents 2 and 4 both circled. Do this even if the
+      GHCR push is dropped
+- [ ] **CI job `publish`**: push the SAME image to `ghcr.io/iamneilroberts/loran`, tagged
+      `sha-<short>` AND `main`, on `main` only. Needs `packages: write`; **flip the package to
+      public by hand after the first push** — GHCR defaults new packages to private
+- [ ] Smoke job asserts the booted container reports the SHA that was just built
+- [ ] `loran.html` as a RELEASE ASSET — deferred until someone needs a file rather than a link;
+      the note must state it has no photos, no address entry, and is browser-direct
 - [ ] Decide whether CI runs on push, PR, or both (there are no PRs today — everything lands
       straight on `main`)
 - [ ] Optional, from incident 5: fail a commit that adds files outside an expected set
@@ -27,4 +36,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 
 ---
 
-_Updated: 2026-07-27 — main @ b7ca7d8. Scoped to CI: three jobs (test / build / smoke). KEY: `npm run build` already runs check:palette + tsc + vite build, so `docker build` subsumes them — do not duplicate. Handoff: pause-2026-07-27-ci.md._
+_Updated: 2026-07-27 — main @ b7ca7d8. Scoped to CI: four jobs (test / build / smoke / publish). TWO KEY FINDINGS: (1) `npm run build` already runs check:palette + tsc + vite build, so `docker build` subsumes them — do not duplicate. (2) `/api/health` reports NO commit SHA, so nothing can answer 'what is actually live?' — stamping the image is worth doing even if the GHCR push is dropped. Handoff: pause-2026-07-27-ci.md._
