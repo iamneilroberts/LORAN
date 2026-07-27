@@ -144,6 +144,32 @@ it `true` serves photos to guests too and is a deliberate departure from those t
 owner of this deployment has made that call knowingly (D-041). The default in this repository
 stays compliant.
 
+## Cloudflare caches static files for four hours
+
+Deploying is not the same as the change being visible through the tunnel.
+
+| Path | `cf-cache-status` | Consequence |
+|---|---|---|
+| `/` and every `/api/*` | `DYNAMIC` | never cached, changes are live immediately |
+| `/assets/index-*.js` and `.css` | cached, `max-age=14400` | safe: Vite puts a content hash in the filename, so a new build is a new URL |
+| `/favicon.svg`, `/apple-touch-icon.png` | cached, `max-age=14400` | **stale for up to 4 hours** — these filenames have no content hash |
+
+This has already caused one wasted debugging session: a fixed favicon was verified correct on
+`127.0.0.1:8010` and simultaneously served broken through the tunnel, because the edge still
+held the pre-fix copy. `curl -s https://<host>/api/health | jq .build_sha` reported the right
+commit throughout — provenance says what the *origin* runs, not what the CDN hands out.
+
+The fix is a version query on the reference in `frontend/index.html`, which is `DYNAMIC` and
+never cached, so a new `?v=` fetches a fresh copy at once:
+
+```
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+```
+
+**Bump `?v=` whenever an icon changes.** Note CI cannot catch this: the smoke check talks to
+localhost, where there is no CDN. Running `python3 scripts/smoke.py --base https://<host>` against
+the real tunnel is what surfaces it.
+
 ## Things this does not do
 
 - **No rate limiting per user.** The upstream 1 req/sec budget is protected by a global gate in
