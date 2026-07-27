@@ -1,5 +1,8 @@
 # LORAN
 
+[![CI](https://github.com/iamneilroberts/LORAN/actions/workflows/ci.yml/badge.svg)](https://github.com/iamneilroberts/LORAN/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 A self-hosted 3D globe console for live air traffic, built to be read like an instrument rather
 than browsed like a website. Aircraft sit at their **true altitude above the ellipsoid** over a
 dark bathymetric basemap, and everything on screen is either measured or explicitly marked
@@ -224,10 +227,16 @@ Works today:
   submit-only geocoder whose ambiguous results you pick from rather than having one chosen for you
 - **A single-file build.** `npm run build:single` emits one ~11 MB `loran.html` that runs from
   `file://` with no server at all, talking to the feeds browser-direct. Photos, address lookup and
-  the small-airfield tier need a backend and say so rather than failing silently
+  the small-airfield tier need a backend and say so rather than failing silently. Prebuilt copy on
+  the [releases page](https://github.com/iamneilroberts/LORAN/releases/latest) — read the caveats
+  there first; it is a novelty, not the way to run this
 - Measured **22–27 FPS** at 77–89 contacts on the developer's hardware (WebGL2)
-- **275 tests** — 165 frontend (vitest) + 110 backend (pytest) — including a shared fixture that
+- **309 tests** — 196 frontend (vitest) + 113 backend (pytest) — including a shared fixture that
   holds the browser-direct normalizer and the backend one to the same contract
+- **CI on every push to `main`**, and a build stamped with the commit it came from. The image
+  build subsumes the palette check, the production typecheck and the Vite build, then boots the
+  result and asserts the page mounts with a clean console and that the bundle it *serves* is
+  byte-identical to the one inside the image
 
 Not built yet:
 
@@ -239,8 +248,8 @@ Not built yet:
   access needed it
 - **Viewport-scoped fetch** — Phase 1 debt. The fetch radius is a preset you choose, not a value
   derived from where the camera is actually looking
-- **CI.** The suites exist and pass; nothing runs them but a person. Three separate incidents have
-  now had the same shape — green checks against an artefact nobody was serving
+- **Lazy-loading Cesium**, so a phone opening the glance list never downloads the 6.7 MB globe
+  bundle it is not going to use
 
 ## Verify it
 
@@ -248,10 +257,30 @@ Not built yet:
 bash scripts/test.sh
 ```
 
-165 frontend tests (vitest) and 110 backend tests (pytest). Among them, `fixtures/adsb/` holds one
+196 frontend tests (vitest) and 113 backend tests (pytest). Among them, `fixtures/adsb/` holds one
 set of real captured feed records and their expected normalized output, asserted by **both**
 suites — so the browser-direct normalizer used by the single-file build cannot drift from the
 backend's without something going red.
+
+```
+curl -s https://your-host/api/health | jq .build_sha
+```
+
+**Which commit is actually live.** Every image is stamped at build time and reports it here, so
+"is the deployed thing the code I think it is?" has a one-command answer instead of a bundle-hash
+comparison done by hand. An unstamped build (bare metal, or a plain `docker build`) reports
+`null` rather than guessing. `bash scripts/deploy.sh` sets the stamp and then refuses to declare
+success unless the running container reports the commit it just deployed.
+
+```
+python3 scripts/smoke.py --base http://127.0.0.1:8010 --container loran
+```
+
+Boots the built image and checks the things a green test suite cannot: that the served bundle is
+byte-identical to the one in the image, that every declared icon parses, that React mounted, and
+that the console is clean. It passes with **zero** contacts on purpose — CI must never depend on
+live traffic. Point `--base` at a real deployment and it will also catch a CDN serving something
+older than the origin.
 
 ```
 cd frontend && npx tsc --noEmit
