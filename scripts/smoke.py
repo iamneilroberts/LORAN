@@ -72,14 +72,10 @@ CHROME_CANDIDATES = (
 # An allowlist is how a smoke check quietly stops checking anything, so this one is built to
 # resist that: every entry must carry a REASON and a condition for deleting it, and every
 # suppression is PRINTED on a pass. If this list is growing, that is the signal - not the fix.
-ALLOWED_ERRORS = (
-    (
-        re.compile(r"/favicon\.ico\b"),
-        "no favicon is shipped, so Chrome requests /favicon.ico unprompted and gets a 404. "
-        "Cosmetic, says nothing about whether the app works. DELETE this entry the day a "
-        "favicon is added - at which point a 404 here would be a real regression.",
-    ),
-)
+# EMPTY, and worth keeping that way. The only entry this ever held was a /favicon.ico 404, and it
+# came out the moment frontend/public/favicon.svg shipped: a 404 there is now a real regression -
+# a dropped <link rel="icon">, or the asset missing from the image - and must fail the build.
+ALLOWED_ERRORS = ()
 
 
 def triage(errors: list[str]) -> tuple[list[str], list[tuple[str, str]]]:

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>LORAN</title>
+  <!--
+    The globe, and one contact off its limb. Colours are tokens.css verbatim: --bg, --cyan for
+    nominal chrome, --amber for the contact.
+
+    Designed at 16x16 and scaled up, not the reverse - a favicon is only ever seen at tab size,
+    where thin strokes and small detail turn to mush. Hence three shapes, a 3.5 stroke (1.75px
+    at 16x16), and ~9% clear margin.
+
+    The middle circle is a --bg knockout, not decoration: without it the amber contact touches
+    the cyan stroke and the two bleed into one muddy blob when downscaled.
+
+    Rejected on the way here, all for the same reason - they read as something else at 16px: a
+    globe limb with a drop-line to the contact (a map pin), the same with a heading chevron (a
+    flag), the same with an altitude datum bar (a table), and a bare limb with a contact above
+    it (a sad face). The drop-line version best expressed what this app actually does, which is
+    altitude, but the pole motif overwhelms the intent at any weight.
+  -->
+  <rect width="32" height="32" fill="#05070a"/>
+  <circle cx="14.5" cy="18" r="10" fill="none" stroke="#5fd7e0" stroke-width="3.5"/>
+  <circle cx="25.5" cy="7" r="4.9" fill="#05070a"/>
+  <circle cx="25.5" cy="7" r="3.4" fill="#ffb000"/>
+</svg>

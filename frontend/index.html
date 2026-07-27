@@ -3,6 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Without this, browsers request /favicon.ico unprompted and 404 on every page load. That is
+      a console error on a clean boot, which is precisely the noise that erodes a "fail on any
+      console error" smoke check into an allowlist nobody reads. An SVG icon needs no .ico
+      fallback for anything current.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>LORAN</title>
   </head>
   <body>
