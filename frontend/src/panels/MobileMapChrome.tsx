@@ -27,7 +27,7 @@
  */
 import { useState } from "react";
 
-import { AltitudeLegend, PlacePanel, SelectionPanel } from "./Panels";
+import { AltitudeLegend, PlacePanel, SelectionPanel, VertScaleBanner } from "./Panels";
 import { CameraCluster } from "./CameraCluster";
 import { PreferencesPanel } from "./PreferencesPanel";
 import { useStore } from "../state/store";
@@ -105,6 +105,13 @@ export function MobileMapChrome() {
           {sheet === "menu" ? "CLOSE" : "SET"}
         </button>
       </div>
+
+      {/* The NOT-TRUE-SCALE disclosure, owned here rather than by App so it can stand down while
+          a sheet is open. A sheet covers the globe completely, so there is no distorted geometry
+          on screen to mislead anyone - and at a fixed offset it landed across the sheet's own
+          header and CLOSE control, which is the third time chrome has been placed over a control
+          in this view. Nothing is being hidden: closing the sheet brings both back. */}
+      {sheet === "none" && <VertScaleBanner top={58} />}
 
       {/* The peek. A one-line summary of the selected contact that opens the full dossier on
           tap - so the detail is one gesture away without ever being in the way, and there is a

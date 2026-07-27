@@ -274,9 +274,9 @@ export default function App() {
     return (
       <div className="relative h-full w-full">
         <Globe />
+        {/* MobileMapChrome renders the not-true-scale banner itself, so it can stand down while
+            a sheet covers the globe. */}
         <MobileMapChrome />
-        {/* Below the 52px mobile top bar, not across it. */}
-        <VertScaleBanner top={58} />
         <StatusBar />
         {denied && <LockedPanel />}
       </div>

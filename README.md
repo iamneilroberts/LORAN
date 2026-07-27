@@ -36,6 +36,27 @@ its green→yellow→red ramp competes with the altitude colour ramp.
 
 All four are unretouched captures of live data, taken by `scripts/shoot_readme.py`.
 
+### On a phone
+
+The same link routes by viewport width, so a phone lands on the **glance list**: what is up, how
+much of it is military, whether the feed is alive, and the twelve nearest contacts.
+
+![Glance list on a phone: contact and military counts, feed state, nearest contacts](docs/screenshots/mobile-list.jpeg)
+
+Tapping a row opens the map focused on that aircraft — the full 3D globe, not a cut-down map.
+Here with **vertical exaggeration at 5x**, which stretches altitude so separation is readable at
+a glance; the amber banner says the geometry is not true scale while it is on, and every number
+stays true.
+
+![Map on a phone with a selected contact, projection envelope and the NOT TRUE SCALE banner](docs/screenshots/mobile-map-vertical-5x.jpeg)
+
+The dossier opens as a sheet: airframe, operator, filed route, and controls to FOLLOW the contact
+with the camera or draw and export its recorded track.
+
+![Contact detail sheet on a phone with FOLLOW, TRACK, CLEAR and EXPORT](docs/screenshots/mobile-detail.png)
+
+Getting started as a viewer: [`docs/quickstart.md`](docs/quickstart.md).
+
 ---
 
 ## Ground rules
