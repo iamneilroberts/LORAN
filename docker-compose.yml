@@ -11,6 +11,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # The commit being deployed, surfaced at /api/health so `curl -s <host>/api/health`
+        # answers "what is actually live?" (D-077). Compose cannot run git, so this reads the
+        # shell environment and defaults to empty - an unstamped build reports null rather than
+        # claiming a commit it does not know.
+        #
+        # Use `bash scripts/deploy.sh`, which fills it in. Deploying with a bare
+        # `docker compose up --build -d` still works and is still correct; it just leaves the
+        # deployment unable to say which commit it is.
+        BUILD_SHA: ${BUILD_SHA:-}
     image: loran:local
     container_name: loran
 
