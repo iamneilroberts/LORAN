@@ -9,13 +9,22 @@
       console error" smoke check into an allowlist nobody reads. An SVG icon needs no .ico
       fallback for anything current.
     -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!--
-      iOS has never supported SVG here, and with no apple-touch-icon it makes a Home Screen icon
-      out of a screenshot of the page - which for a dark globe is an unreadable smudge. PNG is
+      BUMP THE ?v= ON BOTH OF THESE WHENEVER AN ICON CHANGES.
+
+      Cloudflare caches by file extension: svg and png come back with max-age=14400, and unlike
+      the Vite bundles these filenames carry no content hash. So a redeployed icon keeps serving
+      the OLD bytes from the edge for up to four hours, with the container serving the new ones
+      the whole time. That is how a fixed favicon appeared still-broken through the tunnel while
+      being correct on 127.0.0.1. This document is cf-cache-status DYNAMIC and never cached, so
+      changing the query here is enough to fetch a fresh copy immediately.
+
+      iOS has never supported SVG for a Home Screen icon, and given no apple-touch-icon it makes
+      one from a screenshot of the page - an unreadable smudge for a dark globe. The PNG is
       generated from frontend/icons/apple-touch-icon.src.svg by scripts/make-icons.sh.
     -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
     <title>LORAN</title>
   </head>
   <body>

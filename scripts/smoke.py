@@ -240,7 +240,11 @@ def check_icons(base: str) -> None:
         body = fetch(f"{base}{path}" if path.startswith("/") else f"{base}/{path}")
         if not body:
             raise SmokeFailure(f"{path} served an empty body")
-        if path.lower().endswith(".svg"):
+        # Test the extension on the path WITHOUT its query string. These hrefs carry a ?v= to
+        # bust Cloudflare's edge cache, and a naive endswith(".svg") sees "/favicon.svg?v=2",
+        # decides it is not an SVG, and skips the parse - quietly turning this whole check off.
+        bare = path.split("?", 1)[0].split("#", 1)[0]
+        if bare.lower().endswith(".svg"):
             try:
                 xml.dom.minidom.parseString(body)
             except Exception as e:                           # noqa: BLE001 - any parse error is fatal
