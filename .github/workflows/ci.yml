@@ -76,3 +76,29 @@ jobs:
       # fresh worktree with no public/cesium present.
       - name: Run the test suite
         run: bash scripts/test.sh
+
+  # Independent of `test`, not `needs: test` — they answer different questions and a failure in
+  # one should not hide the other's answer. `docker build` is what proves check:palette,
+  # tsc --noEmit and vite build all pass, because Dockerfile:34 runs `npm run build`, which
+  # chains them. That is the whole reason those are not separate steps above.
+  build:
+    name: build the image
+    runs-on: ubuntu-latest
+    # Cold runner: pulls node:22-slim + python:3.12-slim and runs npm ci over Cesium, which is
+    # large. Deliberately measured before any cache is added — tune from a real number, not a
+    # guess. Raise this only if a real run says to.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Plain `docker build`, no buildx cache actions. The runner ships with Docker, so this adds
+      # no new dependency (ground rule 2) and nothing to drift from the local command people
+      # actually run. Read the timing from the first run before deciding a cache is worth it.
+      - name: Build the runtime image
+        run: docker build -t loran:ci .
+
+      # `smoke` will boot THIS image, so prove it exists and record its size — a build that
+      # succeeds but produces nothing usable would otherwise look identical to a real pass.
+      - name: Show the built image
+        run: docker image inspect loran:ci --format 'built {{.Id}} · {{.Size}} bytes · {{.Created}}'
