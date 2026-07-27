@@ -29,6 +29,17 @@ other CDP scripts here. Nothing new (ground rule 2).
 
     python3 scripts/smoke.py --base http://127.0.0.1:8011 \
         --container loran-smoketest --expect-sha "$(git rev-parse HEAD)"
+
+POINTING THIS AT A LIVE, TOKEN-PROTECTED DEPLOYMENT
+
+Checks 1-3 work and are worth running - they are the fastest honest answer to "is the tunnel
+serving what I think it is?". Check 4 will FAIL, and correctly so: with LORAN_ACCESS_TOKENS
+configured, a browser holding no token gets 401 from /api/config and /api/aircraft, and those
+are error-level console entries. That is the access door working.
+
+Those 401s are deliberately NOT allowlisted. In CI the door is off, so a 401 there would be a
+real defect, and excusing it here would blind the check to it. Read a production run as
+"1-3 passed, 4 reported the door" rather than trying to make it green.
 """
 from __future__ import annotations
 
@@ -85,6 +96,18 @@ def triage(errors: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
     return real, excused
 
 
+# urllib's default "Python-urllib/3.x" gets a blanket 403 from Cloudflare, so pointing this
+# script at the live tunnel would fail with a message that looks like the app is down when it is
+# not. Identifying properly costs one header and makes the script usable against production -
+# which matters, because "check the artefact you actually shipped" is the whole point.
+UA = "loran-smoke/1.0 (+https://github.com/iamneilroberts/LORAN)"
+
+
+def _get(url: str, timeout: float):
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}),
+                                  timeout=timeout)
+
+
 class SmokeFailure(Exception):
     """A check failed. The message is the report."""
 
@@ -106,7 +129,7 @@ def wait_for_health(base: str, timeout_s: float) -> dict:
     last = "never answered"
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(f"{base}/api/health", timeout=4) as r:
+            with _get(f"{base}/api/health", timeout=4) as r:
                 if r.status == 200:
                     body = json.load(r)
                     log(f"  health ok after {timeout_s - (deadline - time.time()):.1f}s")
@@ -132,7 +155,7 @@ def check_build_sha(health: dict, expected: str | None) -> None:
 
 
 def fetch(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=15) as r:
+    with _get(url, timeout=15) as r:
         if r.status != 200:
             raise SmokeFailure(f"GET {url} returned HTTP {r.status}")
         return r.read()
