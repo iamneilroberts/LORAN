@@ -7,6 +7,7 @@ import {
 import { CameraCluster } from "./panels/CameraCluster";
 import { GlanceView, isGlanceRoute } from "./panels/GlanceView";
 import { ProbeView, isProbeRoute } from "./panels/ProbeView";
+import { useEnrichment } from "./data/useEnrichment";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
@@ -170,6 +171,13 @@ export default function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  // Enrichment follows the SELECTION, not the chrome. Fetched here so it runs on every route -
+  // the globe's FILED origin/destination legs (D-050, D-074) depend on it, and they are geometry,
+  // not panel content. It used to live in Panels, which meant `#probe` could never draw them.
+  const selected = useStore((s) =>
+    s.selectedHex ? s.aircraft.find((a) => a.hex === s.selectedHex) : undefined);
+  useEnrichment(selected?.hex ?? null, selected?.flight ?? null);
 
   // The persisted theme has to reach the document BEFORE Globe mounts and reads the palette,
   // or the first frame is painted from the default tokens and only corrects on the next change.

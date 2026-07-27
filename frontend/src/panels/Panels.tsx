@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import {
   hasSlicePerspective, matchesFilter, operatorKey, RANGE_PRESETS_NM, useStore,
-  type Aircraft, type EnrichAirport, type Enrichment, type PhotoResult, type TrackResult,
+  type Aircraft, type EnrichAirport, type PhotoResult, type TrackResult,
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
@@ -512,33 +512,9 @@ function airportTitle(p: EnrichAirport | null | undefined): string | undefined {
   return [p.name, p.municipality].filter(Boolean).join(" · ") || undefined;
 }
 
-/**
- * Fetch adsbdb detail whenever the selected contact changes.
- *
- * A reply that arrives after the user has moved on is dropped: the store also holds the hex
- * the reply belongs to, and the panel refuses to render a mismatch. Showing one aircraft's
- * registration under another's callsign is exactly the kind of plausible-looking wrong data
- * ground rule 1 exists to prevent.
- */
-function useEnrichment(hex: string | null, callsign: string | null) {
-  useEffect(() => {
-    if (!hex) return;
-    let cancelled = false;
-
-    useStore.getState().setEnrichment(null, true);
-    api.enrich(hex, callsign)
-      .then((d: Enrichment) => { if (!cancelled) useStore.getState().setEnrichment(d, false); })
-      .catch((e) => {
-        if (cancelled) return;
-        // Could not ask. That is not the same as "adsbdb does not know", and the panel says so.
-        useStore.getState().setEnrichment(
-          { hex, callsign, aircraft: null, route: null, errors: [String(e)] }, false,
-        );
-      });
-
-    return () => { cancelled = true; };
-  }, [hex, callsign]);
-}
+// `useEnrichment` moved to ../data/useEnrichment: fetching it here made enrichment a side effect
+// of rendering the chrome, which left the chrome-less `#probe` route unable to draw the FILED
+// route legs. App owns the single call now.
 
 /** Shared by the automatic load on selection and the explicit TRACK re-fetch. */
 function fetchTrack(hex: string, quiet = false): Promise<TrackResult | null> {
@@ -789,7 +765,7 @@ export function SelectionPanel() {
 
   // Hooks run before the early return, so the panel disappearing mid-flight is not a hook
   // ordering violation.
-  useEnrichment(a?.hex ?? null, a?.flight ?? null);
+  // Enrichment is fetched in App, for every route - see ../data/useEnrichment.
   usePhoto(a?.hex ?? null, a?.registration ?? en?.aircraft?.registration ?? null);
   // Keyed on the SELECTED hex, not the feed object: a contact missing from one poll payload
   // must not tear the track down and reload it.

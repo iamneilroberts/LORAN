@@ -106,6 +106,67 @@ function Choice<T extends string | number>(
   );
 }
 
+/**
+ * One line of detail for the selected contact, and a plain statement of which globe geometry is
+ * currently drawn for it.
+ *
+ * Not a dossier - the dossier is 344px of chrome and reproducing it here would rebuild the exact
+ * thing that collapses at 390px. The point is narrower: when you tap an aircraft to judge the 3D
+ * view, you need to know WHY you are or are not seeing a filed-route line, because "no line" has
+ * three different meanings (nothing selected / adsbdb has no route / the D-062 check withdrew it)
+ * and an unlabelled absence looks identical to a bug.
+ */
+function Selected() {
+  const selectedHex = useStore((s) => s.selectedHex);
+  const aircraft = useStore((s) => s.aircraft);
+  const enrichment = useStore((s) => s.enrichment);
+  const enrichPending = useStore((s) => s.enrichPending);
+  const showDestination = useStore((s) => s.showDestination);
+  const showDropLines = useStore((s) => s.showDropLines);
+  const showProjection = useStore((s) => s.showProjection);
+
+  const a = selectedHex ? aircraft.find((x) => x.hex === selectedHex) : undefined;
+  if (!a) {
+    return (
+      <div className="lbl" style={{ fontSize: 10, color: "var(--off)", padding: "6px 0" }}>
+        Tap a contact to draw its geometry.
+      </div>
+    );
+  }
+
+  // Only trust a reply that belongs to the contact on screen (same rule the dossier uses).
+  const en = enrichment && enrichment.hex?.toUpperCase() === a.hex?.toUpperCase()
+    ? enrichment : null;
+  const route = en?.route ?? null;
+  const orig = route?.origin;
+  const dest = route?.destination;
+
+  const legState = (end: { lat: number | null; lon: number | null } | null | undefined) => {
+    if (!showDestination) return "toggle off";
+    if (enrichPending) return "…";
+    if (!en) return DASH;
+    if (!end) return "adsbdb: no route";
+    if (end.lat == null || end.lon == null) return "no coords";
+    return "drawn";
+  };
+
+  return (
+    <div style={{ padding: "6px 0" }}>
+      <Row k="Selected" v={`${a.flight?.trim() || a.hex || DASH} · ${a.alt_ft != null ? `${Math.round(a.alt_ft).toLocaleString()} ft` : DASH} · ${a.gs_kt != null ? `${Math.round(a.gs_kt)} kt` : DASH}`} />
+      <Row
+        k="Filed orig"
+        v={`${orig?.icao ?? orig?.iata ?? DASH} — ${legState(orig)}`}
+      />
+      <Row
+        k="Filed dest"
+        v={`${dest?.icao ?? dest?.iata ?? DASH} — ${legState(dest)}`}
+      />
+      <Row k="Drop line" v={showDropLines ? "drawn (to ground)" : "toggle off"} />
+      <Row k="Projection" v={showProjection ? "drawn" : "toggle off"} />
+    </div>
+  );
+}
+
 export function ProbeView() {
   const aircraft = useStore((s) => s.aircraft);
   const source = useStore((s) => s.source);
@@ -216,6 +277,9 @@ export function ProbeView() {
                   latter and it did not reproduce.
                 </div>
               )}
+              <div style={{ borderTop: "1px solid var(--line)", marginTop: 6 }}>
+                <Selected />
+              </div>
             </div>
 
             <Choice
