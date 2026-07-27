@@ -3128,3 +3128,88 @@ and "No contacts in range" and "No data — the feed is not answering" as separa
 executes on this path — making it a lazy import is the obvious follow-up and is not done. The
 attribution line sits below twelve rows, so it is reached by scrolling rather than being on
 first paint; acceptable for the medium, worth revisiting if the list grows.
+
+---
+
+## D-073 — 2026-07-26 — MOBILE OPTION A, the responsive console: FUTURE, gated on a measurement and on the owner wanting to WORK on a phone
+
+**Date:** 2026-07-26
+**Status: NOT BUILT. Logged as FUTURE**, the same way D-046 logged the single-file build before
+D-070 built it. This entry exists so the next person does not have to re-derive the analysis, and
+so nobody starts it by accident.
+
+D-072 chose **option B**, the glance view, and shipped it. Option A — making the *existing console*
+work on a phone — was rejected for now, not on principle but on cost and risk. This records what A
+actually is, what would have to be true before starting it, and what it must not break.
+
+### The trigger. Do not start this without it.
+
+**A is correct if, and only if, the owner wants to WORK on the phone** — select a contact, read the
+full dossier, fly the camera, judge who is stacked above whom — rather than glance at what is
+overhead. B deliberately answers only the glance. If the answer is still "glance", A is dead weight
+and this entry should stay closed.
+
+**Ask. Do not infer it from the fact that A is bigger and more impressive.**
+
+### What A is
+
+One app, not two: the desktop console reflowed under a breakpoint. Same globe, same dossier, same
+camera controls, rearranged for a narrow touch screen. B is a separate read-only surface that
+shares only the store; A modifies the console itself.
+
+### The work, in dependency order
+
+**1. The canvas forces the layout viewport wider than the device. Fix this first or nothing else
+matters.** Measured in D-072: the console reports `innerWidth` **482** on a 390-px emulation, while
+the canvas-free glance view reports exactly **390** under the identical override. Cesium's canvas is
+doing it. Every breakpoint written before this is fixed would be written against a lie — a
+`max-width: 430px` rule would simply never match on the device it was written for. **This is the
+gate, and it is the piece most likely to be discovered late and expensively.**
+
+**2. Breakpoints, of which there are currently none.** `grep -r '@media' frontend/src` returns
+nothing. Every panel is a hardcoded width: traffic 210, preferences 210, camera cluster 148, place
+176, **dossier 344**. Each needs a narrow form — bottom sheets or a drawer — and the dossier in
+particular has to stop being a fixed column, because 344 px is **88%** of a 390 px screen.
+
+**3. Opacity has to fork, and this is a real cost to the project's identity.** Translucent panels
+are deliberate (CLAUDE.md: "never opaque cards") and they are exactly what makes the phone view
+illegible: stacked panels show through one another until the text is unreadable. A mobile mode needs
+solid or near-solid backgrounds. **That is a visual-identity decision, not a CSS tweak**, and it
+should be put to the owner rather than absorbed quietly.
+
+**4. Touch.** Every panel is `pointer-events-auto` over the canvas, so it eats the drags that would
+pan and pinch the globe. There is no touch-specific handling anywhere today, and Cesium's own touch
+bindings have never been exercised in this app.
+
+**5. Only then, the layout work itself.**
+
+### What must not break
+
+**The desktop console is the product.** A touches `Panels.tsx`, `PreferencesPanel.tsx`,
+`CameraCluster.tsx` and `App.tsx` — the files that make the thing that currently works well. B cost
+nothing structurally precisely because it touched none of them. Any A branch needs the desktop
+layout verified at full width, on a real display, before and after. `verify_phase1.py` covers
+behaviour, not layout; there is no visual regression test and this would be the moment to want one.
+
+### Measure before building — the D-018 gate applies
+
+Every mobile finding so far is **emulated**. Nobody has held a phone. Before writing A:
+
+- **Load the console on an actual handset** over the tunnel and look at it. The emulation is
+  suggestive; it is not the thing.
+- **Measure FPS and battery** with Cesium running on that handset. Desktop baseline is 22–27 FPS at
+  77–89 contacts on the owner's machine. If a phone cannot hold a usable frame rate, **A is not
+  merely expensive, it is pointless** — and that single measurement could close this entry for good.
+- **Measure the bundle over cellular.** The production bundle is ~6.7 MB of JS. B does not need it;
+  A does.
+
+Doing A without these is how you spend a week on a layout for a globe the device cannot render.
+
+### Relationship to D-072
+
+They can coexist: B is a fast path even if A ships. If A does ship, **decide explicitly whether `#m`
+survives** — a glance view is still the better answer for a ten-second look, and deleting it
+"because the console works now" would be a regression for the actual common case.
+
+**If a future session finds itself reflowing `Panels.tsx` under a breakpoint, that is this entry.
+Read it first, and confirm the trigger with the owner.**

@@ -32,6 +32,9 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [x] Mobile: glance view built (`GlanceView.tsx`, reached via `#m`) — verified 390x844, zero Cesium canvases
 - [ ] Mobile: owner sign-off, and measure on an ACTUAL phone (all evidence so far is emulated)
 - [ ] Mobile: make Cesium a lazy import so the phone never downloads it
+- [ ] Mobile OPTION A (responsive console) — **FUTURE, D-073.** Gated on: owner wants to WORK on
+      a phone (not glance), AND a real-handset FPS/battery measurement. Fix the Cesium
+      canvas-forces-viewport-width bug FIRST or every breakpoint is written against a lie
 - [ ] Vessels — BLOCKED until the Nooelec SMArt v5 arrives, then the D-018 measure-first gate
 - [ ] Rename working dirs + coord dir from `adsb-viz` to `loran`
 - [ ] Prune the merged single-file worktree (`/branch done`, delete `worktree-agent-a359546ffb2f19480`)
@@ -41,4 +44,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (D-072 mobile glance view built; handoff pause-2026-07-26-cleanup-ci-mobile.md. NEXT: prune merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_
+_Updated: 2026-07-26 — main (D-072 glance view shipped; D-073 logs option A as FUTURE. Handoff: pause-2026-07-26-cleanup-ci-mobile.md. NEXT: prune merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_
