@@ -6,6 +6,7 @@ import {
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { GlanceView, isGlanceRoute } from "./panels/GlanceView";
+import { ProbeView, isProbeRoute } from "./panels/ProbeView";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
@@ -161,8 +162,11 @@ export default function App() {
   // between the two on the same device does not need a reload - and so the desktop console is
   // reachable from a phone by dropping the hash, rather than being locked out of it.
   const [glance, setGlance] = useState(isGlanceRoute());
+  // `#probe` is the mobile-viability instrument (D-073). Same hash mechanism, and it shares the
+  // one listener because two would race to answer the same event.
+  const [probe, setProbe] = useState(isProbeRoute());
   useEffect(() => {
-    const onHash = () => setGlance(isGlanceRoute());
+    const onHash = () => { setGlance(isGlanceRoute()); setProbe(isProbeRoute()); };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -227,6 +231,18 @@ export default function App() {
   // initialises on a phone - no WebGL context, no tile requests, no battery cost. Every effect
   // above still runs, so the poll that fills the store is unaffected; only the tree differs.
   if (glance) return <GlanceView />;
+
+  // The probe mounts the REAL globe - a mock would measure the mock - but none of the console's
+  // chrome, because that chrome is exactly what collapses at 390px (D-072) and an unreadable
+  // instrument measures nothing.
+  if (probe) {
+    return (
+      <div className="relative h-full w-full">
+        <Globe />
+        <ProbeView />
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full">

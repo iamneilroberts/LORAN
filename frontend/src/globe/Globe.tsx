@@ -29,6 +29,7 @@ import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
 import { createBoundariesLayer } from "./boundariesLayer";
 import { createRadarLayer } from "./radarLayer";
+import { perfKnobs, perfStats } from "./perfKnobs";
 import { api } from "../api";
 import {
   DEFAULT_THEME, FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
@@ -225,6 +226,8 @@ export default function Globe() {
     let frames = 0;
     let fpsMark = performance.now();
     let lastPitch = CMath.toDegrees(camera.pitch);
+    // Starts at -Infinity so the first tick always runs the update, whatever the throttle.
+    let lastDrAt = -Infinity;
 
     const onTick = () => {
       const st = useStore.getState();
@@ -254,23 +257,36 @@ export default function Globe() {
         (a) => matchesFilter(a, st.filter) || a.hex === st.selectedHex,
       );
 
-      layer.update(visible, elapsedS, {
-        selectedHex: st.selectedHex,
-        showDropLines: st.showDropLines,
-        separationFt: st.separationFt,
-        datumAltFt,
-        showAllLabels: st.showAllLabels,
-        dropToAltFt: (a) => {
-          // Drop lines are now SELECTION-ONLY and go all the way to the surface (D-030).
-          // Showing them for every contact is what forced the old "stop at the nearest band
-          // floor" compromise, which left lines hanging in mid-air with nothing to land on.
-          // One line, to the ground, is unambiguous.
-          if (a.hex !== st.selectedHex) return null;
-          return 0;
-        },
-      });
+      // Dead reckoning is the per-frame CPU cost, and by default it STILL runs every frame -
+      // `drHz = 0` is exactly the behaviour that shipped. The probe route can throttle it to
+      // measure what a phone would save (D-073). `elapsedS` comes from the last fetch's wall
+      // clock rather than accumulating per frame, so skipping frames cannot make positions drift.
+      const nowMs = performance.now();
+      const minGapMs = perfKnobs.drHz > 0 ? 1000 / perfKnobs.drHz : 0;
+      if (nowMs - lastDrAt >= minGapMs) {
+        lastDrAt = nowMs;
+        const drStart = performance.now();
+        layer.update(visible, elapsedS, {
+          selectedHex: st.selectedHex,
+          showDropLines: st.showDropLines,
+          separationFt: st.separationFt,
+          datumAltFt,
+          showAllLabels: st.showAllLabels,
+          dropToAltFt: (a) => {
+            // Drop lines are now SELECTION-ONLY and go all the way to the surface (D-030).
+            // Showing them for every contact is what forced the old "stop at the nearest band
+            // floor" compromise, which left lines hanging in mid-air with nothing to land on.
+            // One line, to the ground, is unambiguous.
+            if (a.hex !== st.selectedHex) return null;
+            return 0;
+          },
+        });
+        perfStats.drMs += performance.now() - drStart;
+        perfStats.drCalls++;
+      }
 
       frames++;
+      perfStats.frames++;
       const now = performance.now();
       if (now - fpsMark >= 1000) {
         useStore.getState().setFps(Math.round((frames * 1000) / (now - fpsMark)));
