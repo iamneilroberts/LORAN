@@ -978,6 +978,13 @@ export function Attribution() {
     >
       GEBCO Compilation Group · aircraft data © airplanes.live (non-commercial) · airframe/route via adsbdb
       {" · places via OurAirports / Natural Earth (public domain)"}
+      {/*
+        Unconditional, unlike radar above. Radar is a drawn layer that can be switched off;
+        geocoding is a standing capability, and a geocoded home keeps displaying an
+        OpenStreetMap-derived NAME in the status bar long after the lookup. The policy's wording
+        is "clearly display attribution as suitable for your medium" (D-069).
+      */}
+      {" · geocoding © OpenStreetMap contributors (ODbL)"}
       {showRadar && " · NEXRAD NOAA/NWS via Iowa State Mesonet"}
     </div>
   );

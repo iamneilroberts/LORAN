@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { LayerCluster } from "./Panels";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS } from "./trafficCollapse";
 import { THEMES, useStore } from "../state/store";
-import { coordLabel, parseCoord, problemText, validateHome } from "../state/homeInput";
+import {
+  coordLabel, geocodedLabel, parseCoord, problemText, validateHome,
+  type GeocodeCandidate,
+} from "../state/homeInput";
 
 /**
  * Docked preferences pane (D-058, reversing the D-056 overlay).
@@ -85,8 +88,13 @@ function ThemeChooser() {
  * another city gets Mobile - not just the wrong centre, but traffic fetched around it, since the
  * feed radius is anchored here. This is the per-browser override for that.
  *
- * Nothing here invents a place name: there is no geocoder in this project, so a position the user
- * typed or the browser reported is labelled with its own coordinates. See homeInput.ts.
+ * Nothing here invents a place name. A position the user typed or the browser reported is labelled
+ * with its own coordinates; only a position the GEOCODER resolved may carry a name, and then only
+ * the name it actually returned (D-069). See homeInput.ts.
+ *
+ * The address field is submit-triggered - button or Enter - and that is a licence condition, not a
+ * UX preference. Nominatim's policy forbids auto-complete outright and bans for it, so this must
+ * never be wired to onChange or a debounce. See docs/data-sources.md 6a.
  */
 function HomeChooser() {
   const home = useStore((s) => s.home);
@@ -98,6 +106,11 @@ function HomeChooser() {
   const [lon, setLon] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [addr, setAddr] = useState("");
+  const [finding, setFinding] = useState(false);
+  // null = no search has been run. [] = a search ran and matched nothing, which is a result
+  // and must not look like the resting state.
+  const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null);
 
   const btn = {
     font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
@@ -119,6 +132,51 @@ function HomeChooser() {
     setHomeOverride({ lat: la as number, lon: lo as number });
     setNote(null);
     setLat(""); setLon("");
+    setCandidates(null);
+  };
+
+  /**
+   * Resolve a typed address (D-069). SUBMIT-TRIGGERED ONLY - see the note on this component.
+   *
+   * Every exit leaves the current home alone except the explicit pick in `choose`. A lookup
+   * that finds nothing, is refused, or cannot be made must not leave the console centred
+   * somewhere else behind a message that reads like success.
+   */
+  const find = async () => {
+    const q = addr.trim();
+    if (!q) { setNote("Type an address or place name"); return; }
+    setFinding(true);
+    setCandidates(null);
+    setNote("Looking up…");
+    try {
+      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      if (!r.ok) { setNote(`Lookup failed (HTTP ${r.status})`); return; }
+      const data = await r.json();
+      // "Could not ask" and "asked, no such place" are different claims and get different
+      // words. The backend keeps them apart; throwing that away here would waste it.
+      if (data.error) { setNote(String(data.error)); return; }
+      const list: GeocodeCandidate[] = Array.isArray(data.results) ? data.results : [];
+      setCandidates(list);
+      setNote(
+        list.length === 0 ? "No match for that address"
+        : list.length === 1 ? null
+        // Never resolved silently to the first hit: "Springfield" matches ten places and the
+        // app has no way to know which one is home.
+        : `${list.length} matches — choose one`,
+      );
+    } catch {
+      setNote("Geocoder unreachable");
+    } finally {
+      setFinding(false);
+    }
+  };
+
+  /** Commit one candidate. The only path where a home acquires a looked-up name. */
+  const choose = (c: GeocodeCandidate) => {
+    setHomeOverride({ lat: c.lat, lon: c.lon, label: geocodedLabel(c.name, c.lat, c.lon) });
+    setCandidates(null);
+    setAddr("");
+    setNote(null);
   };
 
   /**
@@ -159,6 +217,60 @@ function HomeChooser() {
       <div className="lbl px-[3px]" style={{ fontSize: 8, color: "var(--off)" }}>
         {home.label} · {override ? "this browser" : "configured"}
       </div>
+
+      {/*
+        Address entry. `onKeyDown` for Enter and a button - deliberately NOT `onChange`: a
+        lookup per keystroke is auto-complete, which the geocoder's policy forbids and bans
+        for. `onChange` here only tracks the text.
+      */}
+      <div className="flex gap-[2px] mt-[3px]">
+        <input style={field} value={addr}
+               onChange={(e) => setAddr(e.target.value)}
+               onKeyDown={(e) => { if (e.key === "Enter") void find(); }}
+               placeholder="address or place" aria-label="Address or place name" />
+        <button style={{ ...btn, flex: "0 0 42px", color: finding ? "var(--off)" : "var(--cyan)" }}
+                onClick={() => void find()} disabled={finding}>
+          {finding ? "…" : "Find"}
+        </button>
+      </div>
+
+      {candidates && candidates.length > 0 && (
+        // Bounded and scrollable: five candidates, each three lines tall, pushed the panel off
+        // the bottom of a 1000px viewport when this was unconstrained. The list must not be able
+        // to grow the column past the screen no matter what the geocoder returns.
+        <div className="mt-[3px]"
+             style={{ border: "1px solid var(--line)", maxHeight: 168, overflowY: "auto" }}>
+          {candidates.map((c, i) => (
+            <button
+              key={`${c.lat},${c.lon},${i}`}
+              onClick={() => choose(c)}
+              title={c.detail}
+              style={{
+                font: "inherit", fontSize: 9, width: "100%", textAlign: "left",
+                background: "transparent", cursor: "pointer", padding: "3px 4px",
+                border: "none", borderTop: i ? "1px solid var(--line)" : "none",
+                borderRadius: 0, color: "var(--txt)", display: "block",
+              }}
+            >
+              <span style={{ color: "var(--cyan)" }}>
+                {geocodedLabel(c.name, c.lat, c.lon)}
+              </span>
+              {c.kind && <span style={{ color: "var(--off)" }}> · {c.kind}</span>}
+              {/*
+                The full display_name AND the coordinates, because neither alone separates
+                every pair: two Springfield, Virginia results come back with identical detail
+                text and differ only by kind and about half a kilometre.
+              */}
+              <span style={{ display: "block", color: "var(--off)", fontSize: 8 }}>
+                {c.detail}
+              </span>
+              <span style={{ display: "block", color: "var(--dim)", fontSize: 8 }}>
+                {coordLabel(c.lat, c.lon)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-[2px] mt-[3px]">
         <input style={field} value={lat} onChange={(e) => setLat(e.target.value)}

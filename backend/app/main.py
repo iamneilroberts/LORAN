@@ -28,6 +28,7 @@ from .config import (
 )
 from .feeds.adsb import client as adsb
 from .feeds.adsbdb import client as adsbdb
+from .feeds.geocode import client as geocoder
 from .feeds.planespotters import client as photos
 from .feeds.track import store as tracks
 
@@ -52,7 +53,9 @@ async def lifespan(_: FastAPI):
     await adsb.start()
     await adsbdb.start()
     await photos.start()
+    await geocoder.start()
     yield
+    await geocoder.close()
     await photos.close()
     await adsbdb.close()
     await adsb.close()
@@ -271,6 +274,24 @@ async def get_enrich(
     return await adsbdb.enrich(icao, callsign)
 
 
+@app.get("/api/geocode")
+async def get_geocode(q: str = Query(..., min_length=1, max_length=200)):
+    """
+    Candidate positions for a typed address or place name (D-069).
+
+    Always 200. `results: []` means the geocoder knows of no such place - a real answer - while
+    `error` non-null means we could not ask or were refused, which is a different claim and is
+    presented differently. More than one result is AMBIGUOUS and the operator picks; this
+    endpoint deliberately does not rank, filter or choose on their behalf.
+
+    Rate limiting and caching live in the client, and must: the upstream ceiling is counted per
+    application across every browser, so it can only be held in one shared place. The matching
+    rule this endpoint cannot enforce is that callers must not fire it on keystrokes -
+    auto-complete against Nominatim is forbidden and ban-worthy (docs/data-sources.md 6a).
+    """
+    return await geocoder.search(q)
+
+
 @app.get("/api/track")
 async def get_track(hex: str = Query(..., min_length=6, max_length=6)):
     """
@@ -352,6 +373,7 @@ async def health():
             "adsb": adsb.status(),
             "adsbdb": adsbdb.status(),
             "planespotters": photos.status(),
+            "geocode": geocoder.status(),
         },
         "track_buffer": tracks.status(),
         # Recorded honestly: measured zero coverage at Mobile. docs/data-sources.md 5.1a

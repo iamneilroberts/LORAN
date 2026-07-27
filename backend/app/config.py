@@ -37,9 +37,9 @@ def _f(name: str, default: float) -> float:
 
 # planespotters returns 403 without a contact address in the UA, and it is polite to the
 # volunteer-funded ADS-B feeds to identify ourselves too. See docs/data-sources.md 4.2.
-USER_AGENT = os.environ.get(
-    "LORAN_USER_AGENT", "loran/0.1 (+mailto:unset@example.com)"
-)
+# Nominatim requires it as well and will not accept a stock library UA (docs/data-sources.md 6a).
+PLACEHOLDER_USER_AGENT = "loran/0.1 (+mailto:unset@example.com)"
+USER_AGENT = os.environ.get("LORAN_USER_AGENT", PLACEHOLDER_USER_AGENT)
 
 HOME_LAT = _f("LORAN_HOME_LAT", 30.6944)
 HOME_LON = _f("LORAN_HOME_LON", -88.0399)
@@ -62,6 +62,28 @@ ADSBDB_MIN_INTERVAL_S = _f("LORAN_ADSBDB_MIN_INTERVAL_SECONDS", 0.2)
 # anywhere - the browser loads those straight from their CDN.
 PHOTO_TTL_S = min(_f("LORAN_PHOTO_TTL_SECONDS", 86400.0), 86400.0)
 PHOTO_MISS_TTL_S = _f("LORAN_PHOTO_MISS_TTL_SECONDS", 21600.0)
+
+# Geocoding for address entry (D-069). Nominatim by default.
+#
+# The URL is a SETTING and not a constant because the policy requires it: "Apps must make sure
+# that they can switch the service at our request at any time - switching should be possible
+# without requiring a software update." Note that switching to Photon, the documented failover,
+# also needs a normalizer change: it answers GeoJSON, not this flat array.
+#
+# There is no enable flag. The feature is live exactly when LORAN_USER_AGENT carries a real
+# contact address, which is what the policy demands of whoever runs it. See feeds/geocode.py.
+GEOCODE_URL = os.environ.get(
+    "LORAN_GEOCODE_URL", "https://nominatim.openstreetmap.org/search"
+)
+# 1 req/s is Nominatim's ABSOLUTE published maximum, counted per application across all users -
+# so this floor is enforced in one shared gate on the server, not per browser. Do not raise it.
+GEOCODE_MIN_INTERVAL_S = max(_f("LORAN_GEOCODE_MIN_INTERVAL_SECONDS", 1.0), 1.0)
+# A resolved address does not move. Caching is required by the policy, not merely polite.
+GEOCODE_TTL_S = _f("LORAN_GEOCODE_TTL_SECONDS", 7 * 86400.0)
+GEOCODE_MISS_TTL_S = _f("LORAN_GEOCODE_MISS_TTL_SECONDS", 3600.0)
+# Enough candidates to disambiguate a "Springfield" without turning the 210px panel into a
+# results page. Nominatim returns fewer when it knows fewer.
+GEOCODE_LIMIT = int(_f("LORAN_GEOCODE_LIMIT", 5))
 
 # Track ring buffer (D-016). In memory, dies with the process; Phase 5 makes it durable.
 # The sample floor matters: at a 2 s poll an unthrottled buffer is 900 near-identical points

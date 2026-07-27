@@ -5,11 +5,11 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 ## Checklist
 - [x] Geocoding recon → `docs/data-sources.md` §6a — Nominatim USE, Photon/Pelias/geocode.earth rejected, Cloudflare geocoding does not exist
 - [x] Decide proxied-vs-direct, and what the single-file build does instead — **proxied** (policy asks for it; per-app limit; browsers can't set UA); single-file build omits address entry, keeps D-068 lat/lon + geolocation
-- [ ] **OWNER GATE:** Nominatim policy requires the *developer's* deliberate informed decision (LLM clause) — approve before any code
-- [ ] Build address entry into `HomeChooser`; ends at the existing `setHomeOverride`
-- [ ] Handle ambiguity explicitly — candidate list or refuse, never silently first-hit
-- [ ] New decision entry, including **why a geocoded name is allowed where D-068 forbids one**
-- [ ] Attribution component updated if the terms require it
+- [x] **OWNER GATE:** Nominatim policy requires the *developer's* deliberate informed decision (LLM clause) — approved 2026-07-26
+- [x] Build address entry into `HomeChooser`; ends at the existing `setHomeOverride` — submit-only (type-ahead is ban-worthy)
+- [x] Handle ambiguity explicitly — candidate list with kind + coords, never silently first-hit
+- [x] New decision entry — D-069, incl. why a geocoded name is allowed where D-068 forbids one
+- [x] Attribution component updated — "geocoding © OpenStreetMap contributors (ODbL)", unconditional
 - [ ] Rebase the single-file branch onto `main` (4 conflicting files)
 - [ ] Renumber the branch's D-057 across **all five** files
 - [ ] Decide the duplicate-normalizer question (owner input)
@@ -35,4 +35,4 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (handoff pause-2026-07-26-geocoding-merge-push.md; D-061..D-068 shipped, remote access LIVE at loran.voygent.app, 132 FE + 60 BE tests, persist v7. NEXT: geocoding feed (recon first), then the single-file merge, cleanup and push — 27 unpushed.)_
+_Updated: 2026-07-26 — main (D-069 geocoding shipped: Nominatim proxied, submit-only, candidate list; 138 FE + 82 BE tests. NEXT: the single-file merge (71e3edf), repo cleanup, then push.)_

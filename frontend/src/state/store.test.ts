@@ -142,9 +142,33 @@ describe("home override", () => {
     expect(useStore.getState().homeOverride).toBeNull();
   });
 
-  it("labels an override by coordinates, never by a place name", () => {
+  it("labels a TYPED override by coordinates, never by a place name", () => {
     useStore.getState().setHomeOverride({ lat: 47.6062, lon: -122.3321 });
     expect(useStore.getState().home.label).toBe("47.61N 122.33W");
+  });
+
+  /*
+   * D-069 lets a GEOCODED position carry the name the geocoder returned, because that one was
+   * actually looked up. The tests below guard the seam: a supplied label is honoured, and an
+   * absent or blank one still falls back to coordinates rather than to anything invented.
+   */
+  it("keeps the looked-up name on a geocoded override", () => {
+    useStore.getState().setHomeOverride({ lat: 39.799, lon: -89.644, label: "Springfield" });
+    expect(useStore.getState().home.label).toBe("Springfield");
+    expect(useStore.getState().home.lat).toBeCloseTo(39.799, 3);
+  });
+
+  it("falls back to coordinates when a geocoded result had no name", () => {
+    useStore.getState().setHomeOverride({ lat: 30.6901, lon: -88.0412, label: "   " });
+    expect(useStore.getState().home.label).toBe("30.69N 88.04W");
+  });
+
+  it("still refuses an impossible position even when a name is supplied", () => {
+    useStore.getState().setHomeOverride(null);
+    useStore.getState().setHome(server);
+    useStore.getState().setHomeOverride({ lat: 0, lon: -181, label: "Nowhere" });
+    expect(useStore.getState().homeOverride).toBeNull();
+    expect(useStore.getState().home).toEqual(server);
   });
 
   it("does NOT let a later config fetch clobber an explicit override", () => {

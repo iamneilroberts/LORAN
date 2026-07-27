@@ -5,11 +5,14 @@
  * (D-051). The component keeps only the inputs and the buttons.
  *
  * The rule that shapes all of it: a coordinate this app did not look up must never be given a
- * PLACE NAME. There is no geocoder in this project - adding one means a new upstream feed, a
- * data-sources.md verdict and the owner's sign-off - so a home the user typed or that the browser
- * reported is labelled with its own coordinates, formatted. Calling 31.16N 89.75W "HATTIESBURG"
- * because it looks close to one would be exactly the invented data ground rule 1 forbids, and the
- * status bar prints this label as fact.
+ * PLACE NAME. A home the user typed or that the browser reported is labelled with its own
+ * coordinates, formatted. Calling 31.16N 89.75W "HATTIESBURG" because it looks close to one
+ * would be exactly the invented data ground rule 1 forbids, and the status bar prints this
+ * label as fact.
+ *
+ * D-069 added a geocoder, which refines that rule without breaking it. A geocoded position HAS
+ * been looked up, so it may carry the name the geocoder returned - see `geocodedLabel`, and note
+ * that "looked up" is doing the work there, not "sounds like a place".
  */
 
 export interface HomePos {
@@ -69,6 +72,38 @@ export function coordLabel(lat: number, lon: number): string {
   const ns = lat >= 0 ? "N" : "S";
   const ew = lon >= 0 ? "E" : "W";
   return `${Math.abs(lat).toFixed(2)}${ns} ${Math.abs(lon).toFixed(2)}${ew}`;
+}
+
+/** One candidate from `/api/geocode`. Field-for-field what the backend normalized. */
+export interface GeocodeCandidate {
+  lat: number;
+  lon: number;
+  /** Verbatim from the geocoder, and EMPTY for anything that is not a named place. */
+  name: string;
+  /** The long form - "150, Government Street, …, Alabama, 36602, United States". */
+  detail: string;
+  /** "city", "aeroway", "place" … Shown because two candidates can share a `detail`. */
+  kind: string;
+}
+
+/**
+ * The label for a position we DID look up (D-069).
+ *
+ * The distinction from the coordinate-only rule above is "did this app look it up", not "does
+ * this sound like a place", so a geocoded result may carry its name. Two properties keep that
+ * honest:
+ *
+ *   1. The name is used VERBATIM. Not shortened, not title-cased, not recomposed from parts.
+ *      The status bar prints it as fact, so it has to be the geocoder's claim and not ours.
+ *   2. An empty name falls back to coordinates. Nominatim fills `name` for a place that has one
+ *      ("Springfield", "Mobile Regional Airport") and leaves it "" for a street address, which
+ *      is not a named place - so 150 Government Street is labelled "30.69N 88.04W", exactly as
+ *      if it had been typed in. Reaching into `detail` to manufacture a name for it would be
+ *      inventing one, and inventing it out of real fragments is still inventing it.
+ */
+export function geocodedLabel(name: string, lat: number, lon: number): string {
+  const n = name.trim();
+  return n || coordLabel(lat, lon);
 }
 
 /**

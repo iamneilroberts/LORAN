@@ -473,9 +473,33 @@ alone will render two indistinguishable rows. Include `type` and the coordinates
 
 #### The usage policy is the binding constraint, and it is stricter than the HTTP behaviour
 
-Read from <https://operations.osmfoundation.org/policies/nominatim/> on 2026-07-26. **None of this
-is enforced at the HTTP layer** — a stock `curl/8.0` UA and a Chrome UA both returned 200. As with
-planespotters test C, absence of enforcement is not permission.
+Read from <https://operations.osmfoundation.org/policies/nominatim/> on 2026-07-26. Most of it is
+not enforced at the HTTP layer — a stock `curl/8.0` UA and a Chrome UA both returned 200, and as
+with planespotters test C, absence of enforcement is not permission.
+
+**The identification rule, however, IS enforced, and it caught our own shipped default.** Measured
+2026-07-26, same egress IP, same query, differing only in User-Agent:
+
+| User-Agent | Result |
+|---|---|
+| `loran/0.1 (+mailto:adsb@voygent.ai)` — a real contact | **200** |
+| `curl/8.0` — stock library default | **200** |
+| `loran/0.1 (+mailto:test@example.com)` | **403** `Access denied. See …/policies/nominatim/` |
+| `loran/0.1 (+mailto:unset@example.com)` — **this repo's placeholder** | **403** |
+
+So the gate is not on *having* a UA, nor on it being non-stock: it is on the contact address being
+a real domain. A placeholder is refused outright. Two consequences, both already in the code:
+
+1. The `_contactless()` gate in `feeds/geocode.py` — refusing to call while `LORAN_USER_AGENT` is
+   still the shipped placeholder — is not merely polite. Without it an unconfigured clone would
+   generate nothing but 403s.
+2. **A 403 here almost certainly means "your contact address was rejected", not "you were
+   throttled."** The client reports them separately, because telling an operator to wait out a
+   block that waiting cannot clear is worse than saying nothing.
+
+This is a correction to an earlier draft of this section, which recorded the enforcement as absent
+on the strength of the two 200s alone. The 403s were found by running the built container against
+the live service rather than by re-reading the policy.
 
 | # | Policy text | Consequence for LORAN |
 |---|---|---|
@@ -544,10 +568,11 @@ so a switch is a normalizer change, not a URL change. Noted now so it is not a s
 
 | Test | Origin | User-Agent | Result |
 |---|---|---|---|
-| A | none | `loran/0.1 (+mailto:…)` | 200 |
-| B | none | `curl/8.0` (stock) | 200 — *gate not enforced, but policy clause 2 still forbids it* |
-| C | `http://localhost:5173` | `loran/0.1 (+mailto:…)` | 200, **`access-control-allow-origin: *`** |
+| A | none | `loran/0.1 (+mailto:adsb@voygent.ai)` | 200 |
+| B | none | `curl/8.0` (stock) | 200 — *not enforced, but policy clause 2 still forbids it* |
+| C | `http://localhost:5173` | `loran/0.1 (+mailto:adsb@voygent.ai)` | 200, **`access-control-allow-origin: *`** |
 | D | `http://localhost:5173` | Chrome 126 | 200 |
+| E | none | `loran/0.1 (+mailto:unset@example.com)` | **403** — placeholder contact refused (above) |
 
 CORS is permissive and the header is emitted only when `Origin` is present — which is why it is
 absent from a plain `curl -D -`. So the browser *could* call it directly.

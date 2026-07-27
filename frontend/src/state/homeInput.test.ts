@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  coordLabel, effectiveHome, isHomePos, parseCoord, problemText, validateHome,
+  coordLabel, effectiveHome, geocodedLabel, isHomePos, parseCoord, problemText, validateHome,
 } from "./homeInput";
 
 const MOBILE = { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" };
@@ -115,5 +115,35 @@ describe("isHomePos", () => {
     ]) {
       expect(isHomePos(bad)).toBe(false);
     }
+  });
+});
+
+/**
+ * The geocoded-label rule (D-069) — the one place the D-068 "never name an un-looked-up
+ * coordinate" rule bends, and the tests are about keeping the bend narrow. The easy fake pass is
+ * checking that a name comes back when a name is given; what matters is that an ABSENT name does
+ * not get manufactured, and that a present one is not touched up on the way through.
+ */
+describe("geocodedLabel", () => {
+  it("uses the geocoder's name verbatim", () => {
+    expect(geocodedLabel("Springfield", 39.799, -89.644)).toBe("Springfield");
+    expect(geocodedLabel("Mobile Regional Airport", 30.693, -88.241))
+      .toBe("Mobile Regional Airport");
+  });
+
+  it("does not prettify, shorten or re-case the name", () => {
+    // Whatever the geocoder said is what the status bar prints as fact.
+    expect(geocodedLabel("saint-étienne-du-rouvray", 49.38, 1.10))
+      .toBe("saint-étienne-du-rouvray");
+    expect(geocodedLabel("Kingston upon Hull, City of Kingston upon Hull", 53.74, -0.33))
+      .toBe("Kingston upon Hull, City of Kingston upon Hull");
+  });
+
+  it("falls back to coordinates when the place has no name of its own", () => {
+    // A street address returns name "". Naming it from its address fragments would be
+    // inventing a place name out of real parts, which is still inventing it.
+    expect(geocodedLabel("", 30.6901, -88.0412)).toBe(coordLabel(30.6901, -88.0412));
+    expect(geocodedLabel("   ", 30.6901, -88.0412)).toBe(coordLabel(30.6901, -88.0412));
+    expect(geocodedLabel("", 30.6901, -88.0412)).toBe("30.69N 88.04W");
   });
 });

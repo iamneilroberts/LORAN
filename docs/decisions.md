@@ -2735,3 +2735,106 @@ column are usable or cramped, whether `flyTo` at 1.5 s reads as deliberate, and 
 
 **Not built, and needing a decision first:** address entry. It requires a geocoding feed, which is
 a `docs/data-sources.md` decision before it is a code decision.
+
+---
+
+## D-069 — 2026-07-26 — GEOCODING: address entry via Nominatim, proxied, submit-only, and why a geocoded position may carry a name
+
+**Date:** 2026-07-26
+
+D-068 shipped manual lat/lon and browser geolocation and **stopped deliberately short of address
+entry**, because a geocoder is a new upstream feed and this project requires a recorded verdict
+before one is used. The owner asked for it on 2026-07-26. This is the recon, the verdict and the
+build. Full probe log: `docs/data-sources.md` §6a.
+
+**Nominatim wins, and Photon lost on a measured accuracy test rather than on reputation.** Same
+query, same minute: `150 Government St, Mobile, AL` → Nominatim returned the exact house at
+`30.6901, -88.0412`; Photon returned *Government Street Presbyterian Church, housenumber 300*,
+with its runner-up a bus stop ~17 km away on *Old* Government Street Road. Hosted Pelias
+(geocode.earth) starts at **$100/month**; self-hosted Pelias wants Elasticsearch, Node, SQLite and
+libpostal (~4 GB of data) to resolve an address the owner types twice. **Cloudflare has no
+geocoding product at all** — only IP geolocation — which is worth recording because it was on the
+shortlist and is easy to assume into existence.
+
+**Proxied, not direct — and the interesting part is that direct was actually available.** Unlike
+planespotters (D-009), Nominatim sends `access-control-allow-origin: *` and accepts a browser UA,
+so the browser *could* call it. We proxy anyway because (1) the policy explicitly asks for it —
+"if at all possible, set up a proxy and also enable caching"; (2) the 1 req/s ceiling is counted
+**per application, summed across all users**, and only the server can hold that line across the
+owner and a shared guest; (3) a browser cannot set `User-Agent` — a forbidden header name — so a
+direct call would identify itself as Chrome and breach the identification clause. Reason 3 is the
+same wall that forced the planespotters architecture, arrived at from the opposite direction.
+
+**Three policy clauses changed the design and none of them would have survived being recalled
+rather than read:**
+
+- **Auto-complete is forbidden outright and ban-worthy** — "you must not implement such a service
+  on the client side using the API". So the field is **submit-triggered only**, button or Enter,
+  never `onChange` and never debounced. This is the single most likely way to build this feature
+  wrong, and it is the one a future refactor is most likely to "improve" into existence.
+- **"Switching should be possible without requiring a software update"** — so the endpoint is
+  `LORAN_GEOCODE_URL`, a setting, not a constant. Note that switching to Photon (the documented
+  failover) also needs a normalizer change: it answers GeoJSON, not a flat array.
+- **Caching is required**, not merely polite: "clients sending repeatedly the same query may be
+  classified as faulty and blocked."
+
+**There is no `LORAN_GEOCODE_ENABLED` flag, and that is deliberate.** The feature is live exactly
+when `LORAN_USER_AGENT` carries a real contact address — the same UA planespotters already needs.
+A separate flag would be a second thing to remember that means the same thing; tying it to the
+contact address makes the open-source default compliant *and* makes the one action required to
+enable it exactly the action the policy requires of the operator.
+
+**That gate turned out to be load-bearing, not decorative — found by running the built container
+against the live service.** Nominatim answers **403 `Access denied`** to a UA whose contact is a
+placeholder domain, and **this repo's shipped default `loran/0.1 (+mailto:unset@example.com)` is
+refused**, while a stock `curl/8.0` UA is currently let through. An earlier draft of §6a recorded
+the identification rule as unenforced on the strength of two 200s; that was wrong, and the
+correction is in the file. Consequence in code: **403 and 429 are reported separately**, because
+"you were throttled" sends the operator off to wait out a block that waiting cannot clear, when
+the actual fix is to configure a contact address.
+
+**The labelling rule from D-068 bends here, and this is the paragraph to read before assuming it
+was violated.** D-068 says a coordinate this app did not look up never gets a place name. **A
+geocoded position HAS been looked up**, so it may carry the name the geocoder returned. Two
+properties keep the bend narrow:
+
+1. The name is used **verbatim** — not shortened, re-cased, or recomposed from address parts.
+   The status bar prints it as fact, so it must be the geocoder's claim and not ours.
+2. **An empty name falls back to coordinates.** Nominatim fills `name` for a place that has one
+   ("Springfield", "Mobile Regional Airport") and leaves it `""` for a street address, which is
+   not a named place. So *150 Government Street* is labelled `30.69N 88.04W`, exactly as if it had
+   been typed. Reaching into `display_name` to manufacture a name for it would be inventing one,
+   and inventing it out of real fragments is still inventing it.
+
+**Ambiguity is presented, never resolved silently.** `Springfield` returns ten results; the panel
+shows up to five as a candidate list and changes nothing until the operator picks one. The rows
+carry `kind` and coordinates as well as the name, because **two Springfield, Virginia results come
+back with character-identical `display_name`** and differ only by type (`census` vs `city`) and
+about half a kilometre — a list keyed on the name alone renders two indistinguishable rows.
+
+**Four failure states, kept apart.** No match (HTTP 200 with `[]` — the same silent-success trap
+planespotters sets), ambiguous, refused/rate-limited, and unreachable. **All four leave the
+current home untouched**, which is the property that matters: an address that resolves to nothing
+must not leave the console centred somewhere else behind a message that reads like success.
+
+**The single-file build has no backend, so address entry does not exist there** and says so, the
+way photos already do. D-068's manual lat/lon and geolocation are pure-client and still work, so
+it is not left without a way to set home.
+
+**Attribution is unconditional**, unlike the radar credit which appears only while that layer is
+drawn. Geocoding is a standing capability and a geocoded home keeps displaying an
+OpenStreetMap-derived *name* in the status bar long after the lookup, so the credit stays up.
+
+**Verified, not assumed:** 4 concurrent distinct queries through the container took **5.01 s**,
+confirming the 1 req/s gate serialises rather than merely intending to; a repeat query and a
+case/whitespace variant both served from cache with no upstream call; and the whole path was
+driven in a real browser against the **built container** — typed "Springfield", picked Illinois,
+watched the globe re-aim to KSPI and the status bar read `SPRINGFIELD`, console clean. The
+candidate list is bounded (`maxHeight` + scroll) because five three-line candidates pushed the
+preferences column off the bottom of a 1000 px viewport on the first attempt.
+
+**Owner sign-off was a precondition, not a formality.** Nominatim's policy permits the public API
+"only where the application developer has made a deliberate, informed decision to use it and is
+directly responsible for complying with this policy", and requires an LLM suggesting it to point
+at the policy and explain the restrictions. The restrictions were put to the owner in full and the
+decision was theirs before any code was written.

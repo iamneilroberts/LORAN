@@ -259,7 +259,7 @@ interface State {
   setFeeds: (f: FeedStatus[]) => void;
   setHome: (h: HomePos) => void;
   /** Set or clear the per-browser override. Pass null to fall back to the configured home. */
-  setHomeOverride: (h: { lat: number; lon: number } | null) => void;
+  setHomeOverride: (h: { lat: number; lon: number; label?: string } | null) => void;
   setTheme: (t: ThemeName) => void;
   setCursor: (c: { lat: number; lon: number } | null) => void;
   setDepth: (m: number | null, pending: boolean) => void;
@@ -457,7 +457,13 @@ export const useStore = create<State>()(persist((set) => ({
     serverHome, home: effectiveHome(serverHome, st.homeOverride),
   })),
   setHomeOverride: (pos) => set((st) => {
-    const override = pos ? { ...pos, label: coordLabel(pos.lat, pos.lon) } : null;
+    // `label` is supplied ONLY by a geocoded pick, which is a position this app looked up
+    // (D-069). Typed and geolocated positions omit it and get coordinates, which is D-068's
+    // rule and still the default here - the fallback is what keeps an un-looked-up position
+    // from ever acquiring a name.
+    const override = pos
+      ? { ...pos, label: pos.label?.trim() || coordLabel(pos.lat, pos.lon) }
+      : null;
     // Guarded, because this value reaches the camera and the fetch radius.
     const safe = override && isHomePos(override) ? override : null;
     return { homeOverride: safe, home: effectiveHome(st.serverHome, safe) };
