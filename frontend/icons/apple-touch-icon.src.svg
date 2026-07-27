@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <title>LORAN apple-touch-icon source</title>
+  <!--
+    SOURCE for frontend/public/apple-touch-icon.png. Not served, because iOS has never supported
+    SVG for apple-touch-icon: the PNG is what ships, and this is what regenerates it. Run
+    scripts/make-icons.sh after editing this file.
+
+    Rasterising at build time would need an SVG library in the runtime image, which ground rule 2
+    says to ask before adding. For a 4.6 kB file that changes approximately never, committing the
+    PNG is the cheaper trade.
+
+    Same mark as favicon.svg, inset to about 76 percent. That inset is the entire reason this is
+    a separate file: iOS masks the icon to a rounded square of roughly 22 percent corner radius
+    and adds no padding of its own, so the favicon's tighter margin would clip the amber contact
+    against the corner.
+
+    Do not write a double hyphen anywhere in this comment. It is illegal in XML and silently
+    breaks the file; see the longer note in favicon.svg for how that already bit once.
+  -->
+  <rect width="180" height="180" fill="#05070a"/>
+  <g transform="translate(21.5,21.5) scale(4.28)">
+    <circle cx="14.5" cy="18" r="10" fill="none" stroke="#5fd7e0" stroke-width="3.5"/>
+    <circle cx="25.5" cy="7" r="4.9" fill="#05070a"/>
+    <circle cx="25.5" cy="7" r="3.4" fill="#ffb000"/>
+  </g>
+</svg>

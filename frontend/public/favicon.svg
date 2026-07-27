@@ -1,21 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <title>LORAN</title>
   <!--
-    The globe, and one contact off its limb. Colours are tokens.css verbatim: --bg, --cyan for
-    nominal chrome, --amber for the contact.
+    The globe, and one contact off its limb. Colours are the bg, cyan and amber tokens from
+    src/styles/tokens.css, verbatim.
 
-    Designed at 16x16 and scaled up, not the reverse - a favicon is only ever seen at tab size,
+    NOTE FOR ANYONE EDITING THIS COMMENT: a double hyphen is illegal inside an XML comment, and
+    an SVG served as image/svg+xml is parsed as strict XML. The first version of this file wrote
+    the token names with their CSS prefix, which made the whole file unparseable - it still
+    returned HTTP 200 with the right content type, and still showed no console error, so every
+    check passed while the icon silently failed to render. Write token names without the prefix.
+
+    Designed at 16x16 and scaled up, not the reverse: a favicon is only ever seen at tab size,
     where thin strokes and small detail turn to mush. Hence three shapes, a 3.5 stroke (1.75px
-    at 16x16), and ~9% clear margin.
+    at 16x16), and roughly 9 percent clear margin.
 
-    The middle circle is a --bg knockout, not decoration: without it the amber contact touches
-    the cyan stroke and the two bleed into one muddy blob when downscaled.
+    The middle circle is a background-coloured knockout, not decoration. Without it the amber
+    contact touches the cyan stroke and the two bleed into one blob when downscaled.
 
-    Rejected on the way here, all for the same reason - they read as something else at 16px: a
-    globe limb with a drop-line to the contact (a map pin), the same with a heading chevron (a
-    flag), the same with an altitude datum bar (a table), and a bare limb with a contact above
-    it (a sad face). The drop-line version best expressed what this app actually does, which is
-    altitude, but the pole motif overwhelms the intent at any weight.
+    Rejected on the way here, all for reading as something else entirely at 16px: a globe limb
+    with a drop-line to the contact (a map pin), the same with a heading chevron (a flag), the
+    same with an altitude datum bar (a table), and a bare limb with a contact above it (a sad
+    face). The drop-line version best expressed what this app actually does, which is altitude,
+    but a vertical stem under anything reads as a pin at tab size no matter what sits on top.
   -->
   <rect width="32" height="32" fill="#05070a"/>
   <circle cx="14.5" cy="18" r="10" fill="none" stroke="#5fd7e0" stroke-width="3.5"/>

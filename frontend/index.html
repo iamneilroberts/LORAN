@@ -10,6 +10,12 @@
       fallback for anything current.
     -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      iOS has never supported SVG here, and with no apple-touch-icon it makes a Home Screen icon
+      out of a screenshot of the page - which for a dark globe is an unreadable smudge. PNG is
+      generated from frontend/icons/apple-touch-icon.src.svg by scripts/make-icons.sh.
+    -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>LORAN</title>
   </head>
   <body>

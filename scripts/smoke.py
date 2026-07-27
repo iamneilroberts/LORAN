@@ -9,14 +9,16 @@ were reviewed against it; a "never deployed" conclusion drawn from grepping a MI
 for an identifier minification had renamed away. Each of those was found by a person noticing.
 This script is the mechanical version.
 
-It asserts four things, in order of how badly each has bitten:
+It asserts five things, in order of how badly each has bitten:
 
   1. The container reports the commit it was built from  (--expect-sha).
   2. The bundle the server SERVES is byte-identical to the one inside the image
      (--container). Not a name comparison, a sha256 of the actual bytes - that is what a
      stale-image incident actually looks like.
-  3. The page mounts. React put children under #root.
-  4. The console is clean. No uncaught exceptions, no console.error, no error-level log
+  3. Every declared icon is served, and any SVG among them PARSES. A malformed SVG
+     returns 200 with the right content type and logs nothing - it just fails to draw.
+  4. The page mounts. React put children under #root.
+  5. The console is clean. No uncaught exceptions, no console.error, no error-level log
      entries.
 
 It must pass with ZERO aircraft. GitHub runners hitting airplanes.live would be both
@@ -32,14 +34,14 @@ other CDP scripts here. Nothing new (ground rule 2).
 
 POINTING THIS AT A LIVE, TOKEN-PROTECTED DEPLOYMENT
 
-Checks 1-3 work and are worth running - they are the fastest honest answer to "is the tunnel
-serving what I think it is?". Check 4 will FAIL, and correctly so: with LORAN_ACCESS_TOKENS
+Checks 1-4 work and are worth running - they are the fastest honest answer to "is the tunnel
+serving what I think it is?". Check 5 will FAIL, and correctly so: with LORAN_ACCESS_TOKENS
 configured, a browser holding no token gets 401 from /api/config and /api/aircraft, and those
 are error-level console entries. That is the access door working.
 
 Those 401s are deliberately NOT allowlisted. In CI the door is off, so a 401 there would be a
 real defect, and excusing it here would blind the check to it. Read a production run as
-"1-3 passed, 4 reported the door" rather than trying to make it green.
+"1-4 passed, 5 reported the door" rather than trying to make it green.
 """
 from __future__ import annotations
 
@@ -55,6 +57,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import xml.dom.minidom
 
 import websockets
 
@@ -67,14 +70,15 @@ CHROME_CANDIDATES = (
     "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome",
 )
 
-# Console errors that are NOT evidence of a broken build.
+# Console errors that are NOT evidence of a broken build. EMPTY, and worth keeping that way.
 #
 # An allowlist is how a smoke check quietly stops checking anything, so this one is built to
 # resist that: every entry must carry a REASON and a condition for deleting it, and every
 # suppression is PRINTED on a pass. If this list is growing, that is the signal - not the fix.
-# EMPTY, and worth keeping that way. The only entry this ever held was a /favicon.ico 404, and it
-# came out the moment frontend/public/favicon.svg shipped: a 404 there is now a real regression -
-# a dropped <link rel="icon">, or the asset missing from the image - and must fail the build.
+#
+# The only entry it has ever held was a /favicon.ico 404, which came out the moment
+# frontend/public/favicon.svg shipped. A 404 there is now a real regression - a dropped
+# <link rel="icon">, or the asset missing from the image - and must fail.
 ALLOWED_ERRORS = ()
 
 
@@ -204,8 +208,53 @@ def check_served_matches_built(base: str, container: str | None) -> None:
         log(f"  {path} served == built ({served[:16]}…)")
 
 
+ICON_RE = re.compile(r'<link\s+[^>]*rel="(icon|apple-touch-icon)"[^>]*>', re.I)
+HREF_RE = re.compile(r'href="([^"]+)"', re.I)
+
+
+def check_icons(base: str) -> None:
+    """
+    Fetch every declared icon and, for SVG, PARSE it.
+
+    Written because the first favicon shipped broken and every check passed. It returned HTTP
+    200 with content-type image/svg+xml and logged no console error - but a double hyphen inside
+    an XML comment made it unparseable, so browsers rendered nothing. An SVG served as
+    image/svg+xml is strict XML; "200 and the right content type" says nothing about whether it
+    draws. Only parsing does.
+    """
+    html = fetch(f"{base}/").decode("utf-8", "replace")
+    links = ICON_RE.findall(html)
+    tags = [m.group(0) for m in ICON_RE.finditer(html)]
+
+    if not links:
+        raise SmokeFailure(
+            "index.html declares no <link rel=\"icon\">. Without one, browsers request "
+            "/favicon.ico unprompted and 404 on every page load."
+        )
+
+    for tag in tags:
+        href = HREF_RE.search(tag)
+        if not href:
+            raise SmokeFailure(f"icon link has no href: {tag}")
+        path = href.group(1)
+        body = fetch(f"{base}{path}" if path.startswith("/") else f"{base}/{path}")
+        if not body:
+            raise SmokeFailure(f"{path} served an empty body")
+        if path.lower().endswith(".svg"):
+            try:
+                xml.dom.minidom.parseString(body)
+            except Exception as e:                           # noqa: BLE001 - any parse error is fatal
+                raise SmokeFailure(
+                    f"{path} is served but is NOT well-formed XML: {e}. Browsers will render "
+                    "nothing. A double hyphen inside an XML comment is the usual cause."
+                ) from e
+            log(f"  {path} ({len(body)} B) parses as XML")
+        else:
+            log(f"  {path} ({len(body)} B) served")
+
+
 # ---------------------------------------------------------------------------
-# 3 + 4: load it in a real browser.
+# 4 + 5: load it in a real browser.
 # ---------------------------------------------------------------------------
 
 def find_chrome(explicit: str | None) -> str:
@@ -391,16 +440,19 @@ def main() -> int:
     args = p.parse_args()
 
     try:
-        log(f"1/4 waiting for {args.base}/api/health")
+        log(f"1/5 waiting for {args.base}/api/health")
         health = wait_for_health(args.base, args.health_timeout)
 
-        log("2/4 build provenance")
+        log("2/5 build provenance")
         check_build_sha(health, args.expect_sha)
 
-        log("3/4 served bundle == built bundle")
+        log("3/5 served bundle == built bundle")
         check_served_matches_built(args.base, args.container)
 
-        log("4/4 loading the page in headless Chrome")
+        log("4/5 icons are declared, served and parseable")
+        check_icons(args.base)
+
+        log("5/5 loading the page in headless Chrome")
         chrome = find_chrome(args.chrome)
         log(f"  using {chrome}")
         asyncio.run(check_page_in_browser(args.base, chrome, args.settle))
