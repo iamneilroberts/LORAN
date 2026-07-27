@@ -101,6 +101,31 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 
 ---
 
+## Access control — adding a person
+
+The tokens **are** the config; there is no user store to query. `scripts/mint-link.sh` mints
+nothing — it only prints links for tokens already in `.env`. Full runbook: `docs/remote-access.md`.
+
+1. **Generate:** `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+2. **Add** `,name:TOKEN` to `LORAN_ACCESS_TOKENS` in `.env`. Gitignored — never commit a token.
+3. **Apply.** Compose reads `.env` at container-**create** time, so the running container keeps
+   the old spec until it is recreated: `docker compose up -d`. No rebuild — only env changed.
+   (Bare-metal path: restart `scripts/serve.sh`.)
+4. **Verify against the real deployment**, not just the local port:
+   `curl -sS "https://<host>/api/session?t=TOKEN"` → `{"auth":true,"principal":"<name>",…}`, and a
+   wrong token must give **401**. Note `GET /` returns 200 with or without a valid token, so
+   loading the page proves nothing. `/api/health` also reports `auth.principals: <count>`.
+5. **The link** is `https://<host>/?t=TOKEN` — a bearer credential in a URL. Send it privately.
+   The token can instead be pasted into the locked panel, keeping it out of access logs (D-057).
+
+**Adding or removing anyone signs EVERYONE out.** With `LORAN_SESSION_SECRET` unset (the default),
+`auth.py` derives the session-cookie key from the sorted token list, so any change to that list
+invalidates every existing cookie. Nobody loses access — each person re-opens their own link once
+— but tell them first. Setting `LORAN_SESSION_SECRET` removes this at the cost of making token
+rotation stop revoking old cookies for up to 30 days, which is the worse trade.
+
+---
+
 ## Phases
 
 Sequential. Stop and wait for sign-off after each.

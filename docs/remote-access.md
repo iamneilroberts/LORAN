@@ -83,11 +83,47 @@ Send the link over something private. It is a bearer credential in a URL, which 
 
 ---
 
+## Adding someone later
+
+Same three steps as §1, plus the part that is easy to miss:
+
+1. Generate a token and append `,name:TOKEN` to `LORAN_ACCESS_TOKENS` in `.env`.
+2. **Apply it.** Under Compose, `.env` is read when the container is *created*, not on every
+   request — the running container keeps the old token list until you recreate it:
+
+   ```
+   docker compose up -d
+   ```
+
+   No `--build` needed; only the environment changed. On the bare-metal path, restart
+   `scripts/serve.sh`.
+3. **Verify before you send the link.** `GET /` answers 200 with or without a valid token, so
+   opening the page proves nothing. Ask the session endpoint instead:
+
+   ```
+   curl -sS "https://adsb.example.com/api/session?t=PASTE_THEIR_TOKEN"
+   ```
+
+   A good token returns `{"auth":true,"principal":"<their name>","owner":false}` and a
+   `Set-Cookie`; a bad one returns **401** `token not recognised`. `/api/health` also reports
+   `auth.principals` as a count, which catches an `.env` that never took effect.
+
+> **Adding a person signs everyone else out**, in the default configuration — see the warning
+> under Revoking. Warn them, or do it when nobody is mid-flight-watch.
+
 ## Revoking
 
-Remove that person's entry from `LORAN_ACCESS_TOKENS` and restart. Their existing cookies
-stop working immediately — sessions name their principal, and a principal that is no longer
-configured is rejected. Changing your own token invalidates only your own sessions.
+Remove that person's entry from `LORAN_ACCESS_TOKENS` and recreate the container (or restart
+`serve.sh`). Their existing cookies stop working immediately — sessions name their principal, and
+a principal that is no longer configured is rejected.
+
+> **Any change to the token list signs out every principal, not just the one you touched.**
+> When `LORAN_SESSION_SECRET` is unset — the default — `auth.py` derives the cookie-signing key
+> from the sorted list of tokens, so adding, removing or rotating *any* entry changes the key and
+> invalidates *every* outstanding cookie. Nobody loses access: each person re-opens their own link
+> and gets a fresh 30-day cookie. Setting `LORAN_SESSION_SECRET` pins the key and avoids this, but
+> then a rotated token stops revoking its old cookies until they expire (up to
+> `LORAN_SESSION_TTL_SECONDS`), which is the worse failure. Leaving it unset is deliberate.
 
 ## What a visitor without a token sees
 
