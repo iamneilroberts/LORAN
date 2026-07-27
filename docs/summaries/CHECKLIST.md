@@ -15,18 +15,25 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [x] Duplicate-normalizer decided: **shared fixture** (owner, 2026-07-26) — NOT YET BUILT
 - [x] Merged (ff to `98593f7`); 138 FE + 82 BE tests, tsc clean, both builds green
 - [x] Regenerated `loran.html` (11 MB, was 8.88); verified from `file://` — 34 live contacts, glyphs/boundaries/places OK, console clean. **Bathymetry still unconfirmed**: GEBCO reachable from file:// but 11-20s per tile vs 0.7s via curl
-- [x] **`docker compose up --build -d`** — was overdue: the served bundle `index-CTD7vabJ.js` had
-      **zero** occurrences of `glance`, so D-072 had never been deployed. Rebuilt and deployed
-      2026-07-27; served bundle is now `index-Ce7_mh5T.js` and carries the glance view plus D-074
+- [x] **`docker compose up --build -d`** — done 2026-07-27; served bundle is now
+      `index-Ce7_mh5T.js` and carries D-074.
+      **CORRECTION, and the method is the lesson.** This first read as "D-072 was never deployed",
+      on the evidence that the served bundle had zero occurrences of `glance`. That test is
+      worthless: the bundle is MINIFIED, so the `GlanceView` identifier is renamed away and
+      `grep glance` returns 0 whether the code is there or not. Re-tested against string literals,
+      which minification preserves — `No contacts in range`, `the feed is not answering` — and
+      the OLD bundle contained both. **The glance view had been live since D-072.** Only D-074
+      was actually missing. **Grep a minified bundle for user-visible STRINGS, never identifiers**
 - [x] **D-074 filed ORIGIN leg + flashing fix** — dashed leg back to `route.origin`, mirrored
       sanity check (`checkFiledOrigin`), one `Filed route` toggle. Flashing root-caused by
       measurement: 34/35 cruising contacts changed a rebuild-key input per poll, so the
       clear-and-re-add ran every tick. Now mutates in place. 182 FE + 110 BE
-- [ ] **Tunnel systemd unit — WRITTEN, NOT INSTALLED** (needs sudo). Container already survives
-      reboot (`restart: unless-stopped` + docker enabled); cloudflared does NOT — it is a bare
-      foreground process. Unit drafted in the session scratchpad; **not** committed because it
-      hardcodes an absolute home path (D-019). Do NOT use `cloudflared service install` — it targets the
-      SHARED `~/.cloudflared/config.yml`
+- [x] **Tunnel survives reboot — DONE 2026-07-27.** `cloudflared-loran.service` is `enabled` +
+      `active` (owner installed it); the hand-run foreground process is gone. The container was
+      already covered by `restart: unless-stopped` + `docker.service` enabled, so no unit for it.
+      Unit source kept OUT of the repo (it hardcodes an absolute home path, D-019) — it lives in
+      the coordination dir. Do NOT use `cloudflared service install`: it targets the SHARED
+      `~/.cloudflared/config.yml`, which belongs to the voygent-desktop tunnel
 - [x] `docs/summaries/` decided: **scrub the files** (owner, 2026-07-26) — NOT YET DONE
 - [x] Sweep `adsb.voygent.ai` → `loran.voygent.app` in `docs/remote-access.md` — clean; remaining
       hits are historical (old handoffs + `decisions.md` D-067 narrative), correct to leave
@@ -63,7 +70,10 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main @ `b209483` (resumed via /pickup; boxes re-verified against git, the
-live site and the served bundle. 165 FE + 110 BE green, health 200, 0 unpushed. NEW FINDING: the
-container was never rebuilt after D-072, so the glance view is not live. NEXT: rebuild+deploy,
-prune the merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_
+_Updated: 2026-07-27 — main @ `776b176`, pushed, upstream tracking set. D-074 shipped (filed-origin
+leg + the flashing fix), container rebuilt and deployed, glance view verified live at 390x844,
+tunnel now on systemd. Repo cleaned to a single branch: `master` and `phase2-dossier` deleted
+local + remote, merged agent worktree and `singlefile-pre-rebase` tag pruned. 182 FE + 110 BE.
+Retracted the "glance view was never deployed" finding — see the correction above.
+NEXT: **CI** (still nothing runs the suites but a person; four incidents now), viewport-scoped
+fetch, lazy-import Cesium so the phone never downloads it, owner sign-off on the glance view._

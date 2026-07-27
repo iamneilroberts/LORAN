@@ -48,3 +48,6 @@ frontend/public/cesium/
 # (they embed a live-traffic snapshot and go stale; the generator is the durable thing)
 docs/mockups/assets.json
 docs/mockups/index.html
+
+# Local session logs (/session-end). Operational notes, not part of the public project.
+SESSION_LOG.md
