@@ -3460,3 +3460,91 @@ measurement artefact was recorded as an engine defect and gated real work behind
 **What is NOT reversed.** No accounts beyond the existing token door, no offline mode, no push
 notifications, no native app. The mobile layout is a layout, and this entry is not a licence to
 grow a second product.
+
+---
+
+## D-077 — 2026-07-27 — CI, and the provenance stamp that matters more than the CI
+
+The project had no `.github` directory at all. Nothing ran the suites but a person, and five
+incidents now share one shape: **something green was verified instead of the thing that shipped.**
+
+| # | What was green | What was actually broken |
+|---|---|---|
+| 1 | `tsc`, 87 tests, a production build (D-064) | crashed on every page load |
+| 2 | six features reviewed on `:5173` | the tunnel served an old image |
+| 3 | every local check | a test file broke `docker compose up --build` twice |
+| 4 | — | a bad grep against a **minified** bundle produced a false "never deployed" finding |
+
+### Two jobs, not five steps
+
+`frontend/package.json`'s `build` already chains `cesium:assets && check:palette && tsc --noEmit
+&& vite build`, and `Dockerfile:34` runs it. So **`docker build` subsumes the palette check, the
+production typecheck and the Vite build.** Running those as separate CI steps would duplicate the
+work and — worse — could drift from what the image actually does. They are deliberately absent.
+
+What the image build does NOT cover is what CI adds: the unit tests (`tsconfig.json` excludes
+tests so a test file cannot break the production image, per D-064, and pytest is not in the
+runtime stage), and whether the built page actually boots.
+
+Smoke lives inside the build job rather than its own. GitHub jobs do not share a Docker daemon,
+so splitting them would mean `docker save` → artifact → `docker load` for a 185 MB image — more
+wall-clock than the build itself, to move an image already sitting in the daemon.
+
+**Measured, so it does not get re-litigated:** cold `docker build` on a GitHub runner is ~35 s
+with zero cached layers. The worry that it might need a buildx layer cache was wrong. It does not.
+
+### The stamp is the part with the longest payoff
+
+`/api/health` reported `ok`, `uptime_s` and `feeds` — **no version, no commit**. So "is the
+deployed thing the code I think it is?" was unanswerable except by comparing bundle hashes by
+hand, which is exactly what incidents 2 and 4 were both fumbling towards.
+
+`docker build --build-arg BUILD_SHA=<sha>` now rides through to `LORAN_BUILD_SHA` in the runtime
+stage and out at `/api/health`. One command answers it, from anywhere, forever:
+
+```
+curl -s https://loran.voygent.app/api/health | jq .build_sha
+```
+
+This is the one thing baked in at build time, against the Dockerfile's own "NOTHING is configured
+at build time" note — and the exception is principled: it is not configuration, it is an
+immutable fact *about* the layer. Passing it at run time would let a container claim any SHA it
+liked, which is the opposite of provenance. It is not a secret; the repo is public. Unstamped
+builds (bare metal, plain `docker build`) report `null` rather than lying.
+
+### The smoke check, and what it refuses to do
+
+`scripts/smoke.py` asserts four things: the container reports the commit just built; the bundle
+it **serves** is byte-identical (sha256, not filename) to the one inside the image; React mounted
+under `#root`; and the console is clean.
+
+- **It must pass with ZERO aircraft.** Runners hitting airplanes.live would be non-deterministic
+  and discourteous — 1 req/s, non-commercial, already 429'd once. The app renders an honest
+  offline state (ground rule 1), so an empty sky is a pass. Nothing asserts on live traffic.
+- **The asset regex asserts it MATCHED before comparing.** A Vite rename would otherwise make the
+  comparison loop over nothing and pass while checking nothing — a check that cannot fail is
+  worse than no check.
+- **Software WebGL is mandatory, not incidental.** With `--disable-gpu`, Cesium throws "the
+  browser supports WebGL, but initialization failed", the error boundary catches it, and the run
+  fails for reasons unrelated to the commit. SwiftShader gives a real context so the check
+  exercises the real page.
+- **The allowlist is designed to resist growing.** Exactly one entry today (`/favicon.ico`, which
+  404s because no favicon is shipped). Every entry carries a reason and a deletion condition, and
+  every suppression is printed even on a pass — so a growing allowlist is visible in every log
+  rather than discovered a year later by someone wondering why the check never catches anything.
+
+### Push-only, and what CI cannot do
+
+Triggers on push to `main`. There are no PRs and no branch protection; push is the honest match
+for how the repo is used. **CI reports, it does not gate** — deploys are a manual
+`docker compose up --build -d` on the homelab, so nothing here blocks anything.
+
+GHCR publishing was considered and **dropped**: anyone who can run a container can run
+`docker compose up --build` from a public repo, so a published image mostly buys pull speed,
+while a new GHCR package is private by default and needs a manual visibility flip. The stamp is
+the part with the clear payoff, and it stands alone.
+
+**What this does not fix.** Every incident above was found by a *human* noticing something looked
+wrong. CI closes the mechanical cases only. Incident 4 (a wrong test) and the `git add -A` that
+published a personal file would still get through. **CI is not a substitute for checking the
+artefact you actually shipped.**

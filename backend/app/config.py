@@ -130,3 +130,12 @@ PHOTO_GUEST_ACCESS = os.environ.get(
 # Serve the built frontend from the API process, so remote access is ONE origin and
 # one tunnel. Empty means do not serve static files (the dev path: Vite on 5173).
 STATIC_DIR = os.environ.get("LORAN_STATIC_DIR", "")
+
+# The commit this build came from, baked in by the Dockerfile at build time and reported by
+# /api/health. Empty for a bare-metal or dev run, which is honest: nothing stamped it.
+#
+# This exists because "is the deployed thing the code I think it is?" was previously
+# unanswerable. Twice it has been answered wrongly - once by trusting a tunnel that was serving
+# a stale image, once by grepping a MINIFIED bundle for an identifier that minification had
+# renamed away. One curl against a deployment now answers it outright.
+BUILD_SHA = os.environ.get("LORAN_BUILD_SHA", "")

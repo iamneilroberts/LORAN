@@ -57,6 +57,22 @@ COPY --from=frontend /build/frontend/dist/ ./static/
 RUN useradd --system --create-home --uid 10001 loran && chown -R loran:loran /app
 USER loran
 
+# The ONE thing baked in at build time, and the exception the header note above is worth reading
+# against: this is not configuration, it is an immutable fact ABOUT the layer - which commit it
+# was built from. It has to be baked in precisely because it identifies the image; passing it at
+# run time would let a container claim any SHA it liked, which is the opposite of provenance.
+# It is not a secret: the repo is public.
+#
+# Placed last so that changing it invalidates nothing above - a new commit re-runs this layer
+# alone, not npm ci or the Vite build.
+#
+#   docker build --build-arg BUILD_SHA=$(git rev-parse HEAD) -t loran:local .
+#
+# Empty when nobody passes it (a plain `docker build`, or the bare-metal path), and /api/health
+# then reports null rather than lying about a commit.
+ARG BUILD_SHA=""
+ENV LORAN_BUILD_SHA=$BUILD_SHA
+
 EXPOSE 8010
 
 # No curl in slim, and adding it just for a healthcheck is a package for nothing. /api/health is

@@ -37,7 +37,9 @@ permissions:
 
 jobs:
   test:
-    name: test (196 frontend + 110 backend)
+    # The counts are in the name on purpose: a suite that silently stops collecting tests still
+    # reports "passed", and a job called "test" would happily go green on zero of them.
+    name: test (196 frontend + 113 backend)
     runs-on: ubuntu-latest
     # The suite runs in ~10 s locally; the rest is toolchain setup. Anything past this is hung.
     timeout-minutes: 15
@@ -81,8 +83,13 @@ jobs:
   # one should not hide the other's answer. `docker build` is what proves check:palette,
   # tsc --noEmit and vite build all pass, because Dockerfile:34 runs `npm run build`, which
   # chains them. That is the whole reason those are not separate steps above.
+  #
+  # Smoke lives in THIS job rather than its own, deliberately. GitHub jobs do not share a Docker
+  # daemon, so a separate smoke job would mean `docker save` → upload-artifact → download →
+  # `docker load` for a 185 MB image — more wall-clock than the build itself, to move an image
+  # that is already sitting right here. Same coverage, none of the plumbing.
   build:
-    name: build the image
+    name: build the image + smoke it
     runs-on: ubuntu-latest
     # Cold runner: pulls node:22-slim + python:3.12-slim and runs npm ci over Cesium, which is
     # large. Deliberately measured before any cache is added — tune from a real number, not a
@@ -94,11 +101,52 @@ jobs:
 
       # Plain `docker build`, no buildx cache actions. The runner ships with Docker, so this adds
       # no new dependency (ground rule 2) and nothing to drift from the local command people
-      # actually run. Read the timing from the first run before deciding a cache is worth it.
+      # actually run. MEASURED at ~35 s cold with zero cached layers, so a cache would buy
+      # nothing — do not add one without a number showing otherwise.
+      #
+      # BUILD_SHA is the provenance stamp: it rides through to LORAN_BUILD_SHA in the runtime
+      # stage and out again at /api/health, so `curl -s https://<host>/api/health` answers
+      # "what is actually live?" in one command.
       - name: Build the runtime image
-        run: docker build -t loran:ci .
+        run: docker build --build-arg BUILD_SHA="${{ github.sha }}" -t loran:ci .
 
-      # `smoke` will boot THIS image, so prove it exists and record its size — a build that
-      # succeeds but produces nothing usable would otherwise look identical to a real pass.
+      # Prove the image exists and record its size — a build that succeeds but produces nothing
+      # usable would otherwise look identical to a real pass.
       - name: Show the built image
         run: docker image inspect loran:ci --format 'built {{.Id}} · {{.Size}} bytes · {{.Created}}'
+
+      # LORAN_ACCESS_TOKENS is deliberately UNSET: auth.py treats "no tokens configured" as the
+      # single-user default with no auth at all, so the page is open and there is no secret to
+      # inject into a workflow file and nothing to leak from one.
+      - name: Boot the image
+        run: docker run -d --name loran-ci -p 127.0.0.1:8010:8010 loran:ci
+
+      # scripts/smoke.py needs `websockets` for CDP. Installing the project's own pinned
+      # requirements gets it via uvicorn[standard] — the same version the app already ships,
+      # rather than a floating one pinned nowhere.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install the smoke check's dependencies
+        run: pip install -r backend/requirements.txt
+
+      # Asserts, in order: the container reports the commit we just built; the bundle it SERVES
+      # is byte-identical to the one inside the image; React mounted; the console is clean.
+      # Passes with zero aircraft on purpose — CI must not hit airplanes.live (1 req/s,
+      # non-commercial, and it has already 429'd this project).
+      #
+      # --settle is longer than the local default: SwiftShader renders Cesium in software on a
+      # runner, so give late-arriving errors time to surface.
+      - name: Smoke the booted image
+        run: |
+          python3 scripts/smoke.py \
+            --base http://127.0.0.1:8010 \
+            --container loran-ci \
+            --expect-sha "${{ github.sha }}" \
+            --settle 20
+
+      # A smoke failure is usually explained by what the app logged, and the container is gone
+      # the moment this job ends.
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs loran-ci

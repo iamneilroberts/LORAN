@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import COOKIE_NAME, FailureThrottle, TokenAuth
 from .config import (
-    ACCESS_TOKENS, CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL,
+    ACCESS_TOKENS, BUILD_SHA, CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL,
     PHOTO_GUEST_ACCESS, SESSION_FAIL_LIMIT, SESSION_FAIL_WINDOW_S, SESSION_SECRET,
     SESSION_TTL_S, STATIC_DIR, USER_AGENT,
 )
@@ -368,6 +368,10 @@ async def get_depth(lat: float = Query(..., ge=-90, le=90),
 async def health():
     return {
         "ok": True,
+        # The commit this image was built from, or null on a bare-metal/dev run where nothing
+        # stamped it. Deliberately on the OPEN endpoint: answering "what is actually live?" is
+        # useless if it needs a token, and a commit SHA of a public repo reveals nothing.
+        "build_sha": BUILD_SHA or None,
         "uptime_s": round(time.time() - START, 1),
         "feeds": {
             "adsb": adsb.status(),
