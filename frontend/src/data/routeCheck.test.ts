@@ -17,11 +17,13 @@ import {
   NEAR_DEST_NM,
   angularDiffDeg,
   bearingDeg,
+  checkFiledOrigin,
   checkFiledRoute,
 } from "./routeCheck";
 
 const MSP = { lat: 44.882, lon: -93.2218 };
 const MSY = { lat: 29.9934, lon: -90.2581 };
+const ATL = { lat: 33.6367, lon: -84.4281 };
 /** En route between ATL and MSY: ~233 deg towards MSY, ~343 deg towards MSP, 830 nm from MSP. */
 const ENROUTE = { lat: 31.8, lon: -87.5, trackDeg: 233.4 };
 
@@ -138,5 +140,113 @@ describe("checkFiledRoute", () => {
     expect(check({ trackDeg: brg - 91 }).state).toBe("disagrees");
     // Exactly at the threshold is not a disagreement.
     expect(check({ trackDeg: brg - 90 }).state).toBe("ok");
+  });
+});
+
+/**
+ * The backward leg (D-074). The easy fake pass here is a mirrored copy of the block above that
+ * only ever feeds the origin the SAME geometry the destination got - which would pass just as
+ * well against a `checkFiledOrigin` that forgot to take the reciprocal and was quietly checking
+ * "is it flying towards where it departed". So the load-bearing case is the first one: a contact
+ * flying normally away from its origin must be "ok", and the identical geometry read as a
+ * destination must be "disagrees". One of those two assertions fails for any implementation that
+ * drops the 180.
+ */
+describe("checkFiledOrigin", () => {
+  const originCheck = (over: Partial<Parameters<typeof checkFiledOrigin>[0]> = {}) =>
+    checkFiledOrigin({
+      lat: ENROUTE.lat,
+      lon: ENROUTE.lon,
+      trackDeg: ENROUTE.trackDeg,
+      altFt: 31_975,
+      origLat: ATL.lat,
+      origLon: ATL.lon,
+      ...over,
+    });
+
+  it("says ok for a contact flying normally away from the field it departed", () => {
+    // ENROUTE is south-west of ATL tracking 233 deg - away from it, which is what departing
+    // looks like. The same numbers read as a DESTINATION are a gross disagreement, and that
+    // contrast is the test: it only holds if the origin check took the reciprocal.
+    const away = originCheck();
+    expect(away.state).toBe("ok");
+
+    const towards = checkFiledRoute({
+      lat: ENROUTE.lat, lon: ENROUTE.lon, trackDeg: ENROUTE.trackDeg,
+      altFt: 31_975, destLat: ATL.lat, destLon: ATL.lon,
+    });
+    expect(towards.state).toBe("disagrees");
+  });
+
+  it("flags a cruising contact tracking back towards its filed origin", () => {
+    // Turned round and heading for ATL while still claiming to have departed it. Same evidence
+    // bar as the forward leg: at cruise, well out, no component of motion away from the field.
+    const back = bearingDeg(ENROUTE.lat, ENROUTE.lon, ATL.lat, ATL.lon);
+    expect(originCheck({ trackDeg: back }).state).toBe("disagrees");
+  });
+
+  it("reports the expected track, which for an origin is the bearing AWAY from it", () => {
+    const toField = bearingDeg(ENROUTE.lat, ENROUTE.lon, ATL.lat, ATL.lon);
+    const v = originCheck();
+    expect(v.bearingDeg).toBeCloseTo((toField + 180) % 360, 6);
+    expect(v.distanceNm).toBeGreaterThan(NEAR_DEST_NM);
+  });
+
+  it("does NOT flag a departure below cruise, however far off the bearing it points", () => {
+    // The guard that matters most for an origin: a jet still climbing out of ATL may be pointed
+    // straight back at the field on a downwind and it means nothing.
+    const back = bearingDeg(ENROUTE.lat, ENROUTE.lon, ATL.lat, ATL.lon);
+    const v = originCheck({ altFt: CRUISE_FLOOR_FT - 1, trackDeg: back });
+    expect(v.state).toBe("unchecked");
+    expect(v.reason).toBe("below cruise");
+  });
+
+  it("does NOT flag a contact still inside the origin's terminal area", () => {
+    // Thirty miles out at cruise altitude, pointed back at the field. Departure vectors and
+    // holds both do this; the distance guard is what keeps it quiet.
+    const nearAtl = { lat: 33.2, lon: -84.4281 };
+    const v = checkFiledOrigin({
+      lat: nearAtl.lat, lon: nearAtl.lon,
+      trackDeg: 0, // due north, straight back towards ATL
+      altFt: 25_000,
+      origLat: ATL.lat, origLon: ATL.lon,
+    });
+    expect(v.distanceNm).toBeLessThan(NEAR_DEST_NM);
+    expect(v.state).toBe("unchecked");
+    expect(v.reason).toBe("near origin");
+  });
+
+  it("never reports ok when it could not check", () => {
+    for (const over of [
+      { origLat: null }, { origLon: null }, { trackDeg: null }, { altFt: null },
+    ]) {
+      const v = originCheck(over as Parameters<typeof originCheck>[0]);
+      expect(v.state).toBe("unchecked");
+      expect(v.reason).not.toBeNull();
+    }
+  });
+
+  it("reports no numbers at all when the origin has no coordinates", () => {
+    const v = originCheck({ origLat: null, origLon: null });
+    expect(v).toMatchObject({
+      state: "unchecked", bearingDeg: null, offByDeg: null, distanceNm: null,
+    });
+    expect(v.reason).toBe("no origin coordinates");
+  });
+
+  it("tolerates a large but legitimate routing deviation without flagging", () => {
+    // Absolute, for the same reason as the forward leg: 45 degrees off the away-bearing is an
+    // airway dogleg, not a stale flight plan.
+    const away = (bearingDeg(ENROUTE.lat, ENROUTE.lon, ATL.lat, ATL.lon) + 180) % 360;
+    expect(originCheck({ trackDeg: away - 45 }).state).toBe("ok");
+    expect(originCheck({ trackDeg: away + 45 }).state).toBe("ok");
+    expect(originCheck({ trackDeg: away - 80 }).state).toBe("ok");
+  });
+
+  it("holds the same right-angle threshold as the forward leg", () => {
+    const away = (bearingDeg(ENROUTE.lat, ENROUTE.lon, ATL.lat, ATL.lon) + 180) % 360;
+    expect(originCheck({ trackDeg: away - 89 }).state).toBe("ok");
+    expect(originCheck({ trackDeg: away - 90 }).state).toBe("ok");
+    expect(originCheck({ trackDeg: away - 91 }).state).toBe("disagrees");
   });
 });

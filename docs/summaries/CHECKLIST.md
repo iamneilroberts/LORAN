@@ -15,13 +15,25 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [x] Duplicate-normalizer decided: **shared fixture** (owner, 2026-07-26) — NOT YET BUILT
 - [x] Merged (ff to `98593f7`); 138 FE + 82 BE tests, tsc clean, both builds green
 - [x] Regenerated `loran.html` (11 MB, was 8.88); verified from `file://` — 34 live contacts, glyphs/boundaries/places OK, console clean. **Bathymetry still unconfirmed**: GEBCO reachable from file:// but 11-20s per tile vs 0.7s via curl
-- [ ] `docker compose up --build -d` and confirm the served asset hash changed
+- [x] **`docker compose up --build -d`** — was overdue: the served bundle `index-CTD7vabJ.js` had
+      **zero** occurrences of `glance`, so D-072 had never been deployed. Rebuilt and deployed
+      2026-07-27; served bundle is now `index-Ce7_mh5T.js` and carries the glance view plus D-074
+- [x] **D-074 filed ORIGIN leg + flashing fix** — dashed leg back to `route.origin`, mirrored
+      sanity check (`checkFiledOrigin`), one `Filed route` toggle. Flashing root-caused by
+      measurement: 34/35 cruising contacts changed a rebuild-key input per poll, so the
+      clear-and-re-add ran every tick. Now mutates in place. 182 FE + 110 BE
+- [ ] **Tunnel systemd unit — WRITTEN, NOT INSTALLED** (needs sudo). Container already survives
+      reboot (`restart: unless-stopped` + docker enabled); cloudflared does NOT — it is a bare
+      foreground process. Unit drafted in the session scratchpad; **not** committed because it
+      hardcodes `/home/neil` (D-019). Do NOT use `cloudflared service install` — it targets the
+      SHARED `~/.cloudflared/config.yml`
 - [x] `docs/summaries/` decided: **scrub the files** (owner, 2026-07-26) — NOT YET DONE
-- [ ] Sweep `adsb.voygent.ai` → `loran.voygent.app` in `docs/remote-access.md`
-- [ ] Update `CLAUDE.md` and `README.md` to match reality
-- [ ] **Push `main`** (32 commits)
+- [x] Sweep `adsb.voygent.ai` → `loran.voygent.app` in `docs/remote-access.md` — clean; remaining
+      hits are historical (old handoffs + `decisions.md` D-067 narrative), correct to leave
+- [x] Update `CLAUDE.md` and `README.md` to match reality (`03960b2`)
+- [x] **Push `main`** — `git rev-list --count origin/main..main` = **0**
 - [ ] Delete 3 stale `voygent.ai` DNS records: `adsb`, `loran`, `loran.voygent.app` (malformed)
-- [ ] Tunnel survives reboot — own systemd unit, **NOT** `cloudflared service install`
+- [ ] Tunnel survives reboot — see the systemd item above (unit drafted, install pending sudo)
 - [ ] Judgement pass on a real display: themes, declutter priorities, boundaries, route note, Centre block
 - [ ] Judge FPS on a QUIET machine
 - [ ] Decide `LORAN_SESSION_SECRET` (the fix is worse than the problem)
@@ -40,8 +52,18 @@ _Mirrored from the shared handoff. Source of truth for a resumed session._
 - [ ] Prune the merged single-file worktree (`/branch done`, delete `worktree-agent-a359546ffb2f19480`)
 - [x] Shared normalizer fixture built (D-071) — found and fixed **five** real divergences plus a poll-killing crash
 - [x] Scrub absolute home paths from the two tracked handoffs in `docs/summaries/` (owner chose scrub over gitignore)
-- [ ] Decide what `master` (`375c226`) and `phase2-dossier` (`bb0b589`) are for
+- [ ] **CI**: `scripts/test.sh` + `tsc --noEmit` + **`docker compose build`** on every push —
+      three incidents now share the shape "verified the wrong artefact" (D-064, the stale-bundle
+      day, the parity test breaking the image twice)
+- [ ] **CI**: page-boot smoke check against the SERVED url, failing on any console error
+- [ ] Decide what `master` (`375c226`) and `phase2-dossier` (`bb0b589`) are for — **both verified
+      fully merged into `main`** (0 commits ahead each); the handoff's "phase2-dossier is not
+      merged" is stale. Note `master` is checked out in `~/dev/adsb-viz`, so it cannot be deleted
+      while that worktree exists
 - [ ] Phase 5 — SQLite recorder; **DDL reviewed by owner BEFORE the writer**
 - [ ] Phase 6 — status bar, compass, FPS readout
 
-_Updated: 2026-07-26 — main (D-072 glance view shipped; D-073 logs option A as FUTURE. Handoff: pause-2026-07-26-cleanup-ci-mobile.md. NEXT: prune merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_
+_Updated: 2026-07-26 — main @ `b209483` (resumed via /pickup; boxes re-verified against git, the
+live site and the served bundle. 165 FE + 110 BE green, health 200, 0 unpushed. NEW FINDING: the
+container was never rebuilt after D-072, so the glance view is not live. NEXT: rebuild+deploy,
+prune the merged worktree, CI, viewport-scoped fetch, owner sign-off on the glance view.)_

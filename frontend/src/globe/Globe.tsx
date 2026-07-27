@@ -20,8 +20,10 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { DarkBathymetryProvider } from "./DarkBathymetryProvider";
 import { amber, clearByPrefix, upsertPlane } from "./altitudePlanes";
 import { upsertCone } from "./projectionCone";
-import { clearDestination, upsertDestination } from "./destinationLine";
-import { checkFiledRoute } from "../data/routeCheck";
+import {
+  clearDestination, clearOrigin, upsertDestination, upsertOrigin,
+} from "./destinationLine";
+import { checkFiledOrigin, checkFiledRoute } from "../data/routeCheck";
 import { applyTheme, palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
 import { createPlacesLayer } from "./placesLayer";
@@ -368,6 +370,11 @@ export default function Globe() {
         st.showDestination,
         st.enrichment?.route?.destination?.lat ?? "",
         st.enrichment?.route?.destination?.lon ?? "",
+        // Same reasoning for the backward leg (D-074): the origin arrives with the same late
+        // enrichment reply, and without it here a route that has an origin but no destination
+        // coordinates would never redraw at all.
+        st.enrichment?.route?.origin?.lat ?? "",
+        st.enrichment?.route?.origin?.lon ?? "",
       ].join("|");
       if (key === lastKey) return;
       lastKey = key;
@@ -402,22 +409,35 @@ export default function Globe() {
         });
       }
 
-      /* --- dashed line to the FILED destination (D-050) --- */
+      /* --- dashed lines to the FILED route ends (D-050 forward, D-074 back) --- */
       // adsbdb knows the route for some flights and not others, and knows coordinates for
       // fewer still. No coordinates means nothing is drawn - never a guessed airport.
       const dest = st.enrichment?.route?.destination ?? null;
-      // D-062: withdraw the line when the observed track grossly disagrees with the filed
-      // destination. Drawing a confident dashed arc to an airport the contact is demonstrably
-      // not flying to is the most emphatic way this display could assert something false - the
-      // panel says why in words, and the globe stops claiming it in geometry.
+      const orig = st.enrichment?.route?.origin ?? null;
+      // One toggle covers both legs: they are the same claim from the same schedule lookup.
+      // The enrichment/selection hex guard is shared too - a reply for the previously selected
+      // contact must never draw against the current one's position.
+      const filedFor = st.showDestination && sel?.alt_ft != null
+        && st.enrichment?.hex?.toUpperCase() === sel?.hex?.toUpperCase();
+      // D-062: withdraw a leg when the observed track grossly disagrees with it. Drawing a
+      // confident dashed arc to an airport the contact is demonstrably not flying to - or from
+      // one it is demonstrably flying back towards - is the most emphatic way this display could
+      // assert something false. The panel says why in words, and the globe stops claiming it in
+      // geometry. Each leg is judged on its own evidence, so a stale destination does not
+      // suppress an origin the track still supports.
       const routeVerdict = sel
         ? checkFiledRoute({
             lat: sel.lat, lon: sel.lon, trackDeg: sel.track_deg, altFt: sel.alt_ft,
             destLat: dest?.lat ?? null, destLon: dest?.lon ?? null,
           })
         : null;
-      const destOk = st.showDestination && sel?.alt_ft != null
-        && st.enrichment?.hex?.toUpperCase() === sel?.hex?.toUpperCase()
+      const originVerdict = sel
+        ? checkFiledOrigin({
+            lat: sel.lat, lon: sel.lon, trackDeg: sel.track_deg, altFt: sel.alt_ft,
+            origLat: orig?.lat ?? null, origLon: orig?.lon ?? null,
+          })
+        : null;
+      const destOk = filedFor
         && dest?.lat != null && dest?.lon != null
         && routeVerdict?.state !== "disagrees";
       if (!destOk) {
@@ -430,6 +450,22 @@ export default function Globe() {
           destLat: dest.lat as number,
           destLon: dest.lon as number,
           code: dest.icao ?? dest.iata ?? "—",
+        });
+      }
+
+      const originOk = filedFor
+        && orig?.lat != null && orig?.lon != null
+        && originVerdict?.state !== "disagrees";
+      if (!originOk) {
+        clearOrigin(viewer);
+      } else {
+        upsertOrigin(viewer, {
+          lat: sel.lat,
+          lon: sel.lon,
+          altFt: sel.alt_ft as number,
+          origLat: orig.lat as number,
+          origLon: orig.lon as number,
+          code: orig.icao ?? orig.iata ?? "—",
         });
       }
 

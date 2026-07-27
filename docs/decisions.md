@@ -3213,3 +3213,94 @@ survives** — a glance view is still the better answer for a ten-second look, a
 
 **If a future session finds itself reflowing `Panels.tsx` under a breakpoint, that is this entry.
 Read it first, and confirm the trigger with the owner.**
+
+---
+
+## D-074 — 2026-07-26 — The filed route gets its BACKWARD leg, and the dashed line stops blinking
+
+Two owner reports, one file, and they turned out to be the same code path.
+
+### 1. The line was flashing, and the cause was not the one I guessed
+
+Reported as "the destination dotted line flashes on and off instead of a steady display".
+
+My first hypothesis was raw `alt_ft` in `Globe.tsx`'s rebuild key — every other input there is
+deliberately rounded, and altitude was the one that was not. **Measured against live
+airplanes.live data, that was wrong**, or at least secondary. Two polls three seconds apart,
+35 cruising contacts within 250 nm:
+
+| Rebuild-key input | Contacts whose value changed |
+|---|---|
+| `lat`/`lon` at `toFixed(2)` | **32 / 35** |
+| `alt_ft` (raw) | 12 / 35 |
+| `Math.round(track_deg)` | 0 / 35 |
+| **any of them → rebuild fires** | **34 / 35 (97%)** |
+
+Position dominates. 0.01° is about 1.1 km and a jet crosses that in roughly four seconds, so at a
+2 s poll the key changes for essentially every en-route contact, every tick. `upsertDestination`
+then ran `clear()` followed by `entities.add()`, tearing down and re-adding three entities and
+blinking the line off.
+
+**Coarsening the key is NOT the fix, and this is the part worth remembering.** The arc *starts at
+the aircraft*. Round its position and the line stops touching the contact it describes — trading a
+flicker for a lie about where the aeroplane is. The rebuild frequency is legitimate; what was
+wrong was that a rebuild destroyed anything.
+
+So `destinationLine.ts` now mutates in place, which is the conclusion `upsertPlane` already
+reached for the datum slice (D-034's neighbour) and documented in a comment nobody applied here.
+Positions and material are re-applied on every update — an entity that keeps the colour it was
+CREATED with is the hazard the mutate path introduces, and it is how a theme change leaves half
+the globe repainted. Label text is assigned only when it differs, because glyph-atlas churn is
+the specific thing that made rebuilding labels dangerous in the first place.
+
+The test that guards it asserts **entity identity across an update**, not the drawn geometry. A
+positions test passes just as happily against the version that shipped the bug. Verified by
+disabling the mutate branch: exactly one test goes red, and it is that one.
+
+### 2. The backward leg to the filed origin
+
+Requested as: extend the dotted path back to the origin, under the same sanity check the
+destination gets. No backend work — `route.origin` has been a full `EnrichAirport` with
+coordinates since Phase 2; nothing was reading it.
+
+**Same visual language as the forward leg, deliberately.** Both ends come out of one adsbdb
+schedule lookup and are exactly as trustworthy as each other, so drawing one more confidently
+than the other would assert a distinction that does not exist. Level great-circle run at the
+contact's current altitude, plumb drop to the field, dashed cyan. The labels carry the difference:
+`FILED KLAS` ahead, `FILED FROM KATL` behind.
+
+**The origin leg is not the track path.** The track is where we watched the contact go. This is
+where a schedule says it started, and we saw none of it.
+
+**One toggle, renamed `Filed route`** (owner's call, 2026-07-26). Separate switches would have
+implied the two ends are separately trustworthy. They are not.
+
+#### The sanity check mirrors exactly, and the mirror is the whole risk
+
+D-062 withdraws the forward line when the observed track is more than a right angle off the
+bearing to the filed destination. The naive mirror — "is it flying towards its origin?" — is
+backwards, and would have silently checked nothing while looking correct.
+
+The fix that made it hard to get wrong: `bearingDeg` in `RouteVerdict` now means **the track we
+expect**, not "the bearing to the field". For a destination that is unchanged. For an origin it is
+the reciprocal. With that one definition, `off > DISAGREE_DEG` is literally the same line of code
+for both ends and there is no mirrored twin threshold to drift out of sync.
+
+`CRUISE_FLOOR_FT` and `NEAR_DEST_NM` carry over and change meaning usefully: near the destination
+the check is withheld through the arrival, near the origin through the departure — where a contact
+climbing out on a downwind legitimately points straight back at the field it just left.
+
+Each leg is judged on its own evidence. A stale destination does not take a supportable origin
+down with it.
+
+**The dossier says why, for both legs.** A line that vanishes from the globe with no words is the
+silent version of exactly the false confidence D-062 exists to remove.
+
+#### Guarding against the fake pass
+
+A mirrored copy of the destination tests would pass against an implementation that forgot the
+reciprocal. So the load-bearing case feeds ONE geometry to both checks: a contact flying normally
+away from ATL must be `ok` as an origin and `disagrees` as a destination. Verified by deleting the
+`+ 180`: five origin tests go red, every destination test stays green.
+
+182 frontend + 110 backend.

@@ -13,7 +13,7 @@ import {
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
 import { externalLinks } from "./externalLinks";
-import { checkFiledRoute } from "../data/routeCheck";
+import { checkFiledOrigin, checkFiledRoute } from "../data/routeCheck";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
 import { api, isSingleFile } from "../api";
 
@@ -322,9 +322,11 @@ export function LayerCluster() {
         </div>
       )}
       {/* Filed intent, not a prediction - the note says so, because a dashed line to an
-          airport is otherwise easy to read as "it will be there" (D-050). */}
-      <Item on={showDestination} label="Destination" k="showDestination"
-            note={selected ? "filed route · dashed" : "needs a selected contact"} />
+          airport is otherwise easy to read as "it will be there" (D-050). One switch covers
+          both legs (D-074): origin and destination come from the same schedule lookup and are
+          exactly as trustworthy as each other, so there is nothing to choose between them. */}
+      <Item on={showDestination} label="Filed route" k="showDestination"
+            note={selected ? "origin + dest · dashed" : "needs a selected contact"} />
       <Item on={showDatum} label="Altitude slice" k="showDatum" note={sliceNote} />
       <Item on={showDropLines} label="Drop line" k="showDropLines" note={needsSel} />
       {/* D-060: selected/co-altitude/military are already labelled unconditionally - this only
@@ -812,8 +814,10 @@ export function SelectionPanel() {
     ? `Highest observed since this contact came into range (${peakMins} min ago). Not the airframe's limit.`
     : undefined;
 
-  // The same verdict Globe.tsx uses to decide whether to draw the dashed line, so the panel and
-  // the globe can never disagree about whether the filed route is trustworthy (D-062).
+  // The same verdicts Globe.tsx uses to decide whether to draw each dashed leg, so the panel and
+  // the globe can never disagree about whether the filed route is trustworthy (D-062, D-074).
+  // A leg that vanishes from the globe without the panel saying why would be the silent version
+  // of the false confidence this whole block exists to remove.
   const routeVerdict = checkFiledRoute({
     lat: a.lat,
     lon: a.lon,
@@ -821,6 +825,14 @@ export function SelectionPanel() {
     altFt: a.alt_ft,
     destLat: enRoute?.destination?.lat ?? null,
     destLon: enRoute?.destination?.lon ?? null,
+  });
+  const originVerdict = checkFiledOrigin({
+    lat: a.lat,
+    lon: a.lon,
+    trackDeg: a.track_deg,
+    altFt: a.alt_ft,
+    origLat: enRoute?.origin?.lat ?? null,
+    origLon: enRoute?.origin?.lon ?? null,
   });
 
   const co = aircraft.filter(
@@ -904,6 +916,13 @@ export function SelectionPanel() {
           <div className="px-[10px] pt-1 lbl" style={{ color: "var(--amber)", fontSize: 9 }}>
             Track {Math.round(a.track_deg ?? 0)}° vs {Math.round(routeVerdict.bearingDeg ?? 0)}° to
             filed dest — {Math.round(routeVerdict.offByDeg ?? 0)}° off at cruise.
+            Filed route looks stale; line withdrawn.
+          </div>
+        )}
+        {originVerdict.state === "disagrees" && (
+          <div className="px-[10px] pt-1 lbl" style={{ color: "var(--amber)", fontSize: 9 }}>
+            Track {Math.round(a.track_deg ?? 0)}° vs {Math.round(originVerdict.bearingDeg ?? 0)}°
+            away from filed orig — {Math.round(originVerdict.offByDeg ?? 0)}° off at cruise.
             Filed route looks stale; line withdrawn.
           </div>
         )}
