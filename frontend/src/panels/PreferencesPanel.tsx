@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { LayerCluster } from "./Panels";
+import { isSingleFile } from "../api";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS } from "./trafficCollapse";
 import { THEMES, useStore } from "../state/store";
 import {
@@ -219,20 +220,36 @@ function HomeChooser() {
       </div>
 
       {/*
+        Geocoding is PROXIED (D-069) and the single-file build has no backend to proxy it, so the
+        field is withheld rather than offered and left to fail - the same treatment small fields
+        and photos get. It cannot be salvaged by calling Nominatim from the browser: their policy
+        requires a User-Agent identifying the application, and `User-Agent` is a forbidden header
+        that browser script cannot set. Typing coordinates and "use my location" below are pure
+        client and still work here, so this build is not left without a way to set home.
+      */}
+      {isSingleFile && (
+        <div className="lbl px-[3px] pt-[3px]" style={{ fontSize: 8, color: "var(--off)" }}>
+          Address lookup needs a server — enter coordinates below
+        </div>
+      )}
+
+      {/*
         Address entry. `onKeyDown` for Enter and a button - deliberately NOT `onChange`: a
         lookup per keystroke is auto-complete, which the geocoder's policy forbids and bans
         for. `onChange` here only tracks the text.
       */}
-      <div className="flex gap-[2px] mt-[3px]">
-        <input style={field} value={addr}
-               onChange={(e) => setAddr(e.target.value)}
-               onKeyDown={(e) => { if (e.key === "Enter") void find(); }}
-               placeholder="address or place" aria-label="Address or place name" />
-        <button style={{ ...btn, flex: "0 0 42px", color: finding ? "var(--off)" : "var(--cyan)" }}
-                onClick={() => void find()} disabled={finding}>
-          {finding ? "…" : "Find"}
-        </button>
-      </div>
+      {!isSingleFile && (
+        <div className="flex gap-[2px] mt-[3px]">
+          <input style={field} value={addr}
+                 onChange={(e) => setAddr(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === "Enter") void find(); }}
+                 placeholder="address or place" aria-label="Address or place name" />
+          <button style={{ ...btn, flex: "0 0 42px", color: finding ? "var(--off)" : "var(--cyan)" }}
+                  onClick={() => void find()} disabled={finding}>
+            {finding ? "…" : "Find"}
+          </button>
+        </div>
+      )}
 
       {candidates && candidates.length > 0 && (
         // Bounded and scrollable: five candidates, each three lines tall, pushed the panel off

@@ -15,6 +15,9 @@
 # symlinked node_modules / .venv that isolated worktrees use to share deps.
 node_modules
 dist
+# `dist` alone does not match this one: the single-file build writes to dist-single/, and an
+# 11 MB generated HTML file is exactly the kind of thing that gets committed by accident (D-070).
+dist-single
 .vite
 
 # Python
