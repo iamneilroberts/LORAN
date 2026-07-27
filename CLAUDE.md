@@ -152,7 +152,7 @@ See `docs/visual-reference.md` for the annotated reference image.
 
 ## Explicit non-goals
 
-No accounts. No multi-user. No mobile layout. No satellites. ~~No weather.~~ No AI summarization.
+No accounts. No multi-user. ~~No mobile layout.~~ No satellites. ~~No weather.~~ No AI summarization.
 No alerting engine. If you find yourself building one of these — **stop and ask.**
 
 **Weather is no longer a non-goal, narrowly.** The owner asked for NEXRAD radar on 2026-07-25;
@@ -167,6 +167,19 @@ unless tokens are configured**, so the default install is still exactly the sing
 unauthenticated console described above. Still no accounts, no roles beyond owner-or-not, no
 audit log, no per-user data. Preferences persist per browser in `localStorage`, not server-side.
 Runbook: `docs/remote-access.md`. Do not grow this into a user system without asking.
+
+**"No mobile layout" is reversed, and less narrowly than the other two** (D-072, D-076). The
+phone gets TWO surfaces: a `#m` glance list — no globe, no WebGL — and the console itself,
+reflowed. `#map` is the console; no hash routes by viewport width, because the token links are
+shared and a URL has to be right on a device nobody here has seen.
+
+This one was gated on a measurement and the measurement came back green: **30–37 FPS on a real
+iPhone** with ~150 contacts, where cutting GPU fragment work 9.2x bought only 7 FPS. The phone is
+not fill-rate bound, so **keep the desktop defaults on mobile** — no resolution downscale, no
+dead-reckoning throttle. `#probe` is the instrument that measured it and is still there.
+
+Do NOT read this as "make everything responsive". The desktop console remains the product; the
+phone gets a deliberately different composition, not a shrunken copy. See `docs/quickstart.md`.
 
 Note the recorded terms departure: `LORAN_PHOTO_GUEST_ACCESS` defaults to **false** because
 planespotters clause 8 forbids re-exposing their API. **Keep that default** — this owner

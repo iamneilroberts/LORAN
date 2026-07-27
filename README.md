@@ -248,8 +248,14 @@ on `--remote-debugging-port=9333` and the app running.
 
 ## Non-goals
 
-No mobile layout. No satellites. No AI summarisation. No alerting engine. No accounts beyond the
-single shared-secret door described above. Weather is limited to the one radar layer.
+No satellites. No AI summarisation. No alerting engine. No accounts beyond the single
+shared-secret door described above. Weather is limited to the one radar layer.
+
+**Mobile is no longer a non-goal** (D-072, D-076). A phone gets a glance list at `#m` — no globe,
+no WebGL — and the console itself at `#map`, reflowed to one surface at a time. With no hash the
+view is chosen by viewport width, so one shared link is correct on any device. Measured at 30–37
+FPS on an iPhone with ~150 contacts, which is why Cesium stayed. Start here:
+[`docs/quickstart.md`](docs/quickstart.md).
 
 ## Licence
 
