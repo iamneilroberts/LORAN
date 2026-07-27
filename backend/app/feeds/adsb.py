@@ -47,6 +47,53 @@ def _num(v: Any) -> float | None:
     return float(v) if isinstance(v, (int, float)) else None
 
 
+def _str(v: Any) -> str | None:
+    """
+    Text field -> trimmed string, or None.
+
+    Deliberately identical to `str()` in frontend/src/data/upstream.ts, because that file
+    normalizes the same records for the single-file build and the two must not disagree
+    (fixtures/adsb/). Three behaviours matter and all three were divergences before the shared
+    fixture caught them:
+
+      - readsb PADS text fields (`flight` arrives as "FFT1257 "), so everything is trimmed, not
+        just the callsign that happened to be trimmed by hand.
+      - whitespace-only is nothing, and becomes None so the UI renders an em-dash. `"   " or None`
+        keeps the spaces, because a string of spaces is truthy.
+      - a number is accepted and stringified. `year` is a string on every feed observed, but the
+        payload's declared type is string, and silently dropping a numeric one loses real data.
+    """
+    if isinstance(v, str):
+        return v.strip() or None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return str(v)
+    return None
+
+
+def _flags(v: Any) -> int:
+    """
+    dbFlags -> int, never raising.
+
+    Was `int(raw.get("dbFlags") or 0)`, which raises ValueError on a non-numeric value. That
+    exception escapes `normalize`, so ONE malformed record would fail the whole poll and drop
+    every other contact with it. It also disagreed with upstream.ts, which accepted only a real
+    number: a feed sending dbFlags as the STRING "1" produced a MILITARY contact on the backend
+    and a civil one in the single-file build - magenta on one screen, cyan on the other.
+    """
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _emergency(v: Any) -> str | None:
+    """readsb's "no emergency" sentinel is the string "none". Everything else is real."""
+    s = _str(v)
+    return None if s is None or s.lower() == "none" else s
+
+
 def normalize(raw: dict[str, Any]) -> dict[str, Any] | None:
     """
     One readsb record -> our shape. Returns None if it carries no usable position.
@@ -69,18 +116,18 @@ def normalize(raw: dict[str, Any]) -> dict[str, Any] | None:
     if on_ground and alt_ft is None:
         alt_ft = 0.0
 
-    db_flags = int(raw.get("dbFlags") or 0)
-    flight = (raw.get("flight") or "").strip() or None
+    db_flags = _flags(raw.get("dbFlags"))
+    hex_code = _str(raw.get("hex"))
 
     return {
-        "hex": (raw.get("hex") or "").lower() or None,
-        "flight": flight,
-        "registration": raw.get("r") or None,
-        "type": raw.get("t") or None,
-        "desc": raw.get("desc") or None,          # absent on adsb.lol
-        "operator": raw.get("ownOp") or None,     # absent on adsb.lol
-        "year": raw.get("year") or None,          # absent on adsb.lol
-        "category": raw.get("category") or None,
+        "hex": hex_code.lower() if hex_code else None,
+        "flight": _str(raw.get("flight")),
+        "registration": _str(raw.get("r")),
+        "type": _str(raw.get("t")),
+        "desc": _str(raw.get("desc")),            # absent on adsb.lol
+        "operator": _str(raw.get("ownOp")),       # absent on adsb.lol
+        "year": _str(raw.get("year")),            # absent on adsb.lol
+        "category": _str(raw.get("category")),
         "lat": lat,
         "lon": lon,
         "alt_ft": alt_ft,
@@ -91,8 +138,11 @@ def normalize(raw: dict[str, Any]) -> dict[str, Any] | None:
         "track_deg": _num(raw.get("track")),
         "baro_rate_fpm": _num(raw.get("baro_rate")),
         "geom_rate_fpm": _num(raw.get("geom_rate")),
-        "squawk": raw.get("squawk") or None,
-        "emergency": raw.get("emergency") if raw.get("emergency") not in (None, "none") else None,
+        "squawk": _str(raw.get("squawk")),
+        # Case-insensitive, and after trimming: readsb sends the literal "none" for "no
+        # emergency", and " None " must not become a reported emergency. upstream.ts already
+        # lower-cased before comparing; this side did not.
+        "emergency": _emergency(raw.get("emergency")),
         # dbFlags is a bitfield: 1 = military, 2 = interesting, 4 = PIA, 8 = LADD
         "military": bool(db_flags & 1),
         "ladd": bool(db_flags & 8),

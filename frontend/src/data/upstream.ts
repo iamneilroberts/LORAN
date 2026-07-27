@@ -46,8 +46,30 @@ function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Text field -> trimmed string, or null. Deliberately identical to `_str` in
+ * backend/app/feeds/adsb.py; the shared fixture in fixtures/adsb/ holds the two together.
+ *
+ * The number branch is not defensive padding: `year` is a string on every feed observed, but
+ * dropping a numeric one would silently lose real data, and the two sides disagreed about it
+ * until the fixture said so.
+ */
 function str(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim() : null;
+  if (typeof v === "string") return v.trim() || null;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return null;
+}
+
+/**
+ * dbFlags -> int, never throwing.
+ *
+ * This one mattered: accepting only a real number meant a feed sending dbFlags as the STRING "1"
+ * produced a CIVIL contact here and a MILITARY one on the backend - cyan in the single-file build,
+ * magenta on the served one, for the same aircraft. Found by the shared fixture, not by review.
+ */
+function flagBits(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.trim()) : NaN;
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
 
 /**
@@ -96,7 +118,7 @@ export function normalizeAircraft(raw: Record<string, unknown>): Aircraft | null
   let alt = altGeom ?? altBaro;
   if (alt === null && onGround) alt = 0;
 
-  const flags = typeof raw.dbFlags === "number" ? raw.dbFlags : 0;
+  const flags = flagBits(raw.dbFlags);
   const emergency = str(raw.emergency);
 
   return {

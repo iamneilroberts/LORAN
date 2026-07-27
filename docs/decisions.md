@@ -2979,3 +2979,61 @@ directly, which is the only part that could plausibly differ at a `file://` orig
 look on real hardware before anyone trusts the basemap in this build.
 
 `vite-plugin-singlefile` was added as a **devDependency** for this and nothing else.
+
+---
+
+## D-071 — 2026-07-26 — NORMALIZER PARITY: one fixture, two suites, and five disagreements nobody had noticed
+
+**Date:** 2026-07-26
+
+`backend/app/feeds/adsb.py` and `frontend/src/data/upstream.ts` normalize the same readsb records
+into the same shape. The TypeScript one exists only so the single-file build can reach the feeds
+with no server (D-070). Merging that branch raised the question the handoff had been carrying:
+accept the drift, generate one from the other, or hold them together with a shared fixture.
+**Owner chose the shared fixture.**
+
+**The premise turned out to be wrong in a useful way.** The handoff recorded "they agree today —
+verified, including the fiddly `on_ground` → `alt_ft = 0` case". They agree on *today's data*.
+They did not agree on the contract. The fixture found **five real divergences**, none of which
+live traffic happens to trigger:
+
+| Input | `adsb.py` | `upstream.ts` |
+|---|---|---|
+| `r: "N435N  "` (readsb pads) | `"N435N  "` | `"N435N"` |
+| `r: "   "` | `"   "` — a string of spaces is truthy | `null` |
+| `squawk: "1200 "` | `"1200 "` | `"1200"` |
+| `year: 2015` (number) | `2015` | `null` |
+| `dbFlags: "1"` (string) | **military** | **civil** |
+
+**The last one is the one that matters.** A feed sending `dbFlags` as a string would paint the
+same aircraft magenta on the served console and cyan in the single-file build. Not a crash, not a
+log line — two screens quietly disagreeing about whether a contact is military, which is exactly
+the class of thing this project treats as invented data.
+
+**And the fixture found a crash while it was in there.** `int(raw.get("dbFlags") or 0)` raises
+`ValueError` on a non-numeric value. That exception escapes `normalize`, so **one malformed record
+would fail the entire poll and drop all ~170 other contacts with it.** Now `_flags` returns 0
+rather than throwing.
+
+**Both sides were changed to one contract**, taking the safer behaviour each time: trim text,
+whitespace-only becomes `None` so the UI renders an em-dash, accept a number where a string was
+expected rather than dropping real data, coerce a numeric-looking `dbFlags`, and compare
+`emergency` case-insensitively after trimming (`" None "` is not an emergency). `_str` in
+`adsb.py` and `str()` in `upstream.ts` are now deliberately identical, and say so in both files.
+
+**The fixture is mostly real traffic, and says which parts are not.** Eight records are lifted
+verbatim from live captures of all three feeds, kept alongside the curated cases so provenance is
+checkable. Seventeen are constructed — the sky over Mobile during one capture had no PIA contact,
+no negative altitude, no emergency and no position-less record — and every one carries
+`synthetic: true` and a reason. **Mixing observed and constructed data without marking which is
+which is the failure ground rule 1 exists to prevent**, and a fixture is not exempt.
+
+**`expected` is committed data, checked by hand against `docs/data-sources.md` §3.1, not output
+regenerated from a normalizer.** That distinction is the whole design: generated-and-trusted would
+make the pytest arm tautological — asserting only that `adsb.py` still does what `adsb.py` did.
+When a test goes red the question is which implementation is wrong, not how to refresh the file.
+`fixtures/adsb/README.md` says so, because the tempting fix is the wrong one.
+
+**Verified by mutation, not by assertion.** Reverting `upstream.ts` to its old `dbFlags` handling
+turns exactly one test red — the `dbFlags: "1"` case — and restoring it turns it green. A parity
+fixture that cannot fail is decoration.
