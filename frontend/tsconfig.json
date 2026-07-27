@@ -14,5 +14,11 @@
     "resolveJsonModule": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  // Tests are excluded because THIS config is what `npm run build` typechecks, and that build
+  // runs inside the Docker image, where `fixtures/` and test-only devDependencies are not part
+  // of the build context. A test file could otherwise break the production image while every
+  // local check stayed green - which is this project's most repeated failure (D-064, and the
+  // stale-bundle incident in D-067). Tests are typechecked by `tsconfig.test.json`.
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

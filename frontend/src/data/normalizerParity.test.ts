@@ -10,12 +10,16 @@
  * regenerated from either normalizer. That is what stops this from being a test that passes
  * forever while proving nothing.
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { normalizeAircraft } from "./upstream";
+// Imported rather than read with node:fs, and that is deliberate. `npm run build` typechecks
+// everything under src/, the Dockerfile runs that build, and this project's tsconfig declares
+// `types: ["vite/client"]` with no @types/node - so a node: import compiles on a developer
+// machine whose node_modules happens to resolve those types and FAILS in the container that
+// actually ships. Adding @types/node would need a dependency decision (CLAUDE.md rule 2);
+// resolveJsonModule is already on, so nothing new is needed.
+import fixture from "../../../fixtures/adsb/cases.json";
 
 interface Case {
   name: string;
@@ -25,9 +29,7 @@ interface Case {
   expected: Record<string, unknown> | null;
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = resolve(here, "../../../fixtures/adsb/cases.json");
-const cases: Case[] = JSON.parse(readFileSync(FIXTURE, "utf8")).cases;
+const cases = fixture.cases as unknown as Case[];
 
 describe("normalizer parity with the Python backend", () => {
   it("finds the shared fixture", () => {

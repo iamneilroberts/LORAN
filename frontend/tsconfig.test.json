@@ -1,0 +1,15 @@
+// Typechecks the test suite, which tsconfig.json deliberately excludes so a test file can never
+// break the production Docker build (see the note there).
+//
+// Run with:  npx tsc -p tsconfig.test.json --noEmit
+// `bash scripts/test.sh` runs it, so the tests stay type-safe without the production build
+// depending on anything only the tests need.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The parity test imports fixtures/adsb/cases.json from outside src/.
+    "resolveJsonModule": true
+  },
+  "include": ["src"],
+  "exclude": []
+}
