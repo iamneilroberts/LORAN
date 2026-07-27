@@ -236,9 +236,31 @@ export function ProbeView() {
           border: "1px solid var(--line-bright)",
           background: "rgba(5,7,10,.86)",
           maxWidth: 360,
+          // The panel is taller than a phone viewport, so it MUST scroll and it must clear
+          // Safari's bottom toolbar - the state-boundaries control was unreachable without this.
+          //
+          // `dvh`, not `vh`: on iOS Safari `100vh` is the LARGE viewport, measured as if the
+          // toolbar were hidden, so a vh-sized panel is always taller than what you can see and
+          // its last rows sit permanently under the chrome. `dvh` tracks the toolbar.
+          //
+          // The horizontal overflow readout above would never have caught this: scrollWidth vs
+          // clientWidth is a WIDTH check, and this was clipped vertically.
+          maxHeight: "calc(100dvh - 16px)",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          paddingBottom: "calc(10px + env(safe-area-inset-bottom))",
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        {/* Sticky: the whole point is to read FPS while changing a control further down, and a
+            header that scrolls away takes the number with it. */}
+        <div
+          style={{
+            display: "flex", alignItems: "baseline", gap: 8,
+            position: "sticky", top: -10, zIndex: 1,
+            background: "rgba(5,7,10,.94)",
+            margin: "-10px -12px 0", padding: "10px 12px",
+          }}
+        >
           <span className="lbl" style={{ fontSize: 11, color: "var(--cyan)" }}>PROBE</span>
           <span style={{ fontSize: 26, fontVariantNumeric: "tabular-nums", color: "var(--txt)" }}>
             {stats.fps.toFixed(0)}
