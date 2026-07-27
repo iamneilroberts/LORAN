@@ -51,3 +51,6 @@ docs/mockups/index.html
 
 # Local session logs (/session-end). Operational notes, not part of the public project.
 SESSION_LOG.md
+
+# Owner-local research notes, committed to the public repo by mistake in 4d08f10.
+docs/amazon-dongles.txt
