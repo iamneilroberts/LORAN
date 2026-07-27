@@ -170,7 +170,7 @@ export function TrafficPanel() {
 
       {sections.seaTraffic && (
         <>
-          {/* Honest empty state. There is no AIS source: measured zero coverage at Mobile. */}
+          {/* Honest empty state. There is no AIS source: measured zero coverage here. */}
           <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
             <span className="lbl">▸ Sea traffic</span>
             <span style={{ color: "var(--dim)" }}>{DASH}</span>

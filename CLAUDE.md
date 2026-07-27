@@ -64,7 +64,7 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 | adsb.fi | ADS-B 2nd reserve | none | undocumented | non-commercial (unverified) |
 | adsbdb | reg/type/operator/route | none | undocumented | open |
 | planespotters | dossier photo | none, **UA must carry contact** | undocumented | attribution mandatory |
-| aisstream.io | AIS — **REJECTED, zero coverage at Mobile** | free key | 1 sub/sec | BETA, no SLA |
+| aisstream.io | AIS — **REJECTED, zero coverage at the home location** | free key | 1 sub/sec | BETA, no SLA |
 | own RTL-SDR receiver | AIS — **recommended path** | none | none | none |
 | Esri World Imagery | satellite basemap | none | — | attribution required |
 | Esri World Ocean Base | ocean basemap | none | — | attribution required |
@@ -142,7 +142,7 @@ Sequential. Stop and wait for sign-off after each.
   colouring (amber within ±1000 ft) + drop-lines to the datum + numeric pair readout. Design:
   `docs/design-altitude.md`.
 - **Phase 4 — Vessels.** ⛔ **DEFERRED — blocked on a data source, not on code.** aisstream.io
-  measured **zero coverage** at Mobile (`docs/data-sources.md` §5.1a). Recommended remedy is a
+  measured **zero coverage** at the home location (`docs/data-sources.md` §5.1a). Recommended remedy is a
   self-hosted RTL-SDR AIS receiver feeding local NMEA. Nothing else in the project depends on this.
 - **Phase 5 — Archive.** SQLite recorder, retention policy, scrubber, unmistakable live/replay
   distinction. Query plan reviewed before build.

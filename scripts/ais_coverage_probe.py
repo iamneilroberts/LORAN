@@ -7,7 +7,7 @@ Reports raw observed counts only. It never infers, fills gaps, or synthesizes.
 A zero result is a real answer and is reported as zero.
 
 Usage:
-    python3 scripts/ais_coverage_probe.py --name "Mobile Bay" \
+    python3 scripts/ais_coverage_probe.py --name "Home Bay" \
         --bbox 30.1 -88.4 31.0 -87.8 --duration 180
 
     # Known-dense control, to prove the tooling and key work:

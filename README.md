@@ -58,6 +58,11 @@ with the camera or draw and export its recorded track.
 
 ![Contact detail sheet on a phone with FOLLOW, TRACK, CLEAR and EXPORT](docs/screenshots/mobile-detail.png)
 
+You can pin either view explicitly — `#m` for the glance list, `#map` for the console — and with
+no hash the width decides, so one shared link is correct on any device. Measured at **30–37 FPS**
+on an iPhone with ~150 contacts, which is why Cesium stayed rather than being swapped for a
+lighter engine.
+
 Getting started as a viewer: [`docs/quickstart.md`](docs/quickstart.md).
 
 ---
@@ -241,8 +246,8 @@ Works today:
 Not built yet:
 
 - **Phase 4, vessels (AIS)** — blocked on hardware, not code. aisstream.io measured *zero*
-  coverage at Mobile; the plan is a self-hosted RTL-SDR AIS receiver, which needs a marine-VHF
-  antenna
+  coverage at this deployment's location; the plan is a self-hosted RTL-SDR AIS receiver, which
+  needs a marine-VHF antenna
 - **Phase 5, the recording archive** — SQLite recorder, retention, scrubber
 - **Phase 6** — compass and FPS readout. The rest of the chrome shipped early, because remote
   access needed it
@@ -295,17 +300,6 @@ python3 scripts/verify_phase1.py
 Drives a real browser via CDP and checks nine things end to end against **live** traffic —
 including that clicking a contact puts the altitude slice at exactly its altitude. Needs Chrome
 on `--remote-debugging-port=9333` and the app running.
-
-## Non-goals
-
-No satellites. No AI summarisation. No alerting engine. No accounts beyond the single
-shared-secret door described above. Weather is limited to the one radar layer.
-
-**Mobile is no longer a non-goal** (D-072, D-076). A phone gets a glance list at `#m` — no globe,
-no WebGL — and the console itself at `#map`, reflowed to one surface at a time. With no hash the
-view is chosen by viewport width, so one shared link is correct on any device. Measured at 30–37
-FPS on an iPhone with ~150 contacts, which is why Cesium stayed. Start here:
-[`docs/quickstart.md`](docs/quickstart.md).
 
 ## Licence
 

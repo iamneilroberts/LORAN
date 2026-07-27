@@ -380,8 +380,10 @@ async def health():
             "geocode": geocoder.status(),
         },
         "track_buffer": tracks.status(),
-        # Recorded honestly: measured zero coverage at Mobile. docs/data-sources.md 5.1a
-        "ais": {"configured": False, "reason": "no source - aisstream measured zero at Mobile"},
+        # Recorded honestly: measured zero coverage at the home location. docs/data-sources.md 5.1a
+        # Deliberately does NOT name the place: /api/health is open by design, so anything here is
+        # public, and the operator's home city is not something an unauthenticated probe should get.
+        "ais": {"configured": False, "reason": "no source - aisstream measured zero coverage here"},
         # No token values, no principal names - just whether the door exists.
         "auth": {"enabled": auth.enabled, "principals": len(set(auth.principals.values()))},
     }
