@@ -190,6 +190,23 @@ interface State {
    * Not persisted: it is a transient instruction, not a preference.
    */
   flyToHex: string | null;
+  /**
+   * Vertical exaggeration for GEOMETRY ONLY (D-075). 1 is true scale.
+   *
+   * Deliberately NOT persisted, unlike the layer toggles. A distorted globe restored silently on
+   * a later visit is exactly the plausible-looking untruth ground rule 1 guards against, so every
+   * fresh load starts true and the operator opts in again. The on-screen banner covers the
+   * within-session case.
+   */
+  vertScale: number;
+  /**
+   * The contact the camera is locked to, or null (D-076 Stage 3).
+   *
+   * Not persisted and not implied by selection: selecting a contact to read it is the common
+   * case and moving the camera every time would fight the operator. Following is a deliberate,
+   * announced mode with its own control.
+   */
+  followHex: string | null;
   filter: Filter;
   // Carries its own hex so a late reply for a deselected contact can be discarded rather
   // than shown against whatever is selected now.
@@ -280,6 +297,10 @@ interface State {
    * off-screen, and not flying to it would present an empty globe.
    */
   requestFlyTo: (hex: string | null) => void;
+  /** Set the vertical exaggeration. Geometry only; every readout stays true (D-075). */
+  setVertScale: (x: number) => void;
+  /** Lock the camera to a contact, or pass null to release it. */
+  setFollow: (hex: string | null) => void;
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
@@ -413,6 +434,8 @@ export const useStore = create<State>()(persist((set) => ({
   selectedHex: null,
   selectedPlace: null,
   flyToHex: null,
+  vertScale: 1,
+  followHex: null,
   filter: { operator: null, militaryOnly: false },
   enrichment: null,
   enrichPending: false,
@@ -493,6 +516,9 @@ export const useStore = create<State>()(persist((set) => ({
   // registration under another's callsign would be worse than showing nothing.
   select: (selectedHex) => set({
     selectedHex,
+    // Releasing on selection change: a camera still chasing the PREVIOUS contact, while the
+    // dossier describes a new one, reads as the globe having a mind of its own.
+    followHex: null,
     // An aircraft and an airfield are never both selected: the right column is height-bounded
     // and two stacked dossiers would push one off screen.
     selectedPlace: null,
@@ -502,6 +528,8 @@ export const useStore = create<State>()(persist((set) => ({
   }),
   selectPlace: (selectedPlace) => set({ selectedPlace, selectedHex: null }),
   requestFlyTo: (flyToHex) => set({ flyToHex }),
+  setVertScale: (vertScale) => set({ vertScale: Math.max(1, vertScale) }),
+  setFollow: (followHex) => set({ followHex }),
   setEnrichment: (enrichment, enrichPending) => set({ enrichment, enrichPending }),
   setPhoto: (photo, photoPending) => set({ photo, photoPending }),
   setTrack: (track, trackPending) => set({ track, trackPending }),
@@ -619,6 +647,33 @@ export function hasSlicePerspective(pitchDeg: number): boolean {
 
 export const FT_TO_M = 0.3048;
 export const NM_TO_M = 1852;
+
+/**
+ * The exaggeration ladder (D-075). `1` is true scale and is the default.
+ *
+ * At the default view a 250 nm radius is ~463 km across while 40,000 ft is 12.2 km - about 1:38 -
+ * so two contacts 2,000 ft apart occupy 0.13% of the frame and read as coplanar. Multiplying the
+ * vertical makes the layering visible at the cost of the geometry being literally true, which is
+ * why it is opt-in and announced on screen while it is on.
+ */
+export const VERT_SCALES = [1, 5, 10] as const;
+
+/**
+ * THE ONE PLACE feet become a drawable height. Every altitude-positioned thing on the globe goes
+ * through here - aircraft, drop lines, the datum slice, the projection cone, the filed route legs
+ * and the track path - so they cannot drift apart when the scale changes.
+ *
+ * That "cannot drift" is the whole point, and it is not hypothetical: D-071 cost five real
+ * divergences because one value was computed in two places. If exaggeration were applied
+ * per-module, the first missed site would leave an aircraft floating off its own drop line.
+ *
+ * DISPLAY VALUES MUST NOT USE THIS. Anything converting metres back to feet for a readout keeps
+ * the true `FT_TO_M`, or the instrument reports an altitude the aircraft is not at - which is the
+ * exact failure ground rule 1 exists to prevent. See the note on `endAltFt` in projectionCone.
+ */
+export function altToMetres(ft: number, scale = 1): number {
+  return ft * FT_TO_M * scale;
+}
 
 export function altOf(a: Aircraft): number | null {
   return a.alt_ft;

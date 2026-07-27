@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import {
-  hasSlicePerspective, matchesFilter, operatorKey, RANGE_PRESETS_NM, useStore,
+  hasSlicePerspective, matchesFilter, operatorKey, RANGE_PRESETS_NM, useStore, VERT_SCALES,
   type Aircraft, type EnrichAirport, type PhotoResult, type TrackResult,
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
@@ -231,6 +231,8 @@ export function LayerCluster() {
   const setPlaceDensity = useStore((s) => s.setPlaceDensity);
   const radiusNm = useStore((s) => s.radiusNm);
   const setRadiusNm = useStore((s) => s.setRadiusNm);
+  const vertScale = useStore((s) => s.vertScale);
+  const setVertScale = useStore((s) => s.setVertScale);
   const selected = useStore((s) => s.selectedHex);
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const showStates = useStore((s) => s.showStates);
@@ -295,6 +297,31 @@ export function LayerCluster() {
             }}>{nm}</button>
         ))}
       </div>
+      {/* VERTICAL EXAGGERATION (D-075). Off by default and never persisted, so every fresh load
+          is true scale - a distorted globe restored silently on a later visit is exactly the
+          plausible-looking untruth ground rule 1 forbids.
+
+          It sits with Range because both are honest about costing something: Range costs
+          upstream courtesy, this costs literal accuracy. The banner over the globe says so
+          while it is on, and every READOUT stays true regardless. */}
+      <div className="lbl px-[3px] mt-[3px]" style={{ fontSize: 9 }}>
+        Vertical · {vertScale === 1 ? "true scale" : `${vertScale}x exaggerated`}
+      </div>
+      <div className="flex gap-[2px]">
+        {VERT_SCALES.map((x) => (
+          <button key={x} onClick={() => setVertScale(x)}
+            title={x === 1
+              ? "True altitude. What Cesium was chosen for."
+              : `Multiply the vertical by ${x} so separation reads at a glance. Geometry only - every number stays true.`}
+            style={{
+              font: "inherit", fontSize: 9, letterSpacing: ".06em", flex: 1,
+              background: "transparent", cursor: "pointer", padding: "2px 0",
+              border: "1px solid var(--line-bright)", borderRadius: 0,
+              color: vertScale === x ? (x === 1 ? "var(--cyan)" : "var(--amber)") : "var(--off)",
+            }}>{x === 1 ? "TRUE" : `${x}x`}</button>
+        ))}
+      </div>
+
       {/* The projection envelope is the primary instrument (D-047); the slice is secondary
           context and now defaults off. */}
       <Item on={showProjection} label="Projection" k="showProjection"
@@ -691,6 +718,9 @@ function spanLabel(s: number): string {
  */
 function TrackBlock({ hex, label }: { hex: string; label: string }) {
   const track = useStore((s) => s.track);
+  const followHex = useStore((s) => s.followHex);
+  const setFollow = useStore((s) => s.setFollow);
+  const following = !!hex && followHex?.toLowerCase() === hex.toLowerCase();
   const pending = useStore((s) => s.trackPending);
   const mine = track && track.hex.toLowerCase() === hex.toLowerCase() ? track : null;
 
@@ -708,6 +738,30 @@ function TrackBlock({ hex, label }: { hex: string; label: string }) {
 
   return (
     <div className="py-1 px-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+      {/* FOLLOW sits on its own row above TRACK/CLEAR/EXPORT because it is a different KIND of
+          action. Those three act on the recorded path; this one takes over the camera, which is
+          the most surprising thing a control here can do - so it gets its own line, says which
+          state it is in, and is the same button that releases it (D-076 Stage 3). */}
+      <button
+        style={{
+          ...btn, width: "100%", flex: "none", marginBottom: 4, minHeight: 30,
+          color: following ? "var(--amber)" : "var(--cyan)",
+          borderColor: following ? "var(--amber)" : "var(--line-bright)",
+        }}
+        onClick={() => {
+          if (following) { setFollow(null); return; }
+          setFollow(hex);
+          // Centre once on locking. The lock itself only TRANSLATES the camera by the contact's
+          // own motion, so without this it would faithfully follow an aircraft that happened to
+          // be off-screen.
+          useStore.getState().requestFlyTo(hex);
+        }}
+        title={following
+          ? "Release the camera"
+          : "Lock the camera to this contact. It keeps your angle and zoom, and you can still drag."}
+      >
+        {following ? "◉ Following · release" : "Follow"}
+      </button>
       <div className="flex gap-1">
         <button style={btn} onClick={load} disabled={pending}>
           {pending ? "…" : "Track"}
@@ -963,6 +1017,53 @@ export function StatusBar() {
       <span className="chip" style={{ color: mil ? "var(--mil)" : undefined }}>{mil} mil</span>
       <span className="chip">{home.label}</span>
       <span className="ml-auto chip">{fps} FPS · WebGL2</span>
+    </div>
+  );
+}
+
+/* ---------------- vertical exaggeration banner: mandatory while it is on ---------------- */
+
+/**
+ * Says out loud that the vertical axis is not real (D-075).
+ *
+ * Not a subtle chip. Someone walking up to the screen mid-session, or glancing at a shared
+ * screenshot, must be able to tell that the geometry is distorted - otherwise an exaggerated
+ * globe is exactly the plausible-looking untruth ground rule 1 exists to prevent. Amber, because
+ * this project already uses amber for "pay attention to this", and it names the factor rather
+ * than just warning, so the reader can undo the distortion mentally.
+ *
+ * Renders nothing at true scale. There is nothing to disclose then.
+ */
+export function VertScaleBanner({ top = 6 }: { top?: number } = {}) {
+  const vertScale = useStore((s) => s.vertScale);
+  const setVertScale = useStore((s) => s.setVertScale);
+  if (vertScale === 1) return null;
+  return (
+    <div
+      className="absolute left-1/2 lbl flex items-center gap-2"
+      style={{
+        // Passed in rather than fixed: the phone has a 52px top bar and a banner at 6 would
+        // sit across the LIST control, which is precisely the collision this project has now
+        // made twice.
+        top, transform: "translateX(-50%)", zIndex: 50, pointerEvents: "auto",
+        fontSize: 10, color: "var(--amber)",
+        border: "1px solid var(--amber)", background: "rgba(5,7,10,.92)",
+        padding: "4px 8px", whiteSpace: "nowrap",
+      }}
+      title="Geometry only. Every altitude readout is the aircraft's true altitude."
+    >
+      <span>VERTICAL {vertScale}x — NOT TRUE SCALE</span>
+      <button
+        onClick={() => setVertScale(1)}
+        className="lbl"
+        style={{
+          font: "inherit", fontSize: 9, color: "var(--amber)", background: "transparent",
+          border: "1px solid var(--amber)", padding: "2px 6px", cursor: "pointer",
+          minHeight: 28,
+        }}
+      >
+        RESET
+      </button>
     </div>
   );
 }

@@ -26,7 +26,7 @@ import {
   type Viewer,
 } from "cesium";
 
-import { FT_TO_M, NM_TO_M } from "../state/store";
+import { altToMetres, NM_TO_M } from "../state/store";
 import { palette } from "../styles/palette";
 
 /*
@@ -44,6 +44,8 @@ function rectAround(lat: number, lon: number, radiusNm: number): Rectangle {
 }
 
 export interface PlaneSpec {
+  /** Vertical exaggeration, 1 = true (D-075). Geometry only. */
+  vertScale?: number;
   id: string;
   lat: number;
   lon: number;
@@ -75,7 +77,7 @@ export interface PlaneSpec {
  */
 export function upsertPlane(viewer: Viewer, s: PlaneSpec): Entity[] {
   const rect = rectAround(s.lat, s.lon, s.radiusNm);
-  const heightM = s.altFt * FT_TO_M;
+  const heightM = altToMetres(s.altFt, s.vertScale ?? 1);
   const style = s.fill ?? (s.emphasis ? "solid" : "grid");
   const labelText = `[ ${s.label} ]`;
   const centreOf = (r: Rectangle) => {

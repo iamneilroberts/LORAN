@@ -43,6 +43,8 @@ const KT_TO_MS = 0.514444;
 const FPM_TO_MS = 0.00508;
 
 export interface ConeSpec {
+  /** Vertical exaggeration, 1 = true (D-075). Geometry only; endAltFt stays true. */
+  vertScale?: number;
   id: string;
   lat: number;
   lon: number;
@@ -110,20 +112,31 @@ export function coneGeometry(s: ConeSpec): ConeGeometry {
   const vMs = Math.max(0, s.gsKt) * KT_TO_MS;
   const dTotal = vMs * tTotal;
 
-  const apex = Cartesian3.fromDegrees(s.lon, s.lat, heightAt(s, 0));
-  const far = rung(s, dTotal, heightAt(s, tTotal));
+  /*
+   * `heightAt` returns TRUE metres and must keep doing so, because `endAltFt` below converts it
+   * back to feet for a readout. Vertical exaggeration (D-075) is applied HERE, at the point a
+   * height becomes a drawable position, and nowhere else in this file.
+   *
+   * This is the trap D-075 names explicitly. Fold the scale into `heightAt` instead and the cone
+   * would still look right while the END ALT readout silently reported an altitude the aircraft
+   * will never reach - a real instrument lying, which is worse than no instrument.
+   */
+  const draw = (trueM: number) => trueM * (s.vertScale ?? 1);
+
+  const apex = Cartesian3.fromDegrees(s.lon, s.lat, draw(heightAt(s, 0)));
+  const far = rung(s, dTotal, draw(heightAt(s, tTotal)));
 
   const outline = [apex, ...far, apex];
   const centre = [apex, Cartesian3.fromDegrees(
     dest(s.lat, s.lon, s.trackDeg, dTotal).lon,
     dest(s.lat, s.lon, s.trackDeg, dTotal).lat,
-    heightAt(s, tTotal),
+    draw(heightAt(s, tTotal)),
   )];
 
   const rungs: Cartesian3[][] = [];
   for (let m = 1; m < s.minutes; m++) {
     const t = m * 60;
-    rungs.push(rung(s, vMs * t, heightAt(s, t), 6));
+    rungs.push(rung(s, vMs * t, draw(heightAt(s, t)), 6));
   }
 
   return {
@@ -132,6 +145,7 @@ export function coneGeometry(s: ConeSpec): ConeGeometry {
     centre,
     rungs,
     tip: far[Math.floor(far.length / 2)],
+    // TRUE metres divided by the TRUE factor. Never `draw(...)` - see the note above.
     endAltFt: Math.round(heightAt(s, tTotal) / FT_TO_M),
   };
 }

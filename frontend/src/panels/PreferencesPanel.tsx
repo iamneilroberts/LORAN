@@ -328,30 +328,36 @@ function HomeChooser() {
   );
 }
 
-export function PreferencesPanel() {
+export function PreferencesPanel({ alwaysOpen = false }: { alwaysOpen?: boolean } = {}) {
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
 
+  // A touch device never hovers, so this timer would collapse the panel and leave no way to
+  // reopen it. `alwaysOpen` is set by the mobile sheet, where the operator has already said
+  // "show me the settings" and auto-tidying is just a way to lose them.
   useEffect(() => {
+    if (alwaysOpen) return;
     const id = window.setTimeout(
       () => setCollapsed(!hovering),
       hovering ? HOVER_EXPAND_DELAY_MS : COLLAPSE_AFTER_MS,
     );
     return () => window.clearTimeout(id);
-  }, [hovering]);
+  }, [hovering, alwaysOpen]);
+
+  const open = alwaysOpen || !collapsed;
 
   return (
     <div
-      className="panel w-[210px] pointer-events-auto"
+      className={`panel pointer-events-auto ${alwaysOpen ? "w-full" : "w-[210px]"}`}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
       <div className="panel-h">
         <span className="lbl" style={{ color: "var(--cyan)" }}>▸ Preferences</span>
       </div>
-      {!collapsed && <LayerCluster />}
-      {!collapsed && <HomeChooser />}
-      {!collapsed && <ThemeChooser />}
+      {open && <LayerCluster />}
+      {open && <HomeChooser />}
+      {open && <ThemeChooser />}
     </div>
   );
 }

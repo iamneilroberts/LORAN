@@ -26,7 +26,7 @@ import {
 } from "cesium";
 
 import { iconDataUri, silhouetteFor } from "./icons";
-import { FT_TO_M, reckon, type Aircraft } from "../state/store";
+import { altToMetres, reckon, type Aircraft } from "../state/store";
 
 import { palette } from "../styles/palette";
 
@@ -157,6 +157,8 @@ export interface UpdateOpts {
   datumAltFt: number | null;
   /** D-060: label every contact, not just selected/co-altitude/military. */
   showAllLabels: boolean;
+  /** Vertical exaggeration, 1 = true (D-075). Geometry only; every readout stays true. */
+  vertScale: number;
 }
 
 export interface AircraftLayer {
@@ -233,7 +235,7 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
       seen.add(a.hex);
 
       const { lat, lon, stale } = reckon(a, elapsedS);
-      const heightM = a.alt_ft * FT_TO_M;
+      const heightM = altToMetres(a.alt_ft, opts.vertScale);
       const pos = Cartesian3.fromDegrees(lon, lat, heightM);
 
       const isSel = a.hex === opts.selectedHex;
@@ -318,7 +320,7 @@ export function createAircraftLayer(scene: Scene): AircraftLayer {
       /* ---- drop-line to the reference plane, never to the ground ---- */
       const toFt = opts.showDropLines ? opts.dropToAltFt(a) : null;
       if (toFt !== null && Math.abs(toFt - a.alt_ft) > 1) {
-        const foot = Cartesian3.fromDegrees(lon, lat, toFt * FT_TO_M);
+        const foot = Cartesian3.fromDegrees(lon, lat, altToMetres(toFt, opts.vertScale));
         const colour = Color.fromCssColorString(
           co ? pal.amber : isSel ? pal.iconSelected : base.fill,
         ).withAlpha(co || isSel ? 0.65 : 0.28);

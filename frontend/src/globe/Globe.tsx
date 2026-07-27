@@ -32,7 +32,8 @@ import { createRadarLayer } from "./radarLayer";
 import { perfKnobs, perfStats } from "./perfKnobs";
 import { api } from "../api";
 import {
-  DEFAULT_THEME, FT_TO_M, hasSlicePerspective, matchesFilter, useStore, type Aircraft,
+  altToMetres, DEFAULT_THEME, hasSlicePerspective, matchesFilter, reckon, useStore,
+  type Aircraft,
 } from "../state/store";
 
 const DATUM_PREFIX = "datum::";
@@ -250,6 +251,8 @@ export default function Globe() {
     let lastPitch = CMath.toDegrees(camera.pitch);
     // Starts at -Infinity so the first tick always runs the update, whatever the throttle.
     let lastDrAt = -Infinity;
+    // Anchor for FOLLOW: the target's position on the previous tick.
+    let lastFollowPos: Cartesian3 | null = null;
 
     const onTick = () => {
       const st = useStore.getState();
@@ -294,6 +297,7 @@ export default function Globe() {
           separationFt: st.separationFt,
           datumAltFt,
           showAllLabels: st.showAllLabels,
+          vertScale: st.vertScale,
           dropToAltFt: (a) => {
             // Drop lines are now SELECTION-ONLY and go all the way to the surface (D-030).
             // Showing them for every contact is what forced the old "stop at the nearest band
@@ -305,6 +309,41 @@ export default function Globe() {
         });
         perfStats.drMs += performance.now() - drStart;
         perfStats.drCalls++;
+      }
+
+      /* --- FOLLOW: keep the camera locked to one contact (D-076 Stage 3) --- */
+      //
+      // Implemented as a TRANSLATION by the target's own frame-to-frame delta, not as
+      // `camera.lookAt`. lookAt pins the camera into the target's reference frame and takes the
+      // normal controls away until the transform is cleared, so the operator could no longer
+      // orbit or zoom while following. Translating instead preserves whatever angle and distance
+      // they chose, and their drags still apply on top - the lock follows the aircraft without
+      // taking the camera away from them.
+      //
+      // The first frame after locking only records a position, so there is no jump; centring is
+      // done once by the fly request the FOLLOW control issues.
+      const fh = st.followHex;
+      const target = fh ? visible.find((x) => x.hex === fh) : undefined;
+      if (target && target.alt_ft != null) {
+        const r = reckon(target, elapsedS);
+        const p = Cartesian3.fromDegrees(r.lon, r.lat, altToMetres(target.alt_ft, st.vertScale));
+        if (lastFollowPos) {
+          const delta = Cartesian3.subtract(p, lastFollowPos, new Cartesian3());
+          // `setView`, not a write to `camera.position`. Assigning that property moved the camera
+          // zero metres, and mutating the vector it returns moved it a fraction of the distance -
+          // the camera keeps derived state (`positionWC`, the cartographic) that only the proper
+          // entry points refresh. Re-stating the CURRENT heading/pitch/roll is what keeps this a
+          // translation: the operator's chosen angle and zoom survive, and only the anchor moves.
+          camera.setView({
+            destination: Cartesian3.add(camera.position, delta, new Cartesian3()),
+            orientation: { heading: camera.heading, pitch: camera.pitch, roll: camera.roll },
+          });
+        }
+        lastFollowPos = p;
+      } else {
+        // Covers both "not following" and "the contact left the feed". Dropping the anchor means
+        // the camera simply stops rather than lurching when the contact returns.
+        lastFollowPos = null;
       }
 
       frames++;
@@ -334,7 +373,7 @@ export default function Globe() {
         id: `${TRACK_PREFIX}${t.hex}`,
         polyline: {
           positions: t.points.map((p) =>
-            Cartesian3.fromDegrees(p.lon, p.lat, (p.alt_ft ?? 0) * FT_TO_M),
+            Cartesian3.fromDegrees(p.lon, p.lat, altToMetres(p.alt_ft ?? 0, st.vertScale)),
           ),
           width: 1.6,
           material: Color.fromCssColorString(palette().cyan).withAlpha(0.75),
@@ -406,6 +445,9 @@ export default function Globe() {
         // selection does. Without it in the key the line would never appear for a contact
         // whose route arrives a moment later - which is all of them.
         st.showDestination,
+        // Vertical exaggeration moves every altitude-positioned thing, so it belongs in the key
+        // exactly like the toggles do (D-075).
+        st.vertScale,
         st.enrichment?.route?.destination?.lat ?? "",
         st.enrichment?.route?.destination?.lon ?? "",
         // Same reasoning for the backward leg (D-074): the origin arrives with the same late
@@ -438,6 +480,7 @@ export default function Globe() {
           lon: sel.lon,
           radiusNm: st.datumRadiusNm,
           altFt: sel.alt_ft,
+          vertScale: st.vertScale,
           colour: amber(),
           label: `SLICE ${Math.round(sel.alt_ft).toLocaleString()} FT · ±${st.datumRadiusNm} NM`,
           emphasis: true,
@@ -487,6 +530,7 @@ export default function Globe() {
           altFt: sel.alt_ft as number,
           destLat: dest.lat as number,
           destLon: dest.lon as number,
+          vertScale: st.vertScale,
           code: dest.icao ?? dest.iata ?? "—",
         });
       }
@@ -503,6 +547,7 @@ export default function Globe() {
           altFt: sel.alt_ft as number,
           origLat: orig.lat as number,
           origLon: orig.lon as number,
+          vertScale: st.vertScale,
           code: orig.icao ?? orig.iata ?? "—",
         });
       }

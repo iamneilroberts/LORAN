@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Globe from "./globe/Globe";
 import {
   AltitudeLegend, Attribution, CursorReadout, PlacePanel, SelectionPanel,
-  StatusBar, TrafficPanel,
+  StatusBar, TrafficPanel, VertScaleBanner,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { GlanceView } from "./panels/GlanceView";
@@ -275,6 +275,8 @@ export default function App() {
       <div className="relative h-full w-full">
         <Globe />
         <MobileMapChrome />
+        {/* Below the 52px mobile top bar, not across it. */}
+        <VertScaleBanner top={58} />
         <StatusBar />
         {denied && <LockedPanel />}
       </div>
@@ -336,6 +338,7 @@ export default function App() {
           <PlacePanel />
         </div>
       </div>
+      <VertScaleBanner />
       <Attribution />
       <StatusBar />
       {/* An honest locked state. A blank globe with no explanation is indistinguishable from a

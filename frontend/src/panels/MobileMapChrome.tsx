@@ -177,7 +177,10 @@ export function MobileMapChrome() {
               </>
             ) : (
               <div className="flex flex-col gap-2 items-stretch">
-                <PreferencesPanel />
+                {/* alwaysOpen: the desktop panel auto-collapses when the pointer leaves, and a
+                    touch device never hovers - so without this it would fold itself away inside
+                    the sheet the operator just opened, with no way to unfold it. */}
+                <PreferencesPanel alwaysOpen />
                 <CameraCluster />
                 <AltitudeLegend />
               </div>

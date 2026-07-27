@@ -52,13 +52,15 @@ import {
 } from "cesium";
 
 import { palette } from "../styles/palette";
+import { altToMetres } from "../state/store";
 
 export const DEST_PREFIX = "dest::";
 export const ORIGIN_PREFIX = "orig::";
 
-const FT_TO_M = 0.3048;
 
 export interface DestinationSpec {
+  /** Vertical exaggeration, 1 = true (D-075). Geometry only. */
+  vertScale?: number;
   /** Contact's present position. */
   lat: number;
   lon: number;
@@ -72,6 +74,8 @@ export interface DestinationSpec {
 }
 
 export interface OriginSpec {
+  /** Vertical exaggeration, 1 = true (D-075). Geometry only. */
+  vertScale?: number;
   /** Contact's present position. */
   lat: number;
   lon: number;
@@ -153,6 +157,7 @@ function upsertLeg(
   labelText: string,
   contact: { lat: number; lon: number; altFt: number },
   field: { lat: number; lon: number },
+  vertScale: number,
 ): Entity[] {
   const { cyan } = palette();
   // Dimmer than the track. The track is where the contact HAS been - observed fact. This is
@@ -164,7 +169,7 @@ function upsertLeg(
     dashLength: 12,
   });
 
-  const heightM = contact.altFt * FT_TO_M;
+  const heightM = altToMetres(contact.altFt, vertScale);
   const arc = levelArc(contact.lat, contact.lon, field.lat, field.lon, heightM);
   const plumb = [
     Cartesian3.fromDegrees(field.lon, field.lat, heightM),
@@ -253,6 +258,7 @@ export function upsertDestination(viewer: Viewer, s: DestinationSpec): Entity[] 
     `FILED ${s.code}`,
     { lat: s.lat, lon: s.lon, altFt: s.altFt },
     { lat: s.destLat, lon: s.destLon },
+    s.vertScale ?? 1,
   );
 }
 
@@ -270,6 +276,7 @@ export function upsertOrigin(viewer: Viewer, s: OriginSpec): Entity[] {
     `FILED FROM ${s.code}`,
     { lat: s.lat, lon: s.lon, altFt: s.altFt },
     { lat: s.origLat, lon: s.origLon },
+    s.vertScale ?? 1,
   );
 }
 
