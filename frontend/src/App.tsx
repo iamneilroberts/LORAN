@@ -5,9 +5,10 @@ import {
   StatusBar, TrafficPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
-import { GlanceView, isGlanceRoute } from "./panels/GlanceView";
-import { ProbeView, isProbeRoute } from "./panels/ProbeView";
+import { GlanceView } from "./panels/GlanceView";
+import { ProbeView } from "./panels/ProbeView";
 import { useEnrichment } from "./data/useEnrichment";
+import { currentView, goTo, isNarrow } from "./routes";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
 import { DEFAULT_THEME, useStore } from "./state/store";
 import { applyTheme } from "./styles/palette";
@@ -159,17 +160,25 @@ function LockedPanel() {
 export default function App() {
   const denied = useStore((s) => s.authRequired);
 
-  // `#m` selects the phone view (D-072). Tracked in state rather than read once, so switching
-  // between the two on the same device does not need a reload - and so the desktop console is
-  // reachable from a phone by dropping the hash, rather than being locked out of it.
-  const [glance, setGlance] = useState(isGlanceRoute());
-  // `#probe` is the mobile-viability instrument (D-073). Same hash mechanism, and it shares the
-  // one listener because two would race to answer the same event.
-  const [probe, setProbe] = useState(isProbeRoute());
+  // Which view this load lands on - see routes.ts for why width decides when no hash is given.
+  // Tracked in state rather than read once so switching does not need a reload, and so neither
+  // view can lock the other out.
+  const [view, setView] = useState(currentView);
+  // Tracked separately from `view`: on a phone the view is already "map" when you arrive from the
+  // list, so a resize that changes only the width would not change `view` and would never
+  // re-render the back control into existence.
+  const [narrow, setNarrow] = useState(isNarrow);
   useEffect(() => {
-    const onHash = () => { setGlance(isGlanceRoute()); setProbe(isProbeRoute()); };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    const recheck = () => { setView(currentView()); setNarrow(isNarrow()); };
+    window.addEventListener("hashchange", recheck);
+    // Resize matters only while auto-routed: rotating a tablet, or dragging a desktop window
+    // narrow, should follow the viewport. Once a hash is set it wins, and `currentView` already
+    // encodes that, so this listener is safe to leave attached in both cases.
+    window.addEventListener("resize", recheck);
+    return () => {
+      window.removeEventListener("hashchange", recheck);
+      window.removeEventListener("resize", recheck);
+    };
   }, []);
 
   // Enrichment follows the SELECTION, not the chrome. Fetched here so it runs on every route -
@@ -235,15 +244,15 @@ export default function App() {
     return () => { stop = true; window.clearInterval(health); };
   }, []);
 
-  // The phone view (D-072). Returned BEFORE the globe, so `<Globe/>` never mounts and Cesium never
+  // The list view (D-072). Returned BEFORE the globe, so `<Globe/>` never mounts and Cesium never
   // initialises on a phone - no WebGL context, no tile requests, no battery cost. Every effect
   // above still runs, so the poll that fills the store is unaffected; only the tree differs.
-  if (glance) return <GlanceView />;
+  if (view === "list") return <GlanceView />;
 
   // The probe mounts the REAL globe - a mock would measure the mock - but none of the console's
   // chrome, because that chrome is exactly what collapses at 390px (D-072) and an unreadable
   // instrument measures nothing.
-  if (probe) {
+  if (view === "probe") {
     return (
       <div className="relative h-full w-full">
         <Globe />
@@ -255,6 +264,27 @@ export default function App() {
   return (
     <div className="relative h-full w-full">
       <Globe />
+      {/* The way back to the list, on narrow screens only (D-076). Without it the list is a
+          one-way door: tapping a contact would strand you on a console you cannot navigate at
+          this width until Stage 2 lands. The phone's BACK gesture also works, because the views
+          are hash-routed - this is the visible affordance for people who do not think to use it.
+
+          Not rendered at all on a desktop: the console IS the desktop product and a LIST button
+          would be chrome nobody there asked for. */}
+      {narrow && (
+        <button
+          onClick={() => goTo("list")}
+          className="absolute lbl"
+          style={{
+            top: 8, right: 8, zIndex: 20, pointerEvents: "auto",
+            minHeight: 40, minWidth: 64, fontSize: 11,
+            border: "1px solid var(--line-bright)", color: "var(--cyan)",
+            background: "rgba(5,7,10,.86)",
+          }}
+        >
+          ‹ LIST
+        </button>
+      )}
       {/* Chrome floats over the globe and never blocks it. */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Camera lives on the LEFT with the other controls (owner's call). It used to sit above

@@ -1,5 +1,6 @@
 import { distanceNm, useStore, type Aircraft } from "../state/store";
 import { bearingDeg } from "../data/routeCheck";
+import { goTo } from "../routes";
 
 /**
  * The phone view (D-072). A GLANCE, deliberately not the console.
@@ -30,7 +31,10 @@ function compass(deg: number): string {
   return pts[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
 }
 
-function Row({ a, homeLat, homeLon }: { a: Aircraft; homeLat: number; homeLon: number }) {
+function Row(
+  { a, homeLat, homeLon, onOpen }:
+  { a: Aircraft; homeLat: number; homeLon: number; onOpen: () => void },
+) {
   const nm = distanceNm(homeLat, homeLon, a.lat, a.lon);
   const brg = bearingDeg(homeLat, homeLon, a.lat, a.lon);
   const alt = a.on_ground
@@ -39,14 +43,24 @@ function Row({ a, homeLat, homeLon }: { a: Aircraft; homeLat: number; homeLon: n
       ? DASH
       : `${Math.round(a.alt_ft).toLocaleString("en-US")} ft`;
 
+  // A real <button>, not a div with a handler: it is a control, so it should be keyboard
+  // reachable and announced as one. `text-align: left` because a button would otherwise centre
+  // its contents and undo the row layout.
   return (
-    <div
-      className="flex items-baseline justify-between"
+    <button
+      onClick={onOpen}
+      title={`Open ${a.flight?.trim() || a.hex || "contact"} on the map`}
+      className="flex items-baseline justify-between w-full"
       style={{
         padding: "10px 12px",
         borderBottom: "1px solid var(--line)",
         // Military is the one thing worth spotting at a glance, so it keeps its colour here.
         borderLeft: `3px solid ${a.military ? "var(--mil)" : "transparent"}`,
+        background: "transparent",
+        textAlign: "left",
+        // Past the 44px touch-target minimum with room to spare - this is the primary control
+        // of the whole view and it gets tapped one-handed.
+        minHeight: 58,
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -60,7 +74,7 @@ function Row({ a, homeLat, homeLon }: { a: Aircraft; homeLat: number; homeLon: n
       <div style={{ fontSize: 15, fontVariantNumeric: "tabular-nums", textAlign: "right", whiteSpace: "nowrap" }}>
         {alt}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -70,6 +84,22 @@ export function GlanceView() {
   const lastFetchOk = useStore((s) => s.lastFetchOk);
   const errors = useStore((s) => s.errors);
   const home = useStore((s) => s.home);
+  const select = useStore((s) => s.select);
+  const requestFlyTo = useStore((s) => s.requestFlyTo);
+
+  /**
+   * The whole point of the list: pick a contact, look at it on the globe (D-076).
+   *
+   * The fly request is separate from the selection because the globe must MOVE here. Arriving
+   * from the list, the chosen contact is very likely outside the current view, and opening the
+   * map on empty sky would read as a broken link rather than as a camera that stayed put.
+   */
+  const openOnMap = (hex: string | null) => {
+    if (!hex) return;
+    select(hex);
+    requestFlyTo(hex);
+    goTo("map");
+  };
 
   const mil = aircraft.filter((a) => a.military).length;
   // Nearest first: on a phone the only ordering that matters is "what is near me".
@@ -115,7 +145,17 @@ export function GlanceView() {
           {lastFetchOk ? "No contacts in range" : "No data — the feed is not answering"}
         </div>
       ) : (
-        <div>{near.map(({ a }) => <Row key={a.hex ?? a.flight} a={a} homeLat={home.lat} homeLon={home.lon} />)}</div>
+        <div>
+          {near.map(({ a }) => (
+            <Row
+              key={a.hex ?? a.flight}
+              a={a}
+              homeLat={home.lat}
+              homeLon={home.lon}
+              onOpen={() => openOnMap(a.hex)}
+            />
+          ))}
+        </div>
       )}
 
       {/*
@@ -130,7 +170,5 @@ export function GlanceView() {
   );
 }
 
-/** `#m` — see the note at the top of this file for why a hash and not a route. */
-export function isGlanceRoute(): boolean {
-  return typeof window !== "undefined" && window.location.hash.replace(/^#/, "").toLowerCase() === "m";
-}
+// Route detection moved to ../routes (D-076): with three views and a width fallback, having each
+// view answer "am I the current one?" separately is how they end up disagreeing.

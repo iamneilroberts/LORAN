@@ -139,6 +139,28 @@ export default function Globe() {
       });
     });
 
+    /* --- one-shot fly to a contact, requested by the list (D-076) --- */
+    // Consumed and cleared, so it fires once per request. A contact chosen in the list is very
+    // likely off-screen, and opening the map on empty sky reads as a broken link.
+    //
+    // Closer framing than the home view (145 km, 1.9 deg south): this is one aircraft, not a
+    // whole region. The same -32 pitch keeps the arrival looking like the rest of the console
+    // rather than a different camera.
+    const unsubFly = useStore.subscribe((st) => {
+      const hex = st.flyToHex;
+      if (!hex) return;
+      const a = st.aircraft.find((x) => x.hex === hex);
+      // Leave the request standing if the contact is not in the payload yet - the next poll
+      // will re-run this subscriber. Clearing here would silently swallow the request.
+      if (!a) return;
+      useStore.getState().requestFlyTo(null);
+      camera.flyTo({
+        destination: Cartesian3.fromDegrees(a.lon, a.lat - 0.85, 92_000),
+        orientation: { heading: CMath.toRadians(0), pitch: CMath.toRadians(-32), roll: 0 },
+        duration: 1.2,
+      });
+    });
+
     /* --- theme (D-066) --- */
     // Most of the globe rethemes for free: the aircraft icons are cached by colour STRING, and
     // the planes, cone and destination line re-derive their colours on every update tick, so
@@ -513,6 +535,7 @@ export default function Globe() {
       unsubTrack();
       unsubPlaces();
       unsubHome();
+      unsubFly();
       unsubTheme();
       camera.moveEnd.removeEventListener(redeclutter);
       scene.postRender.removeEventListener(onTick);

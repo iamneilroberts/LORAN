@@ -27,11 +27,7 @@ import { drainPerfStats, perfKnobs } from "../globe/perfKnobs";
 
 const DASH = "—";
 
-/** `#probe` — a hash, matching the glance view's reasoning (D-072). */
-export function isProbeRoute(): boolean {
-  return typeof window !== "undefined"
-    && window.location.hash.replace(/^#/, "").toLowerCase() === "probe";
-}
+// Route detection lives in ../routes (D-076).
 
 /** The unmangled GPU string, which is the single most useful line for judging a result. */
 function rendererString(): string {

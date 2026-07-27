@@ -185,6 +185,11 @@ interface State {
 
   selectedHex: string | null;
   selectedPlace: PlaceInfo | null;
+  /**
+   * A one-shot request for the globe to fly to a contact, consumed and cleared by Globe (D-076).
+   * Not persisted: it is a transient instruction, not a preference.
+   */
+  flyToHex: string | null;
   filter: Filter;
   // Carries its own hex so a late reply for a deselected contact can be discarded rather
   // than shown against whatever is selected now.
@@ -265,6 +270,16 @@ interface State {
   setDepth: (m: number | null, pending: boolean) => void;
   select: (hex: string | null) => void;
   selectPlace: (p: PlaceInfo | null) => void;
+  /**
+   * Ask the globe to fly to a contact ONCE, then forget. Set by the glance list when a row is
+   * tapped (D-076); Globe consumes it and clears it.
+   *
+   * Deliberately NOT folded into `select`. On the desktop the operator clicks contacts to read
+   * them and expects the camera to hold still - moving it on every click would fight them.
+   * Arriving from the list is the opposite case: the map opens on a contact that is very likely
+   * off-screen, and not flying to it would present an empty globe.
+   */
+  requestFlyTo: (hex: string | null) => void;
   setEnrichment: (e: Enrichment | null, pending: boolean) => void;
   setPhoto: (p: PhotoResult | null, pending: boolean) => void;
   setTrack: (t: TrackResult | null, pending: boolean) => void;
@@ -397,6 +412,7 @@ export const useStore = create<State>()(persist((set) => ({
 
   selectedHex: null,
   selectedPlace: null,
+  flyToHex: null,
   filter: { operator: null, militaryOnly: false },
   enrichment: null,
   enrichPending: false,
@@ -485,6 +501,7 @@ export const useStore = create<State>()(persist((set) => ({
     track: null, trackPending: false,
   }),
   selectPlace: (selectedPlace) => set({ selectedPlace, selectedHex: null }),
+  requestFlyTo: (flyToHex) => set({ flyToHex }),
   setEnrichment: (enrichment, enrichPending) => set({ enrichment, enrichPending }),
   setPhoto: (photo, photoPending) => set({ photo, photoPending }),
   setTrack: (track, trackPending) => set({ track, trackPending }),

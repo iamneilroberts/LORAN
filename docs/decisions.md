@@ -3304,3 +3304,159 @@ away from ATL must be `ok` as an origin and `disagrees` as a destination. Verifi
 `+ 180`: five origin tests go red, every destination test stays green.
 
 182 frontend + 110 backend.
+
+---
+
+## D-075 — 2026-07-27 — VERTICAL EXAGGERATION: approved, off by default, and the numbers never lie
+
+Owner's brother, looking at the 3D view on a phone, pointed out that aircraft separation is hard
+to read and suggested exaggerating the vertical scale at the expense of accuracy. Approved as a
+toggle. **Decided here, not yet built** — sequenced after the mobile Stage 1 work.
+
+### Why it is a real problem and not a preference
+
+At the default view the numbers are brutal. A 250 nm radius is about **463 km** across; 40,000 ft
+is **12.2 km**. That is a ratio of roughly **1:38**. Two aircraft 2,000 ft apart are separated by
+610 m against a 463 km span — about **0.13%** of the frame. They are, for practical purposes,
+coplanar. This is not a rendering defect; it is what true-scale geometry looks like, and it is the
+direct consequence of the thing CLAUDE.md picked Cesium for.
+
+### Why the existing instrument does not make this redundant
+
+Phase 3 already answers "how far apart are these two, vertically": the datum plane pinned to the
+selected contact (D-010), relative amber colouring within ±1000 ft, drop lines, and a numeric
+pair readout. That is the *precise* answer and it stays the primary instrument.
+
+Exaggeration answers a different question — **the fast, whole-scene read**: "is this stack
+layered or is it all at one level?" across every contact at once, with nothing selected. The slice
+answers one pair at a time and needs a selection first. They complement; neither replaces the
+other. If exaggeration ever tempts someone to delete the datum plane, that is this entry saying
+no.
+
+### The honesty rule, which is the whole design
+
+This distorts geometry. That is the point, and it is also exactly the sort of plausible-looking
+untruth ground rule 1 exists to prevent. So:
+
+1. **OFF by default.** A fresh install is true-scale, always. The default install must never show
+   a distorted globe to someone who did not ask for one.
+2. **While it is on, the display says so, unmistakably and persistently** — not a subtle chip that
+   reads as decoration. A viewer who walks up to the screen mid-session must be able to tell that
+   the vertical axis is not real.
+3. **EVERY NUMBER STAYS TRUE.** Altitudes in the dossier, the datum slice label, the glance view,
+   the cursor readout, the traffic list — all report the aircraft's real altitude. Only geometry
+   moves. **The trap here is concrete and already in the code:** `projectionCone.ts:135` computes
+   `endAltFt` as `heightAt(...) / FT_TO_M`, converting metres back to feet for display. Apply
+   exaggeration inside `heightAt` and that readout inflates with it — a real instrument reporting
+   a false altitude, which is the worst possible outcome. The reverse conversion must use the TRUE
+   factor.
+4. **`trackExport.ts` is excluded.** Exported GeoJSON is data leaving the building, and it must be
+   true regardless of what the display is doing. `trackExport.ts:23` keeps the true factor.
+5. The **globe itself is not scaled** — no exaggerated terrain, no inflated ellipsoid. Only things
+   positioned at an altitude move. (Terrain is `EllipsoidTerrainProvider` anyway, so there is no
+   terrain geometry to scale, and the bathymetry is a raster imagery layer, not displacement.)
+
+### One conversion, or it will drift
+
+Feet become metres in **six places** today, and one of them is a **duplicate constant**:
+`destinationLine.ts:59` declares its own `const FT_TO_M = 0.3048`, shadowing the store's export.
+The other sites are `aircraftLayer.ts:236` and `:321`, `Globe.tsx:315` (the track path),
+`projectionCone.ts:87`, `altitudePlanes.ts:78`, and `trackExport.ts:23`.
+
+If exaggeration is applied per-module, the first missed site desyncs the scene visibly: an
+aircraft floats off its own drop line, or the datum slice sits at the wrong height under the
+contact it is pinned to. **This is the D-071 failure mode** — the same value computed in two
+places, drifting — and that cost five real divergences last time.
+
+So: **one shared `altToMetres(ft)` helper**, used by every altitude consumer, with the duplicate
+in `destinationLine.ts` deleted as part of the change. The consumers that MUST move together are
+aircraft billboards, drop lines, the datum plane, the projection cone, the filed origin and
+destination legs, and the track path.
+
+A test should assert that changing the factor moves all of them by the same ratio — a gate that
+fails if a future altitude consumer is added without going through the helper. Asserting the
+factor's effect on one module only would pass while the scene silently desynced, which is the
+easy fake pass here.
+
+### Open, for the owner after first look
+
+The exaggeration ladder. Starting proposal is **1× (true) / 5× / 10×**, on the arithmetic above:
+10× turns 40,000 ft into ~122 km against a 463 km span, roughly a quarter of the frame, which
+should read clearly without aircraft towering over the globe. This is a judgement to make on a
+real display, not from arithmetic — expect to tune it.
+
+---
+
+## D-076 — 2026-07-27 — MOBILE OPTION A IS GO: Cesium measured fine, and both D-073 gates are cleared
+
+D-073 deferred the responsive console behind two gates. Both are now resolved, one by measurement
+and one by discovering the blocker did not exist. **Option A is approved and staged.**
+
+### Gate 1 — the handset measurement. Cleared, and it killed my own hypothesis.
+
+Measured on the owner's iPhone (DPR 3, 375x667 CSS, Apple GPU, ~150 contacts) via the `#probe`
+route:
+
+| Resolution scale | GL buffer | Fragment work | FPS |
+|---|---|---|---|
+| 1.0 | 1125x2001 | 2.25 Mpx | **30** |
+| 0.5 | 562x1000 | 0.56 Mpx (4x less) | **36** |
+| 0.33 | 371x660 | 0.24 Mpx (**9.2x less**) | **37** |
+
+**Cutting GPU fragment work by 9.2x bought 7 FPS.** The phone is not fill-rate bound, which
+falsifies the pre-measurement hypothesis that `useBrowserRecommendedResolution = false` (pixel
+ratio = DPR, so ~9x the fragment work at DPR 3) was the dominant mobile cost. It is not.
+
+Dead reckoning is likewise noise: **0.22–0.67 ms per call at 4–9 calls/s = 1–6 ms per second**,
+under 0.6% of wall time. Throttling it saves nothing measurable and only makes motion steppy.
+
+**Therefore: keep every desktop default on mobile.** No resolution downscale, no DR throttle. 30
+FPS at FULL native resolution with sharp text is the better trade on a readout-heavy console, and
+the `perfKnobs` defaults already encode it (`drHz = 0`). The knobs stay as an instrument, not as
+a mobile configuration.
+
+The remaining ceiling is CPU-side scene traversal — ~150 aircraft billboards and their labels,
+~30 place labels, 858 state boundary rings — which the probe deliberately does not measure. That
+is an optimisation question, not a viability one.
+
+### Gate 2 — "fix the Cesium canvas-forces-viewport-width bug FIRST". There is no such bug.
+
+D-073 recorded that the Cesium canvas forces the layout viewport wider than the device, measured
+as `innerWidth` 482 under a 390 override, and made fixing it a prerequisite. Re-measured with the
+real globe mounted: **`innerWidth` 390, `clientWidth` 390** — the layout viewport is correct. The
+owner's handset independently confirms it: `375x667 css · client 375`.
+
+The real symptom is ordinary **horizontal overflow**: `scrollWidth` 501 against a 390 viewport,
+and with nothing selected the single offending element is the status bar's `ml-auto` FPS chip at
+`right=501` — a flex row that will not wrap.
+
+The likely source of the original 482 is the *check*, not the canvas: comparing `innerWidth` to
+`screen.width` false-positives under CDP emulation, which overrides one and not the other. **A
+measurement artefact was recorded as an engine defect and gated real work behind it for a day.**
+
+### Owner's answers, which set the shape
+
+- **Work, not glance.** The phone should do the real job; the glance view becomes the lightweight
+  front door rather than the whole mobile story. This narrows D-072 without retiring it.
+- **Glance is home.** Tap a contact in the list to open the map with that contact selected.
+- **Static camera first**, with a FOLLOW toggle deferred until the workflow has been used. Note
+  that follow cannot use Cesium's `trackedEntity`: aircraft are drawn as `BillboardCollection` /
+  `LabelCollection` primitives, not Entities, so following is a hand-rolled per-tick camera
+  update. That is the reason it is staged separately rather than assumed cheap.
+- **Auto-route by viewport width, with a visible manual switch.** One link works for everyone —
+  phones land on the list, desktops on the console — which matters because the shared token links
+  go to two other people on unknown devices. The switch means neither view is ever locked out,
+  and the explicit `#m` / `#` hashes keep working.
+
+### Staged, each shippable on its own
+
+1. **The handoff** (this stage): tappable glance rows → select + open map with the camera flown to
+   the contact; a way back to the list; auto-routing by width; and fix the status-bar overflow.
+2. **The responsive console**: breakpoint, dossier as a bottom sheet, the four stacked panels
+   collapsed behind one control, and `pointer-events` corrected so panels stop eating globe drags.
+   Today five panels are `pointer-events-auto` over the canvas with no touch-specific handling.
+3. **Follow mode**: opt-in toggle, per-tick camera against the dead-reckoned position.
+
+**What is NOT reversed.** No accounts beyond the existing token door, no offline mode, no push
+notifications, no native app. The mobile layout is a layout, and this entry is not a licence to
+grow a second product.

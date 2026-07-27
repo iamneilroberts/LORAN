@@ -941,8 +941,14 @@ export function StatusBar() {
   const mil = aircraft.filter((a) => a.military).length;
 
   return (
+    // `overflow-x-auto` and a tighter gap below `sm`, because this row is the ONLY thing that
+    // overflowed the viewport at phone width: measured scrollWidth 501 against a 390 viewport,
+    // with the `ml-auto` FPS chip sitting at right=501 (D-076). Six non-wrapping chips cannot fit
+    // and must not push the whole PAGE sideways, so the bar scrolls within itself instead. That
+    // keeps every chip - clipping status text to make it fit would hide feed state, which is the
+    // one thing on this bar that must never be hidden.
     <div
-      className="absolute left-0 right-0 bottom-0 flex items-center gap-5 px-3"
+      className="absolute left-0 right-0 bottom-0 flex items-center gap-2 sm:gap-5 px-3 overflow-x-auto"
       style={{
         height: 24, borderTop: "1px solid var(--line)", background: "rgba(5,7,10,.9)",
         fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--dim)",
