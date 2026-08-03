@@ -22,15 +22,26 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import COOKIE_NAME, FailureThrottle, TokenAuth
 from .config import (
-    ACCESS_TOKENS, BUILD_SHA, CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL,
-    PHOTO_GUEST_ACCESS, SESSION_FAIL_LIMIT, SESSION_FAIL_WINDOW_S, SESSION_SECRET,
-    SESSION_TTL_S, STATIC_DIR, USER_AGENT,
+    ACCESS_TOKENS, AIS_TRACK_MAX_CONTACTS, AIS_TRACK_SAMPLE_S, AIS_TRACK_WINDOW_S, BUILD_SHA,
+    CORS_ORIGINS, HOME_LABEL, HOME_LAT, HOME_LON, OWNER_PRINCIPAL, PHOTO_GUEST_ACCESS,
+    SESSION_FAIL_LIMIT, SESSION_FAIL_WINDOW_S, SESSION_SECRET, SESSION_TTL_S, STATIC_DIR,
+    USER_AGENT,
 )
 from .feeds.adsb import client as adsb
 from .feeds.adsbdb import client as adsbdb
+from .feeds.ais import client as ais
 from .feeds.geocode import client as geocoder
 from .feeds.planespotters import client as photos
-from .feeds.track import store as tracks
+from .feeds.track import TrackStore, store as tracks
+
+# Vessel tracks: the same honest ring buffer the aircraft use (D-016), tuned for ships -
+# keyed on the vessel key, sampled slower over a longer window (D-078).
+vessel_tracks = TrackStore(
+    id_field="key",
+    window_s=AIS_TRACK_WINDOW_S,
+    sample_s=AIS_TRACK_SAMPLE_S,
+    max_contacts=AIS_TRACK_MAX_CONTACTS,
+)
 
 START = time.time()
 
@@ -50,7 +61,10 @@ async def lifespan(_: FastAPI):
     # Wired here rather than inside the feed client so the coupling is visible at one place:
     # every fresh upstream payload feeds the ring buffer, cache hits do not.
     adsb.on_fresh = tracks.record
+    ais.on_fresh = vessel_tracks.record
+    ais.course_hint = vessel_tracks.bearing_of
     await adsb.start()
+    await ais.start()
     await adsbdb.start()
     await photos.start()
     await geocoder.start()
@@ -58,6 +72,7 @@ async def lifespan(_: FastAPI):
     await geocoder.close()
     await photos.close()
     await adsbdb.close()
+    await ais.close()
     await adsb.close()
 
 
@@ -259,6 +274,45 @@ async def get_aircraft(
     return await adsb.aircraft(lat, lon, radius)
 
 
+@app.get("/api/vessels")
+async def get_vessels(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """
+    Vessels near a point, via the owner's position-api instance (D-078).
+
+    Always 200. `configured: false` means there is no AIS source at all - the UI renders the
+    honest "no source" state it always has. `errors` non-empty with an empty `vessels` list
+    means the source exists and could not be read; that is an outage, presented as one, and
+    never papered over with the previous snapshot.
+    """
+    return await ais.vessels(lat, lon)
+
+
+@app.get("/api/vessel")
+async def get_vessel(mmsi: str = Query(..., min_length=3, max_length=16)):
+    """
+    Fresh position/course/speed for ONE vessel, by MMSI.
+
+    The near-me snapshot carries no course, so this is where a selected vessel's heading comes
+    from. It is the expensive lookup on the position-api side (a browser navigation per call),
+    which is why the client caches answers for AIS_DETAIL_TTL_SECONDS.
+    """
+    return await ais.detail(mmsi)
+
+
+@app.get("/api/vessel-track")
+async def get_vessel_track(key: str = Query(..., min_length=1, max_length=24)):
+    """
+    Recent position fixes for one vessel, from the vessel ring buffer.
+
+    Same honesty contract as /api/track: the response reports the window it ACTUALLY covers
+    and whether older points were discarded. In-memory; dies with the process.
+    """
+    return vessel_tracks.get(key)
+
+
 @app.get("/api/enrich")
 async def get_enrich(
     icao: str | None = Query(None, alias="hex", min_length=6, max_length=6),
@@ -380,10 +434,13 @@ async def health():
             "geocode": geocoder.status(),
         },
         "track_buffer": tracks.status(),
-        # Recorded honestly: measured zero coverage at the home location. docs/data-sources.md 5.1a
-        # Deliberately does NOT name the place: /api/health is open by design, so anything here is
-        # public, and the operator's home city is not something an unauthenticated probe should get.
-        "ais": {"configured": False, "reason": "no source - aisstream measured zero coverage here"},
+        "vessel_track_buffer": vessel_tracks.status(),
+        # Honest either way (D-078). Unconfigured reports exactly that - the aisstream story
+        # lives in docs/data-sources.md 5.1a. Configured reports feed state but deliberately
+        # NOT the base URL: /api/health is open by design, and the owner's internal address is
+        # not something an unauthenticated probe should get - same reasoning that keeps the
+        # home city's name out of here.
+        "ais": ais.status(),
         # No token values, no principal names - just whether the door exists.
         "auth": {"enabled": auth.enabled, "principals": len(set(auth.principals.values()))},
     }

@@ -30,6 +30,70 @@ export interface Aircraft {
   rssi: number | null;
 }
 
+/* ---- vessels (GET /api/vessels, D-078) ----
+ * Normalized by the backend from a self-hosted position-api instance. `key` is the MMSI when
+ * there is one, otherwise MarineTraffic's ship id prefixed "s" - it is what selection and the
+ * track buffer key on. `category` picks a silhouette; `type` is the source's own wording and
+ * is what the dossier shows. `course_source` is "reported" (came from the feed), "derived"
+ * (computed from the vessel's own successive fixes), or null (unknown - the globe then draws
+ * a direction-neutral marker rather than inventing a heading).
+ */
+export interface Vessel {
+  key: string;
+  mmsi: string | null;
+  ship_id: string | null;
+  name: string | null;
+  callsign: string | null;
+  imo: string | null;
+  lat: number;
+  lon: number;
+  speed_kt: number | null;
+  course_deg: number | null;
+  course_source: "reported" | "derived" | null;
+  type: string | null;
+  category: string;
+  country: string | null;
+  destination: string | null;
+  port_current: string | null;
+  port_next: string | null;
+  area: string | null;
+  pos_ts: number | null;
+  military: boolean;
+}
+
+export interface VesselsPayload {
+  configured: boolean;
+  source: string | null;
+  count: number;
+  vessels: Vessel[];
+  errors: string[];
+}
+
+/** Per-vessel detail (GET /api/vessel): the course/fresh-fix lookup for a selected vessel. */
+export interface VesselDetail {
+  mmsi: string;
+  lat: number | null;
+  lon: number | null;
+  course_deg: number | null;
+  course_source: "reported" | "derived" | null;
+  speed_kt: number | null;
+  pos_ts: number | null;
+  errors: string[];
+}
+
+/** Same honesty contract as TrackResult, keyed on the vessel key instead of the hex. */
+export interface VesselTrackResult {
+  key: string;
+  count: number;
+  first_ts: number | null;
+  last_ts: number | null;
+  span_s: number;
+  buffer_window_s: number;
+  sample_s: number;
+  truncated: boolean;
+  points: TrackPoint[];
+}
+
 /* ---- adsbdb enrichment (GET /api/enrich) ----
  * Every field is nullable on purpose. null means adsbdb does not know, and the dossier
  * renders an em-dash. `errors` non-empty means we could not ask at all, which the panel
@@ -173,6 +237,16 @@ interface State {
   feeds: FeedStatus[];
   peaks: Record<string, Peak>;   // by hex, observed only
 
+  /* ---- sea traffic (D-078) ---- */
+  vessels: Vessel[];
+  /** False means there is NO AIS source at all - the honest resting state of a fresh install. */
+  aisConfigured: boolean;
+  aisSource: string | null;
+  aisErrors: string[];
+  /** False after a failed poll: the source exists and could not be read - an outage, not "no ships". */
+  aisFetchOk: boolean;
+  lastVesselFetchWall: number | null;
+
   /** The home actually in force: the override if there is one, else the server's (D-068). */
   home: HomePos;
   /** What `/api/config` said. Kept so "reset to configured" is possible. Not persisted. */
@@ -185,6 +259,12 @@ interface State {
 
   selectedHex: string | null;
   selectedPlace: PlaceInfo | null;
+  /** The selected vessel's key, mutually exclusive with the aircraft/airfield selections. */
+  selectedVesselKey: string | null;
+  vesselDetail: VesselDetail | null;
+  vesselDetailPending: boolean;
+  vesselTrack: VesselTrackResult | null;
+  vesselTrackPending: boolean;
   /**
    * A one-shot request for the globe to fly to a contact, consumed and cleared by Globe (D-076).
    * Not persisted: it is a transient instruction, not a preference.
@@ -226,6 +306,9 @@ interface State {
   showDropLines: boolean;
   showPlaces: boolean;
   showRadar: boolean;
+  /** Sea traffic layer (D-078). ON by default - with no AIS source configured it simply has
+   *  nothing to draw, and the chip/panel say why. */
+  showVessels: boolean;
   /** Active theme (D-066). Applied as a data-theme attribute on <html>. */
   theme: ThemeName;
   /** State/province lines, worldwide (D-063). ON by default - coarse, cheap, and the reference
@@ -278,6 +361,11 @@ interface State {
 
   setAircraft: (a: Aircraft[], source: string | null, degraded: boolean, errors: string[]) => void;
   setFetchFailed: (errors: string[]) => void;
+  setVessels: (p: VesselsPayload) => void;
+  setVesselsFailed: (errors: string[]) => void;
+  selectVessel: (key: string | null) => void;
+  setVesselDetail: (d: VesselDetail | null, pending: boolean) => void;
+  setVesselTrack: (t: VesselTrackResult | null, pending: boolean) => void;
   setFeeds: (f: FeedStatus[]) => void;
   setHome: (h: HomePos) => void;
   /** Set or clear the per-browser override. Pass null to fall back to the configured home. */
@@ -306,7 +394,7 @@ interface State {
   setTrack: (t: TrackResult | null, pending: boolean) => void;
   toggle: (k: "showDatum" | "showDropLines" | "showPlaces" | "showRadar"
     | "showProjection" | "showDestination" | "showSmallAirports" | "showAllLabels"
-    | "showStates" | "showCounties") => void;
+    | "showStates" | "showCounties" | "showVessels") => void;
   setProjection: (p: { minutes?: number; spreadDeg?: number }) => void;
   setPlaceDensity: (mult: number) => void;
   setRadiusNm: (nm: number) => void;
@@ -399,6 +487,11 @@ export function migratePrefs(persisted: unknown, from: number): Record<string, u
     // server's configured home, exactly as it did before (D-068).
     p = { ...p, homeOverride: null };
   }
+  if (from < 8) {
+    // Sea traffic ON by default (D-078): with no AIS source configured the layer draws
+    // nothing and the UI says why, so "on" costs an existing install nothing.
+    p = { ...p, showVessels: true };
+  }
   if (from < 6) {
     // Themes arrived AFTER the boundary toggles, so v6 not v5 - the earlier handoff had
     // reserved v5 for this and D-063 got there first.
@@ -423,6 +516,13 @@ export const useStore = create<State>()(persist((set) => ({
   feeds: [],
   peaks: {},
 
+  vessels: [],
+  aisConfigured: false,
+  aisSource: null,
+  aisErrors: [],
+  aisFetchOk: true,
+  lastVesselFetchWall: null,
+
   // Placeholder only, for the moment before /api/config lands. Overwritten on every load.
   home: { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" },
   serverHome: { lat: 30.6944, lon: -88.0399, label: "MOBILE, AL" },
@@ -433,6 +533,11 @@ export const useStore = create<State>()(persist((set) => ({
 
   selectedHex: null,
   selectedPlace: null,
+  selectedVesselKey: null,
+  vesselDetail: null,
+  vesselDetailPending: false,
+  vesselTrack: null,
+  vesselTrackPending: false,
   flyToHex: null,
   vertScale: 1,
   followHex: null,
@@ -457,6 +562,7 @@ export const useStore = create<State>()(persist((set) => ({
   // Weather radar is OFF by default and stays that way (D-040): its colour ramp collides with
   // the altitude ramp, so it is a question you ask, not part of the resting display.
   showRadar: false,
+  showVessels: true,
   theme: DEFAULT_THEME,
   // Boundaries (D-063). States ON: 858 rings, coarse, and the reference that makes "which
   // state is that contact over" answerable at a glance. Counties OFF: 3,619 rings reads as
@@ -489,6 +595,34 @@ export const useStore = create<State>()(persist((set) => ({
   // status bar can say so. Positions keep ageing out on their own; we never present a
   // stale frame as if it were current.
   setFetchFailed: (errors) => set({ lastFetchOk: false, errors }),
+  // The backend already refuses to serve stale vessel positions as live (its error payload
+  // carries an empty list), so applying the payload verbatim IS the honest behaviour.
+  setVessels: (p) => set({
+    vessels: p.vessels ?? [],
+    aisConfigured: !!p.configured,
+    aisSource: p.source,
+    aisErrors: p.errors ?? [],
+    aisFetchOk: !p.configured || (p.errors ?? []).length === 0,
+    lastVesselFetchWall: Date.now(),
+  }),
+  // Could not reach OUR backend at all - a different claim from "the AIS source is down",
+  // but presented the same way: the sea display is not current, and the chip says so.
+  setVesselsFailed: (aisErrors) => set({ aisFetchOk: false, aisErrors }),
+  // Mirrors select(): one dossier at a time, and a change of subject drops the old
+  // detail/track immediately rather than showing them against the new vessel.
+  selectVessel: (selectedVesselKey) => set({
+    selectedVesselKey,
+    selectedHex: null,
+    selectedPlace: null,
+    followHex: null,
+    enrichment: null, enrichPending: false,
+    photo: null, photoPending: false,
+    track: null, trackPending: false,
+    vesselDetail: null, vesselDetailPending: false,
+    vesselTrack: null, vesselTrackPending: false,
+  }),
+  setVesselDetail: (vesselDetail, vesselDetailPending) => set({ vesselDetail, vesselDetailPending }),
+  setVesselTrack: (vesselTrack, vesselTrackPending) => set({ vesselTrack, vesselTrackPending }),
   setFeeds: (feeds) => set({ feeds }),
   // The server's value never wins over an explicit override - otherwise a remote viewer's
   // chosen home would be silently reset by the next config fetch.
@@ -519,14 +653,17 @@ export const useStore = create<State>()(persist((set) => ({
     // Releasing on selection change: a camera still chasing the PREVIOUS contact, while the
     // dossier describes a new one, reads as the globe having a mind of its own.
     followHex: null,
-    // An aircraft and an airfield are never both selected: the right column is height-bounded
-    // and two stacked dossiers would push one off screen.
+    // An aircraft, an airfield and a vessel are never simultaneously selected: the right
+    // column is height-bounded and two stacked dossiers would push one off screen.
     selectedPlace: null,
+    selectedVesselKey: null,
     enrichment: null, enrichPending: false,
     photo: null, photoPending: false,
     track: null, trackPending: false,
+    vesselDetail: null, vesselDetailPending: false,
+    vesselTrack: null, vesselTrackPending: false,
   }),
-  selectPlace: (selectedPlace) => set({ selectedPlace, selectedHex: null }),
+  selectPlace: (selectedPlace) => set({ selectedPlace, selectedHex: null, selectedVesselKey: null }),
   requestFlyTo: (flyToHex) => set({ flyToHex }),
   setVertScale: (vertScale) => set({ vertScale: Math.max(1, vertScale) }),
   setFollow: (followHex) => set({ followHex }),
@@ -549,7 +686,7 @@ export const useStore = create<State>()(persist((set) => ({
   setRadiusNm: (nm) => set({ radiusNm: Math.max(10, Math.min(nm, MAX_RADIUS_NM)) }),
 }), {
   name: "loran.prefs",
-  version: 7,
+  version: 8,
   migrate: migratePrefs,
   /**
    * `home` is derived, not persisted, so it has to be recomputed once the override comes back
@@ -575,6 +712,7 @@ export const useStore = create<State>()(persist((set) => ({
     showDropLines: s.showDropLines,
     showPlaces: s.showPlaces,
     showRadar: s.showRadar,
+    showVessels: s.showVessels,
     theme: s.theme,
     // The ONE piece of location data this app persists, and only because the user typed or
     // granted it. `home` and `serverHome` are deliberately absent: they come from the server

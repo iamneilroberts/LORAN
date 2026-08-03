@@ -65,7 +65,8 @@ Full detail, raw response shapes, and verdicts: **`docs/data-sources.md`**.
 | adsbdb | reg/type/operator/route | none | undocumented | open |
 | planespotters | dossier photo | none, **UA must carry contact** | undocumented | attribution mandatory |
 | aisstream.io | AIS — **REJECTED, zero coverage at the home location** | free key | 1 sub/sec | BETA, no SLA |
-| own RTL-SDR receiver | AIS — **recommended path** | none | none | none |
+| position-api (self-hosted) | AIS — **live path since D-078**, owner-hosted MarineTraffic scraper | none, env-configured URL | 1 scrape/60 s floor | GPL-3.0 service; **scrapes against MT terms — owner's call**, off by default |
+| own RTL-SDR receiver | AIS — recommended long-term path, not foreclosed | none | none | none |
 | Esri World Imagery | satellite basemap | none | — | attribution required |
 | Esri World Ocean Base | ocean basemap | none | — | attribution required |
 | GEBCO WMS | bathymetry + depth readout | none | — | attribution required |
@@ -141,9 +142,12 @@ Sequential. Stop and wait for sign-off after each.
   altitude** is the primary instrument; fixed airspace bands are secondary context. Relative
   colouring (amber within ±1000 ft) + drop-lines to the datum + numeric pair readout. Design:
   `docs/design-altitude.md`.
-- **Phase 4 — Vessels.** ⛔ **DEFERRED — blocked on a data source, not on code.** aisstream.io
-  measured **zero coverage** at the home location (`docs/data-sources.md` §5.1a). Recommended remedy is a
-  self-hosted RTL-SDR AIS receiver feeding local NMEA. Nothing else in the project depends on this.
+- **Phase 4 — Vessels.** ✅ Complete (D-078), against an **owner-hosted position-api instance**
+  (`LORAN_AIS_BASE_URL`; unset = the honest "no AIS source" state that shipped after the
+  aisstream rejection, `docs/data-sources.md` §5.1a/§5.1c). Category-glyph markers, hulls
+  rotated only by a **measured** course (reported or derived from the vessel's own fixes —
+  never invented), vessel dossier, 6 h track buffer + GeoJSON export. The RTL-SDR receiver
+  remains the better long-term source and slots in behind the same `/api/vessels` contract.
 - **Phase 5 — Archive.** SQLite recorder, retention policy, scrubber, unmistakable live/replay
   distinction. Query plan reviewed before build.
 - **Phase 6 — Chrome.** 🔶 Partly built ahead of order, because remote access needed it: status

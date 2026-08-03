@@ -235,8 +235,17 @@ Works today:
   the small-airfield tier need a backend and say so rather than failing silently. Prebuilt copy on
   the [releases page](https://github.com/iamneilroberts/LORAN/releases/latest) — read the caveats
   there first; it is a novelty, not the way to run this
+- **Vessels (Phase 4, D-078)** — sea traffic from an *owner-hosted*
+  [position-api](https://github.com/transparency-everywhere/position-api) instance
+  (`LORAN_AIS_BASE_URL`; unset means the honest "no AIS source" state). Category-glyph markers
+  whose hulls rotate only on a **measured** course — reported by the feed or derived from the
+  vessel's own fixes, never guessed — plus a vessel dossier, a 6 h track buffer and GeoJSON
+  export. Note position-api scrapes MarineTraffic, which their terms prohibit; running an
+  instance is your call, documented bluntly in `docs/data-sources.md` §5.1c
+- The **surface is a hard floor** for the camera — no gesture, preset or fly-to can carry the
+  view below the globe (D-079)
 - Measured **22–27 FPS** at 77–89 contacts on the developer's hardware (WebGL2)
-- **309 tests** — 196 frontend (vitest) + 113 backend (pytest) — including a shared fixture that
+- **349 tests** — 208 frontend (vitest) + 141 backend (pytest) — including a shared fixture that
   holds the browser-direct normalizer and the backend one to the same contract
 - **CI on every push to `main`**, and a build stamped with the commit it came from. The image
   build subsumes the palette check, the production typecheck and the Vite build, then boots the
@@ -245,9 +254,9 @@ Works today:
 
 Not built yet:
 
-- **Phase 4, vessels (AIS)** — blocked on hardware, not code. aisstream.io measured *zero*
-  coverage at this deployment's location; the plan is a self-hosted RTL-SDR AIS receiver, which
-  needs a marine-VHF antenna
+- **A local AIS receiver** — the RTL-SDR + AIS-catcher path remains the better long-term vessel
+  source for this location (own antenna, no upstream, no terms exposure) and slots in behind the
+  same `/api/vessels` contract position-api uses today
 - **Phase 5, the recording archive** — SQLite recorder, retention, scrubber
 - **Phase 6** — compass and FPS readout. The rest of the chrome shipped early, because remote
   access needed it
@@ -262,7 +271,7 @@ Not built yet:
 bash scripts/test.sh
 ```
 
-196 frontend tests (vitest) and 113 backend tests (pytest). Among them, `fixtures/adsb/` holds one
+208 frontend tests (vitest) and 141 backend tests (pytest). Among them, `fixtures/adsb/` holds one
 set of real captured feed records and their expected normalized output, asserted by **both**
 suites — so the browser-direct normalizer used by the single-file build cannot drift from the
 backend's without something going red.

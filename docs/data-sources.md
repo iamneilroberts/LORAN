@@ -350,6 +350,56 @@ ADS-B, which is verified excellent over Mobile, and decide about AIS when you ge
 which time you will know whether you want to put an antenna on the roof. Nothing about Phases 1–3
 forecloses any of these options.
 
+### 5.1c position-api (self-hosted MarineTraffic scraper) — ADOPTED on owner instruction (D-078)
+
+**Status: wired 2026-08-03.** The owner directed the vessel layer be built against
+[transparency-everywhere/position-api](https://github.com/transparency-everywhere/position-api)
+(GPL-3.0), a self-hostable Node service that answers vessel queries by driving a headless
+Chromium at **MarineTraffic's** website. This is option 2's data (real Gulf coverage,
+terrestrial network with satellite backfill) obtained via scraping instead of a paid API.
+
+**The terms, stated bluntly, same as everything else in this file:** MarineTraffic's terms of
+use prohibit automated scraping. position-api exists precisely to do it anyway — its scraper
+carries anti-bot evasion. Running an instance is the **owner's deployment decision, made with
+eyes open**, exactly like the `LORAN_PHOTO_GUEST_ACCESS` departure recorded in D-041: this repo
+ships no scraping code and no MarineTraffic client; it only talks to whatever position-api
+instance `LORAN_AIS_BASE_URL` points at, and with that variable unset the vessel layer is the
+same honest "no AIS source" it has been since 5.1a. The failure mode is also the owner's:
+MarineTraffic can (and does) break scrapers without notice, and when that happens the layer
+goes to an explicit offline state, not to stale data.
+
+**Routes used:**
+
+- `GET {base}/legacy/getVesselsNearMe/{lat}/{lng}/{distance}` — the snapshot. Returns a JSON
+  array of rows mapped in position-api's `src/legacy/area.ts` (`name, id, lat, lon, timestamp,
+  mmsi, imo, callsign, speed, area, type, country, destination, port_current, port_next`), or
+  JSON `null` for "nothing found". **No course field exists on this route.**
+- `GET {base}/ais/mt/{mmsi}/location/latest` — per-vessel detail:
+  `{"error":null,"data":{timestamp, latitude, longitude, course, speed, …}}`. This one carries
+  course, at the cost of a full browser navigation per call.
+
+**What is measured vs assumed:**
+
+- **Assumed, not yet verified: `speed` is knots.** AIS SOG is broadcast in knots and
+  MarineTraffic's own tables display knots, but no live instance was reachable when this was
+  written. Verify against the deployed instance and correct `ais.py` if wrong —
+  `fixtures/ais/README.md` carries the same warning.
+- **Unknown: the `near_me` distance unit.** MarineTraffic does not document it; the value in
+  `LORAN_AIS_RADIUS` is passed through verbatim. Calibrate against the live map once running.
+- Every scrape is a headless-Chrome page load taking ~20–35 s, which is why the poll floor is
+  60 s (`LORAN_AIS_POLL_SECONDS`, default 120) and the backend serves everything between
+  snapshots from cache, and why per-vessel detail is cached for 10 minutes.
+
+**Course honesty:** because the snapshot has no course, the backend derives one per vessel
+from its own successive recorded fixes when the displacement is ≥50 m within 30 min, labelled
+`course_source: "derived"` — and otherwise the globe draws a direction-neutral ring, never a
+hull pointing at an unmeasured heading.
+
+The RTL-SDR receiver (5.1b option 1) remains the better long-term answer for Mobile Bay —
+own antenna, no upstream, no terms exposure — and nothing here forecloses it: the normalized
+vessel shape is deliberately source-agnostic, so a local NMEA ingest can replace position-api
+behind the same `/api/vessels` contract.
+
 ### 5.2 Regional open feeds — REJECT for your AOI
 
 Both are excellent and genuinely open. Both are useless for Mobile.

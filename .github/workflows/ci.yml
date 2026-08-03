@@ -36,7 +36,7 @@ jobs:
   test:
     # The counts are in the name on purpose: a suite that silently stops collecting tests still
     # reports "passed", and a job called "test" would happily go green on zero of them.
-    name: test (196 frontend + 113 backend)
+    name: test (208 frontend + 141 backend)
     runs-on: ubuntu-latest
     # The suite runs in ~10 s locally; the rest is toolchain setup. Anything past this is hung.
     timeout-minutes: 15

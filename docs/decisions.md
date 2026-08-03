@@ -3548,3 +3548,84 @@ the part with the clear payoff, and it stands alone.
 wrong. CI closes the mechanical cases only. Incident 4 (a wrong test) and the `git add -A` that
 published a personal file would still get through. **CI is not a substitute for checking the
 artefact you actually shipped.**
+
+## D-078 — 2026-08-03 — Phase 4 unblocked on owner instruction: vessels via a self-hosted position-api instance
+
+**Decision.** Build the vessel layer against a position-api instance
+([transparency-everywhere/position-api](https://github.com/transparency-everywhere/position-api),
+GPL-3.0) that the owner hosts themselves, configured by `LORAN_AIS_BASE_URL`. Unset — the
+default — the app remains exactly what it was after D-012: no AIS source, said honestly in the
+chip, the panel and `/api/health`.
+
+**Why this and not the D-018 plan.** D-018's RTL-SDR receiver is still the better end state for
+Mobile Bay and nothing here forecloses it (the normalized vessel shape is source-agnostic, so a
+local NMEA ingest can later replace position-api behind the same `/api/vessels` contract). But
+the owner asked for the marine layer now, against this specific service, and position-api's
+near-me query delivers real Gulf coverage today — the coverage aisstream measured at zero
+(§5.1a) — with no hardware on the roof.
+
+**The terms exposure, recorded rather than hidden.** position-api works by scraping
+MarineTraffic with a headless browser, which MarineTraffic's terms prohibit. The same posture as
+the `LORAN_PHOTO_GUEST_ACCESS` departure in D-041 applies: it is the owner's deployment
+decision, made with eyes open, on their own homelab. This repo ships no scraping code — it talks
+HTTP to whatever instance the owner points it at, and the README-visible default is the
+unconfigured honest state. Full recon: docs/data-sources.md §5.1c.
+
+**Mechanics that follow from what the source is:**
+
+- **Every snapshot is a ~20–35 s headless-Chrome page load** on the position-api side, against a
+  site that did not agree to serve it. So: poll default 120 s with a hard floor of 60 s
+  (`config.py` clamps; the .env cannot lower it), cache TTL = poll interval, one upstream call
+  in flight ever (a single gate serialises snapshot and detail calls), and the browser's own
+  15 s poll only reads our cache.
+- **The snapshot carries no course.** Rather than draw every hull pointing north (an invented
+  heading), the backend derives a course from the vessel's own successive recorded fixes —
+  ≥50 m displacement within 30 min, computed by the same ring buffer that serves the track —
+  and labels it `course_source: "derived"`. A vessel with no measured course renders as a
+  direction-neutral ring, category shown by glyph, and the dossier says "derived · not
+  reported" when that is what the number is. Selecting a vessel fetches the per-MMSI detail
+  route, which does report course; that lookup is a full browser navigation upstream, so
+  answers cache for 10 min and failures for 2.
+- **Failure serves nothing stale.** A failed scrape yields an empty vessel list plus `errors`,
+  and the chip flips to AIS OFFLINE — never yesterday's positions presented as live. Same rule
+  the ADS-B client has always had.
+- **Speed is assumed knots and stated as an assumption** (data-sources.md §5.1c,
+  fixtures/ais/README.md): AIS SOG is broadcast in knots and MT displays knots, but no live
+  instance existed to verify against when this shipped. First job after deployment is to check
+  it.
+- **Tracks.** The D-016 ring buffer was generalized (key field + window/sample/capacity as
+  constructor parameters) rather than duplicated; vessels get 6 h at 60 s samples, aircraft keep
+  30 min at 5 s. Same honesty contract — `span_s` is what the points cover, `truncated` is
+  stated, export says so.
+- **The fixture is all-synthetic and says so** (fixtures/ais/README.md). Constructed from
+  position-api's own `mapResult` source, hand-checked; to be promoted to captured rows once the
+  owner's instance is up.
+- **The single-file build has no vessels**, stated in its payload rather than silently empty —
+  the browser cannot reach a homelab position-api cross-origin, and there is nothing honest to
+  substitute.
+
+**Chrome.** `VESSELS` layer toggle (on by default; with no source it draws nothing and the note
+says why), AIS status chip graduating no-source → offline → live, a `N SEA` count chip when
+configured, per-category counts with the globe's own glyphs in the traffic panel, a vessel
+dossier (type verbatim from the source, reported destination labelled as crew-typed, fix age,
+track/clear/export, MarineTraffic outbound link), and attribution naming the source while
+configured.
+
+## D-079 — 2026-08-03 — the surface is a hard floor for the camera
+
+**Decision.** The camera can no longer move below the surface. Two mechanisms, because they
+cover different doors: `screenSpaceCameraController.minimumZoomDistance` stops the zoom gesture
+short of the ellipsoid, and a `preRender` clamp (`globe/cameraFloor.ts`, `CAMERA_FLOOR_M =
+120`) catches everything else — tilt, the camera-cluster's manual moves, a flyTo overshoot — by
+resetting height to the floor while preserving lat/lon and heading/pitch/roll.
+
+**Why.** Cesium's defaults let a zoom or tilt carry the camera through the globe, and the view
+from underneath is a void with the world overhead. On a console whose subject is the globe that
+reads as a crash, and nothing below the surface is data — the owner asked for the horizon to be
+a hard floor on the flight display, and this is that, applied to every camera path rather than
+just the zoom gesture.
+
+**Why 120 m.** Low enough that "down on the deck" framing over a harbour still works, high
+enough that the near plane never clips the surface mid-clamp. The clamp rule itself is a pure
+function under vitest (`cameraFloor.test.ts`), including the NaN-in-means-floor-out case, so the
+Cesium wiring in Globe.tsx stays four lines.

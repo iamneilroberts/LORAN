@@ -26,6 +26,8 @@ import {
 import { checkFiledOrigin, checkFiledRoute } from "../data/routeCheck";
 import { applyTheme, palette } from "../styles/palette";
 import { createAircraftLayer } from "./aircraftLayer";
+import { createVesselLayer } from "./vesselLayer";
+import { CAMERA_FLOOR_M, flooredHeight } from "./cameraFloor";
 import { createPlacesLayer } from "./placesLayer";
 import { createBoundariesLayer } from "./boundariesLayer";
 import { createRadarLayer } from "./radarLayer";
@@ -39,6 +41,7 @@ import {
 const DATUM_PREFIX = "datum::";
 const CONE_PREFIX = "cone::";
 const TRACK_PREFIX = "track::";
+const VESSEL_TRACK_PREFIX = "vtrack::";
 
 export default function Globe() {
   const ref = useRef<HTMLDivElement>(null);
@@ -95,10 +98,33 @@ export default function Globe() {
     // Aircraft and planes sit above the ellipsoid; terrain depth-testing clips them.
     scene.globe.depthTestAgainstTerrain = false;
 
+    /* --- the surface is a HARD FLOOR (D-079) --- */
+    // Cesium's default controller happily lets a zoom or tilt carry the camera through the
+    // ellipsoid, and from underneath, the globe renders as a void that reads as a crash.
+    // Two guards, because they cover different doors: minimumZoomDistance stops the zoom
+    // gesture short of the surface, and the preRender clamp catches everything else - tilt,
+    // the manual camera-cluster moves, a flyTo overshoot - by pushing the camera back up to
+    // the floor while keeping its heading/pitch/roll and lat/lon untouched.
+    scene.screenSpaceCameraController.minimumZoomDistance = CAMERA_FLOOR_M;
+    const enforceFloor = () => {
+      const c = camera.positionCartographic;
+      const floored = flooredHeight(c.height);
+      if (floored !== null) {
+        camera.setView({
+          destination: Cartesian3.fromRadians(c.longitude, c.latitude, floored),
+          orientation: { heading: camera.heading, pitch: camera.pitch, roll: camera.roll },
+        });
+      }
+    };
+    scene.preRender.addEventListener(enforceFloor);
+
     // Held, because a theme change has to re-request these tiles - see repaintTheme below.
     let bathymetry = scene.imageryLayers.addImageryProvider(new DarkBathymetryProvider());
 
     const layer = createAircraftLayer(scene);
+    // Sea traffic (D-078). Costs nothing while the vessel list is empty - which is exactly
+    // the state of an install with no AIS source configured.
+    const vesselLayer = createVesselLayer(scene);
     // Static ground reference, built once here and thereafter only shown or hidden (D-032).
     const places = createPlacesLayer(scene);
     // Weather radar builds nothing until it is switched on (D-040), so an off toggle costs
@@ -235,11 +261,17 @@ export default function Globe() {
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
     handler.setInputAction((m: { position: Cartesian2 }) => {
-      // Aircraft win over airfields: the traffic is the subject and is drawn above the ground.
-      // A click that hits neither still clears the selection, so click-empty-to-clear survives.
+      // Aircraft win over vessels win over airfields: traffic is the subject, and the air
+      // picture is drawn above the sea one. A click that hits none of them still clears the
+      // selection, so click-empty-to-clear survives.
       const hex = layer.pick(scene, m.position);
       if (hex) {
         useStore.getState().select(hex);
+        return;
+      }
+      const vesselKey = vesselLayer.pick(scene, m.position);
+      if (vesselKey) {
+        useStore.getState().selectVessel(vesselKey);
         return;
       }
       useStore.getState().selectPlace(places.pick(scene, m.position));
@@ -309,6 +341,16 @@ export default function Globe() {
         });
         perfStats.drMs += performance.now() - drStart;
         perfStats.drCalls++;
+
+        // Vessels ride the same throttle. No dead reckoning happens inside - the update
+        // reprojects screen-space hull rotations and applies staleness dimming, both of
+        // which change with the camera, not just with the (minutes-slow) feed.
+        vesselLayer.update(st.showVessels ? st.vessels : [], {
+          selectedKey: st.selectedVesselKey,
+          showAllLabels: st.showAllLabels,
+          detail: st.vesselDetail,
+          nowS: Date.now() / 1000,
+        });
       }
 
       /* --- FOLLOW: keep the camera locked to one contact (D-076 Stage 3) --- */
@@ -379,6 +421,31 @@ export default function Globe() {
           material: Color.fromCssColorString(palette().cyan).withAlpha(0.75),
           // The track is a measurement, not scenery: it must stay visible where it passes
           // behind terrain rather than being silently clipped into a shorter path.
+          arcType: ArcType.GEODESIC,
+        },
+      });
+    });
+
+    /* --- vessel track path: on the surface, rebuilt only when the loaded track changes --- */
+    let lastVesselTrackKey = "";
+    const unsubVesselTrack = useStore.subscribe((st) => {
+      const t = st.vesselTrack;
+      const key = t ? `${t.key}|${t.count}|${t.last_ts ?? ""}` : "";
+      if (key === lastVesselTrackKey) return;
+      lastVesselTrackKey = key;
+
+      clearByPrefix(viewer, VESSEL_TRACK_PREFIX);
+      if (!t || t.points.length < 2) return;
+
+      viewer.entities.add({
+        id: `${VESSEL_TRACK_PREFIX}${t.key}`,
+        polyline: {
+          // A few metres above the ellipsoid, not 0: a line exactly on the surface z-fights
+          // the globe and strobes. This is a drawing offset, not a claim about the data -
+          // the export writes the true fixes.
+          positions: t.points.map((p) => Cartesian3.fromDegrees(p.lon, p.lat, 8)),
+          width: 1.6,
+          material: Color.fromCssColorString(palette().cyan).withAlpha(0.75),
           arcType: ArcType.GEODESIC,
         },
       });
@@ -578,14 +645,17 @@ export default function Globe() {
       window.clearTimeout(depthTimer);
       unsub();
       unsubTrack();
+      unsubVesselTrack();
       unsubPlaces();
       unsubHome();
       unsubFly();
       unsubTheme();
       camera.moveEnd.removeEventListener(redeclutter);
       scene.postRender.removeEventListener(onTick);
+      scene.preRender.removeEventListener(enforceFloor);
       handler.destroy();
       layer.destroy();
+      vesselLayer.destroy();
       places.destroy();
       radar.destroy();
       boundaries.destroy();

@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import Globe from "./globe/Globe";
 import {
   AltitudeLegend, Attribution, CursorReadout, PlacePanel, SelectionPanel,
-  StatusBar, TrafficPanel, VertScaleBanner,
+  StatusBar, TrafficPanel, VertScaleBanner, VesselPanel,
 } from "./panels/Panels";
 import { CameraCluster } from "./panels/CameraCluster";
 import { GlanceView } from "./panels/GlanceView";
 import { ProbeView } from "./panels/ProbeView";
 import { useEnrichment } from "./data/useEnrichment";
+import { useVesselDetail } from "./data/useVesselDetail";
 import { currentView, isNarrow } from "./routes";
 import { MobileMapChrome } from "./panels/MobileMapChrome";
 import { PreferencesPanel } from "./panels/PreferencesPanel";
@@ -19,6 +20,14 @@ import { api } from "./api";
  *  not a constant; the camera-derived radius lands with Phase 6's camera cluster. Backend
  *  clamps to the 250 nm upstream ceiling regardless of what is asked for. */
 const POLL_MS = 2000;
+
+/**
+ * The vessel poll (D-078). Slower than aircraft on purpose, and cheap: the backend holds one
+ * snapshot per LORAN_AIS_POLL_SECONDS (default 120 s, floored at 60) and answers everything in
+ * between from cache, so this cadence only controls how quickly a fresh snapshot reaches the
+ * screen - it adds no upstream load whatsoever.
+ */
+const VESSEL_POLL_MS = 15000;
 
 /**
  * Exchange a `?t=` token for a session cookie, then scrub it out of the address bar (D-041).
@@ -189,6 +198,14 @@ export default function App() {
     s.selectedHex ? s.aircraft.find((a) => a.hex === s.selectedHex) : undefined);
   useEnrichment(selected?.hex ?? null, selected?.flight ?? null);
 
+  // Same reasoning for the selected VESSEL's detail (course = geometry, D-078): fetched here
+  // so every route that can select a vessel rotates its hull, chrome or no chrome.
+  const selectedVesselMmsi = useStore((s) => {
+    if (!s.selectedVesselKey) return null;
+    return s.vessels.find((v) => v.key === s.selectedVesselKey)?.mmsi ?? null;
+  });
+  useVesselDetail(selectedVesselMmsi);
+
   // The persisted theme has to reach the document BEFORE Globe mounts and reads the palette,
   // or the first frame is painted from the default tokens and only corrects on the next change.
   const theme = useStore((s) => s.theme);
@@ -205,6 +222,7 @@ export default function App() {
         .then((c) => c?.home && useStore.getState().setHome(c.home))
         .catch(() => {});
       poll();
+      pollVessels();
     });
 
     async function poll() {
@@ -234,6 +252,22 @@ export default function App() {
         useStore.getState().setFetchFailed([String(e)]);
       }
       if (!stop) window.setTimeout(poll, POLL_MS);
+    }
+
+    async function pollVessels() {
+      // Reads `home` fresh each tick like poll() above, and for the same reason.
+      const { home } = useStore.getState();
+      try {
+        const { authRequired, payload } = await api.vessels(home.lat, home.lon);
+        // The aircraft loop owns the authRequired flag (it retries faster and clears it);
+        // this loop just waits for the door to open rather than fighting over the state.
+        if (!authRequired && payload) {
+          useStore.getState().setVessels(payload);
+        }
+      } catch (e) {
+        useStore.getState().setVesselsFailed([String(e)]);
+      }
+      if (!stop) window.setTimeout(pollVessels, VESSEL_POLL_MS);
     }
 
     const health = window.setInterval(async () => {
@@ -332,9 +366,10 @@ export default function App() {
           className="absolute right-3 top-3 flex flex-col gap-3 items-end"
           style={{ maxHeight: "calc(100% - 46px)" }}
         >
-          {/* Mutually exclusive by construction - the store clears one when the other is
+          {/* Mutually exclusive by construction - the store clears the others when any one is
               set - so these never stack and fight for the bounded height. */}
           <SelectionPanel />
+          <VesselPanel />
           <PlacePanel />
         </div>
       </div>

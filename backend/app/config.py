@@ -85,6 +85,38 @@ GEOCODE_MISS_TTL_S = _f("LORAN_GEOCODE_MISS_TTL_SECONDS", 3600.0)
 # results page. Nominatim returns fewer when it knows fewer.
 GEOCODE_LIMIT = int(_f("LORAN_GEOCODE_LIMIT", 5))
 
+# ---------------------------------------------------------------------------
+# AIS via a self-hosted position-api instance (D-078). EMPTY BY DEFAULT: with no
+# base URL configured there is no AIS source, and the UI says so honestly -
+# exactly the state the project shipped in after aisstream measured zero
+# coverage here (docs/data-sources.md 5.1a).
+#
+# position-api (github.com/transparency-everywhere/position-api) answers by
+# SCRAPING MarineTraffic with a headless browser. That is the owner's deployment
+# decision, made with eyes open (D-078): this repo only talks to whatever
+# instance the owner points it at, e.g. LORAN_AIS_BASE_URL=http://192.168.1.x:5000
+# ---------------------------------------------------------------------------
+AIS_BASE_URL = os.environ.get("LORAN_AIS_BASE_URL", "").strip().rstrip("/")
+# Each snapshot costs position-api a full headless-Chrome page load against a
+# site that did not agree to serve it. 120 s is the default cadence; the floor
+# of 60 s is not negotiable from the .env - AIS positions update on the order of
+# minutes and hammering the scraper buys nothing but a ban.
+AIS_POLL_SECONDS = max(_f("LORAN_AIS_POLL_SECONDS", 120.0), 60.0)
+# Passed to position-api's near-me query verbatim. MarineTraffic does not
+# document the unit; docs/data-sources.md 5.1c records what is and is not known.
+AIS_RADIUS = _f("LORAN_AIS_RADIUS", 40.0)
+# Per-vessel detail (course/speed/fresh position) is its own scrape and is the
+# expensive one - a browser navigation per call - so a selection's answer is
+# held for 10 minutes and a failure is not retried for 2.
+AIS_DETAIL_TTL_S = _f("LORAN_AIS_DETAIL_TTL_SECONDS", 600.0)
+AIS_DETAIL_MISS_TTL_S = _f("LORAN_AIS_DETAIL_MISS_TTL_SECONDS", 120.0)
+# Vessel track ring buffer: same store as the aircraft one below, tuned for
+# ships - a 60 s sample over 6 h covers a harbour transit end to end where the
+# aircraft settings would forget it in half an hour.
+AIS_TRACK_WINDOW_S = _f("LORAN_AIS_TRACK_WINDOW_SECONDS", 6 * 3600.0)
+AIS_TRACK_SAMPLE_S = _f("LORAN_AIS_TRACK_SAMPLE_SECONDS", 60.0)
+AIS_TRACK_MAX_CONTACTS = int(_f("LORAN_AIS_TRACK_MAX_CONTACTS", 500))
+
 # Track ring buffer (D-016). In memory, dies with the process; Phase 5 makes it durable.
 # The sample floor matters: at a 2 s poll an unthrottled buffer is 900 near-identical points
 # per contact, which costs memory without lengthening the window it can cover.

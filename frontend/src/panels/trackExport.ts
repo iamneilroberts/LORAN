@@ -9,7 +9,7 @@
  * Coordinates are [lon, lat, altitude_metres] per RFC 7946 - which specifies WGS84 metres for
  * the third element, so feet are converted here rather than exported raw.
  */
-import { FT_TO_M, type TrackResult } from "../state/store";
+import { FT_TO_M, type TrackResult, type VesselTrackResult } from "../state/store";
 
 /** RFC 7946 wants an ISO 8601 string; the buffer stores UTC epoch seconds. */
 function iso(ts: number | null): string | null {
@@ -55,6 +55,42 @@ export function trackToGeoJSON(track: TrackResult, label: string) {
   };
 }
 
+/**
+ * Vessel variant (D-078). Same honesty properties; the third coordinate is 0 because a
+ * surface vessel's altitude IS sea level, not because the value is missing.
+ */
+export function vesselTrackToGeoJSON(track: VesselTrackResult, label: string) {
+  const coordinates = track.points.map((p) => [p.lon, p.lat, 0]);
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates },
+        properties: {
+          vessel_key: track.key,
+          label,
+          point_count: track.count,
+          first_fix: iso(track.first_ts),
+          last_fix: iso(track.last_ts),
+          span_seconds: track.span_s,
+          sample_interval_seconds: track.sample_s,
+          buffer_window_seconds: track.buffer_window_s,
+          older_points_discarded: track.truncated,
+          coverage_note: track.truncated
+            ? "Older fixes existed and were discarded: this is the tail of a longer track, " +
+              "bounded by an in-memory buffer. first_fix is NOT the start of the voyage."
+            : "Covers every fix held for this vessel. The buffer is in-memory and starts " +
+              "when the vessel came into range, so first_fix is not necessarily the start " +
+              "of the voyage.",
+          exported_at: new Date().toISOString(),
+          source: "loran in-memory vessel track buffer (not a durable archive)",
+        },
+      },
+    ],
+  };
+}
+
 /** Trigger a browser download. Nothing leaves the machine. */
 export function downloadGeoJSON(track: TrackResult, label: string) {
   const blob = new Blob([JSON.stringify(trackToGeoJSON(track, label), null, 2)], {
@@ -64,6 +100,18 @@ export function downloadGeoJSON(track: TrackResult, label: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = `track-${label || track.hex}-${track.last_ts ?? "unknown"}.geojson`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadVesselGeoJSON(track: VesselTrackResult, label: string) {
+  const blob = new Blob([JSON.stringify(vesselTrackToGeoJSON(track, label), null, 2)], {
+    type: "application/geo+json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `vessel-track-${label || track.key}-${track.last_ts ?? "unknown"}.geojson`;
   a.click();
   URL.revokeObjectURL(url);
 }

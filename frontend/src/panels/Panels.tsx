@@ -8,13 +8,16 @@
 import { useEffect, useState } from "react";
 import {
   hasSlicePerspective, matchesFilter, operatorKey, RANGE_PRESETS_NM, useStore, VERT_SCALES,
-  type Aircraft, type EnrichAirport, type PhotoResult, type TrackResult,
+  type Aircraft, type EnrichAirport, type PhotoResult, type TrackResult, type Vessel,
+  type VesselTrackResult,
 } from "../state/store";
 import { altitudeColour } from "../globe/aircraftLayer";
-import { downloadGeoJSON } from "./trackExport";
+import { asVesselCategory, vesselIconDataUri } from "../globe/vesselIcons";
+import { downloadGeoJSON, downloadVesselGeoJSON } from "./trackExport";
 import { externalLinks } from "./externalLinks";
 import { checkFiledOrigin, checkFiledRoute } from "../data/routeCheck";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
+import { palette } from "../styles/palette";
 import { api, isSingleFile } from "../api";
 
 const DASH = "—";
@@ -168,19 +171,68 @@ export function TrafficPanel() {
         </div>
       )}
 
-      {sections.seaTraffic && (
-        <>
-          {/* Honest empty state. There is no AIS source: measured zero coverage here. */}
-          <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
-            <span className="lbl">▸ Sea traffic</span>
-            <span style={{ color: "var(--dim)" }}>{DASH}</span>
-          </div>
-          <div className="px-[10px] pb-2">
-            <div className="lbl" style={{ color: "var(--amber)", fontSize: 9 }}>No AIS source</div>
-          </div>
-        </>
-      )}
+      {sections.seaTraffic && <SeaTrafficSection />}
     </div>
+  );
+}
+
+/**
+ * Sea traffic (D-078). Three honest states, told apart out loud:
+ *   - no AIS source configured (the fresh-install resting state)
+ *   - a source that exists but could not be read (an outage, in amber)
+ *   - a working source, with per-category counts using the same glyphs the globe draws
+ */
+function SeaTrafficSection() {
+  const vessels = useStore((s) => s.vessels);
+  const configured = useStore((s) => s.aisConfigured);
+  const ok = useStore((s) => s.aisFetchOk);
+  // Subscribed so the glyph swatches re-render in the new palette on a theme change.
+  useStore((s) => s.theme);
+  const pal = palette();
+
+  const byCategory = new Map<string, number>();
+  for (const v of vessels) {
+    byCategory.set(v.category, (byCategory.get(v.category) ?? 0) + 1);
+  }
+  const rows = [...byCategory.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  return (
+    <>
+      <div className="panel-h" style={{ borderTop: "1px solid var(--line)", borderBottom: "none" }}>
+        <span className="lbl">▸ Sea traffic</span>
+        <span style={{ color: configured ? undefined : "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
+          {configured ? vessels.length : DASH}
+        </span>
+      </div>
+      <div className="px-[10px] pb-2">
+        {!configured && (
+          <div className="lbl" style={{ color: "var(--amber)", fontSize: 9 }}>No AIS source</div>
+        )}
+        {configured && !ok && (
+          <div className="lbl" style={{ color: "var(--amber)", fontSize: 9 }}>AIS source unreachable</div>
+        )}
+        {configured && ok && vessels.length === 0 && (
+          <div className="lbl" style={{ fontSize: 9 }}>No vessels in range</div>
+        )}
+        {configured && rows.map(([cat, n]) => (
+          <div key={cat} className="flex items-center justify-between"
+               style={{ fontSize: 10, letterSpacing: ".08em", padding: "2px 0" }}>
+            <span className="flex items-center gap-2">
+              {/* The same generator the globe uses, so this doubles as the icon legend. */}
+              <img
+                src={vesselIconDataUri(asVesselCategory(cat), false, cat === "military" ? pal.mil : pal.cyan, pal.iconStroke)}
+                alt=""
+                width={12}
+                height={12}
+                style={{ display: "inline-block" }}
+              />
+              <span style={{ color: "var(--dim)" }}>{cat.toUpperCase()}</span>
+            </span>
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{n}</span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -237,6 +289,9 @@ export function LayerCluster() {
   const pitchDeg = useStore((s) => s.cameraPitchDeg);
   const showStates = useStore((s) => s.showStates);
   const showCounties = useStore((s) => s.showCounties);
+  const showVessels = useStore((s) => s.showVessels);
+  const aisConfigured = useStore((s) => s.aisConfigured);
+  const vesselCount = useStore((s) => s.vessels.length);
   const toggle = useStore((s) => s.toggle);
 
   const Item = ({
@@ -405,6 +460,10 @@ export function LayerCluster() {
       {/* The note is not decoration: it says the coverage is US-only and the frame is minutes
           old, so an empty layer reads as "no echo" or "outside coverage", never as broken. */}
       <Item on={showRadar} label="Weather radar" k="showRadar" note="NEXRAD · US · ~5 min old" />
+      {/* Sea traffic (D-078). The note carries the honest reason an on-toggle can show
+          nothing: no AIS source is the fresh-install state, not a broken layer. */}
+      <Item on={showVessels} label="Vessels" k="showVessels"
+            note={aisConfigured ? `${vesselCount} in range · AIS` : "no AIS source"} />
     </div>
   );
 }
@@ -979,6 +1038,225 @@ export function SelectionPanel({ fullWidth = false }: { fullWidth?: boolean } = 
   );
 }
 
+/* ---------------- right: selected vessel (D-078) ---------------- */
+
+/** Shared by the automatic load on selection and the explicit TRACK re-fetch. */
+function fetchVesselTrack(key: string, quiet = false): Promise<VesselTrackResult | null> {
+  if (!quiet) useStore.getState().setVesselTrack(null, true);
+  return api.vesselTrack(key).catch(() => null);
+}
+
+/**
+ * Load the selected vessel's track, then keep it current - the same contract as useTrack,
+ * on a slower cadence because the buffer itself samples at 60 s, so asking faster could not
+ * return anything new.
+ */
+function useVesselTrack(key: string | null) {
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+
+    fetchVesselTrack(key).then((d) => {
+      if (!cancelled) useStore.getState().setVesselTrack(d, false);
+    });
+
+    const id = window.setInterval(() => {
+      const st = useStore.getState();
+      if (!st.vesselTrack || st.vesselTrack.key.toLowerCase() !== key.toLowerCase()) return;
+      fetchVesselTrack(key, true).then((d) => {
+        if (cancelled || !d) return;
+        const cur = useStore.getState().vesselTrack;
+        if (!cur || cur.key.toLowerCase() !== key.toLowerCase()) return;
+        useStore.getState().setVesselTrack(d, false);
+      });
+    }, 30000);
+
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [key]);
+}
+
+/** "4 MIN AGO" / "2 H AGO" - the age of the vessel's last fix, or an em-dash when unknown. */
+function fixAge(posTs: number | null): string {
+  if (posTs === null) return DASH;
+  const s = Math.max(0, Math.round(Date.now() / 1000 - posTs));
+  if (s < 90) return `${s} SEC AGO`;
+  if (s < 5400) return `${Math.round(s / 60)} MIN AGO`;
+  return `${Math.round(s / 3600)} H AGO`;
+}
+
+export function VesselPanel({ fullWidth = false }: { fullWidth?: boolean } = {}) {
+  const key = useStore((s) => s.selectedVesselKey);
+  const vessels = useStore((s) => s.vessels);
+  const selectVessel = useStore((s) => s.selectVessel);
+  const detail = useStore((s) => s.vesselDetail);
+  const detailPending = useStore((s) => s.vesselDetailPending);
+  const track = useStore((s) => s.vesselTrack);
+  const trackPending = useStore((s) => s.vesselTrackPending);
+
+  const v: Vessel | undefined = key ? vessels.find((x) => x.key === key) : undefined;
+
+  // Hook order: before the early return, like the aircraft dossier.
+  useVesselTrack(key);
+  if (!v) return null;
+
+  // Only trust a detail reply that belongs to the vessel on screen.
+  const det = detail && v.mmsi && detail.mmsi === v.mmsi ? detail : null;
+  const detFailed = (det?.errors.length ?? 0) > 0;
+  // Snapshot course first (it may already be reported/derived); the detail lookup fills the
+  // gap for a selected vessel. Where both exist they came from the same source anyway.
+  const courseDeg = v.course_deg ?? (detFailed ? null : det?.course_deg ?? null);
+  const courseSource = v.course_deg !== null ? v.course_source
+    : detFailed ? null : det?.course_source ?? null;
+  const speedKt = v.speed_kt ?? (detFailed ? null : det?.speed_kt ?? null);
+  const posTs = det?.pos_ts != null && (v.pos_ts === null || det.pos_ts > v.pos_ts)
+    ? det.pos_ts : v.pos_ts;
+
+  const mine = track && track.key.toLowerCase() === v.key.toLowerCase() ? track : null;
+  const label = (v.name || v.mmsi || v.key).trim();
+
+  const btn = {
+    font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase" as const,
+    background: "transparent", cursor: "pointer", padding: "4px 6px",
+    border: "1px solid var(--line-bright)", borderRadius: 0, color: "var(--cyan)", flex: 1,
+  };
+
+  return (
+    <div
+      className={`panel panel--dossier ${fullWidth ? "w-full" : "w-[344px]"} pointer-events-auto ${v.military ? "panel--mil" : ""}`}
+      style={{ minHeight: 0, overflowY: "auto" }}
+    >
+      <div className="panel-h">
+        <span style={{ color: v.military ? "var(--mil)" : "var(--cyan)", fontSize: 14, letterSpacing: ".1em" }}>
+          {label.toUpperCase()}
+        </span>
+        <button onClick={() => selectVessel(null)} className="lbl"
+                style={{ background: "none", border: "none", cursor: "pointer" }}>×</button>
+      </div>
+      <div className="py-1">
+        <div className={`row ${v.mmsi ? "" : "row--dim"}`}>
+          <span>MMSI</span><span>{v.mmsi ?? DASH}</span>
+        </div>
+        <div className={`row ${v.military ? "row--mil" : ""}`}>
+          <span>Class</span><span>{v.military ? "MILITARY" : "CIVIL"}</span>
+        </div>
+        {/* The source's own wording, verbatim. The category only picked the icon. */}
+        <div className={`row ${v.type ? "" : "row--dim"}`}>
+          <span>Type</span><span style={{ fontSize: 12 }}>{v.type ?? DASH}</span>
+        </div>
+        <div className={`row ${speedKt !== null ? "" : "row--dim"}`}>
+          <span>Speed</span><span>{speedKt === null ? DASH : `${speedKt.toFixed(1)} KT`}</span>
+        </div>
+        <div className={`row ${courseDeg !== null ? "" : "row--dim"}`}>
+          <span>Course</span>
+          <span>{courseDeg === null
+            ? (detailPending && v.mmsi ? "…" : DASH)
+            : `${Math.round(courseDeg)}°`}</span>
+        </div>
+        {/* A derived course is a measurement from the vessel's own fixes, but it is not what
+            the ship reported - the difference is stated, never blended away. */}
+        {courseSource === "derived" && (
+          <div className="px-[10px] lbl" style={{ fontSize: 8, color: "var(--dim)" }}>
+            course derived from successive fixes · not reported
+          </div>
+        )}
+        <div className={`row ${posTs !== null ? "" : "row--dim"}`}>
+          <span>Last fix</span><span>{fixAge(posTs)}</span>
+        </div>
+        <div className="row"><span>Lat</span><span>{v.lat.toFixed(4)}</span></div>
+        <div className="row"><span>Lon</span><span>{v.lon.toFixed(4)}</span></div>
+      </div>
+      <div className="py-1" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className={`row ${v.callsign ? "" : "row--dim"}`}>
+          <span>Callsign</span><span>{v.callsign ?? DASH}</span>
+        </div>
+        <div className={`row ${v.imo ? "" : "row--dim"}`}>
+          <span>IMO</span><span>{v.imo ?? DASH}</span>
+        </div>
+        <div className={`row ${v.country ? "" : "row--dim"}`} title={v.country ?? undefined}>
+          <span>Flag</span><span style={{ fontSize: 12 }}>{v.country ?? DASH}</span>
+        </div>
+        {/* REPORTED destination: typed into the ship's own AIS transponder by its crew, with
+            all the staleness and freehand abbreviation that implies. Labelled so. */}
+        <div className={`row ${v.destination ? "" : "row--dim"}`} title={v.destination ?? undefined}>
+          <span>Rep dest</span><span style={{ fontSize: 12 }}>{v.destination ?? DASH}</span>
+        </div>
+        <div className={`row ${v.port_current ? "" : "row--dim"}`} title={v.port_current ?? undefined}>
+          <span>Current port</span><span style={{ fontSize: 12 }}>{v.port_current ?? DASH}</span>
+        </div>
+        <div className={`row ${v.port_next ? "" : "row--dim"}`} title={v.port_next ?? undefined}>
+          <span>Next port</span><span style={{ fontSize: 12 }}>{v.port_next ?? DASH}</span>
+        </div>
+        <div className={`row ${v.area ? "" : "row--dim"}`}>
+          <span>Area</span><span>{v.area ?? DASH}</span>
+        </div>
+        {detFailed && (
+          <div className="px-[10px] pt-1 lbl" style={{ color: "var(--amber)", fontSize: 9 }}>
+            per-vessel lookup unavailable
+          </div>
+        )}
+        {!v.mmsi && (
+          <div className="px-[10px] pt-1 lbl" style={{ fontSize: 9, color: "var(--dim)" }}>
+            No MMSI broadcast · per-vessel lookup not possible
+          </div>
+        )}
+      </div>
+      {/* Track controls: same vocabulary and the same honesty readout as the aircraft block. */}
+      <div className="py-1 px-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+        <div className="flex gap-1">
+          <button style={btn} disabled={trackPending}
+                  onClick={() => fetchVesselTrack(v.key).then((d) => useStore.getState().setVesselTrack(d, false))}>
+            {trackPending ? "…" : "Track"}
+          </button>
+          <button
+            style={{ ...btn, color: mine ? "var(--cyan)" : "var(--dim)" }}
+            onClick={() => useStore.getState().setVesselTrack(null, false)}
+            disabled={!mine}
+          >
+            Clear
+          </button>
+          <button
+            style={{ ...btn, color: mine?.count ? "var(--cyan)" : "var(--dim)" }}
+            onClick={() => mine && downloadVesselGeoJSON(mine, label)}
+            disabled={!mine?.count}
+          >
+            Export
+          </button>
+        </div>
+        {mine && (
+          <div className="lbl pt-1" style={{ fontSize: 9 }}>
+            {mine.count === 0
+              ? "No fixes buffered yet"
+              : `${mine.count} fixes · ${spanLabel(mine.span_s)}${mine.truncated ? " · older discarded" : ""}`}
+          </div>
+        )}
+        {mine && mine.count > 0 && (
+          <div className="lbl" style={{ fontSize: 8, color: "var(--dim)" }}>
+            Buffered since vessel came into range · max {Math.round(mine.buffer_window_s / 3600)} h
+          </div>
+        )}
+      </div>
+      {/* Outbound reference: the source's own page for this vessel. MMSI-keyed, so it is
+          withheld rather than guessed for a vessel that never broadcast one. */}
+      {v.mmsi && (
+        <div className="py-1 px-[10px]" style={{ borderTop: "1px solid var(--line)" }}>
+          <div className="lbl pb-1" style={{ fontSize: 8, color: "var(--dim)" }}>External</div>
+          <a
+            href={`https://www.marinetraffic.com/en/ais/details/ships/mmsi:${encodeURIComponent(v.mmsi)}`}
+            target="_blank" rel="noopener"
+            style={{
+              font: "inherit", fontSize: 9, letterSpacing: ".12em", textTransform: "uppercase",
+              background: "transparent", padding: "4px 6px", textDecoration: "none",
+              border: "1px solid var(--line-bright)", color: "var(--cyan)", display: "inline-block",
+            }}
+          >
+            MarineTraffic
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- bottom: status bar ---------------- */
 
 export function StatusBar() {
@@ -989,6 +1267,9 @@ export function StatusBar() {
   const degraded = useStore((s) => s.degraded);
   const lastFetchOk = useStore((s) => s.lastFetchOk);
   const aircraft = useStore((s) => s.aircraft);
+  const vessels = useStore((s) => s.vessels);
+  const aisConfigured = useStore((s) => s.aisConfigured);
+  const aisFetchOk = useStore((s) => s.aisFetchOk);
   const fps = useStore((s) => s.fps);
   const home = useStore((s) => s.home);
 
@@ -1012,8 +1293,12 @@ export function StatusBar() {
         <span className={`dot ${!lastFetchOk ? "dot--off" : degraded ? "dot--warn" : ""}`} />
         {!lastFetchOk ? "ADS-B offline" : source ? `${source} live` : "connecting"}
       </span>
-      <span className="chip"><span className="dot dot--off" />AIS no source</span>
+      <span className="chip">
+        <span className={`dot ${!aisConfigured || !aisFetchOk ? "dot--off" : ""}`} />
+        {!aisConfigured ? "AIS no source" : !aisFetchOk ? "AIS offline" : "AIS live"}
+      </span>
       <span className="chip">{aircraft.length} air</span>
+      {aisConfigured && <span className="chip">{vessels.length} sea</span>}
       <span className="chip" style={{ color: mil ? "var(--mil)" : undefined }}>{mil} mil</span>
       <span className="chip">{home.label}</span>
       <span className="ml-auto chip">{fps} FPS · WebGL2</span>
@@ -1074,6 +1359,9 @@ export function Attribution() {
   // Radar credit appears only while the layer is on: crediting a source we are not currently
   // drawing would be as misleading as failing to credit one we are.
   const showRadar = useStore((s) => s.showRadar);
+  // Vessel credit appears when an AIS source is configured: naming where the sea picture
+  // comes from is part of presenting it honestly (D-078).
+  const aisConfigured = useStore((s) => s.aisConfigured);
   return (
     <div
       className="absolute right-3"
@@ -1089,6 +1377,7 @@ export function Attribution() {
       */}
       {" · geocoding © OpenStreetMap contributors (ODbL)"}
       {showRadar && " · NEXRAD NOAA/NWS via Iowa State Mesonet"}
+      {aisConfigured && " · vessel data via self-hosted position-api (MarineTraffic)"}
     </div>
   );
 }

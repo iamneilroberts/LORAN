@@ -78,6 +78,14 @@ describe("migratePrefs", () => {
     expect(migrated.theme).toBe("slate");
   });
 
+  it("from < 8 adds showVessels: true without touching an already-current payload", () => {
+    // ON by default (D-078): with no AIS source the layer draws nothing and says why, so a
+    // browser that persisted prefs before vessels existed loses nothing by inheriting it on.
+    const migrated = migratePrefs({ theme: "slate", homeOverride: null }, 7);
+    expect(migrated.showVessels).toBe(true);
+    expect(migrated.theme).toBe("slate");
+  });
+
   it("chains: a v1 payload picks up the v2, v3, v4 and v5 fields, not just the newest", () => {
     const migrated = migratePrefs({ showDatum: true }, 1);
     // v2 step (D-047) - proves the chain did not break when v3 and v4 were added on top of it.

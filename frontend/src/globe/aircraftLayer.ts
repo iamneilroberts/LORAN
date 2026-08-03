@@ -193,8 +193,11 @@ const DRILL_LIMIT = 8;
  * pointing down. Hence `-atan2(dx, -dy)`. Falls back to the raw compass heading when the two
  * projected points land within a pixel of each other (contact near the horizon, or zoomed far
  * out) - at that separation the screen vector is noise and would make the icon spin.
+ *
+ * Exported since D-078: the vessel layer points hulls with the same maths (at height 0),
+ * and a second copy of this projection is exactly the drift a shared function prevents.
  */
-function screenRotation(
+export function screenRotation(
   scene: Scene,
   pos: Cartesian3,
   lat: number,

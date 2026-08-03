@@ -9,7 +9,10 @@
  * /api/* fetches. Every call site in the app goes through here rather than calling fetch itself,
  * which is what keeps this from becoming a second copy of the app.
  */
-import type { Enrichment, FeedStatus, PhotoResult, TrackResult } from "./state/store";
+import type {
+  Enrichment, FeedStatus, PhotoResult, TrackResult, VesselDetail, VesselsPayload,
+  VesselTrackResult,
+} from "./state/store";
 import type { AircraftPayload } from "./data/upstream";
 
 /** Injected by vite.config.ts (false) and vite.config.single.ts (true). */
@@ -48,6 +51,19 @@ export interface AircraftResult {
   payload: AircraftPayload | null;
 }
 
+export interface VesselsResult {
+  authRequired: boolean;
+  payload: VesselsPayload | null;
+}
+
+/**
+ * Vessels are GONE from the single-file build, stated rather than silently empty (D-078).
+ * The AIS source is a position-api instance on the owner's own network; the browser cannot
+ * reach it cross-origin, and there is nothing honest to substitute.
+ */
+const VESSELS_UNAVAILABLE =
+  "Sea traffic needs the server - the single-file build has no position-api proxy";
+
 export const api = {
   /** Trade a `?t=` link token for a session cookie. No door to open without a backend. */
   async claimSession(token: string): Promise<void> {
@@ -81,6 +97,36 @@ export const api = {
     if (r.status === 401) return { authRequired: true, payload: null };
     if (!r.ok) throw new Error(String(r.status));
     return { authRequired: false, payload: (await r.json()) as AircraftPayload };
+  },
+
+  async vessels(lat: number, lon: number): Promise<VesselsResult> {
+    if (SINGLE_FILE) {
+      return {
+        authRequired: false,
+        payload: { configured: false, source: null, count: 0, vessels: [],
+                   errors: [VESSELS_UNAVAILABLE] },
+      };
+    }
+    const r = await fetch(`/api/vessels?lat=${lat}&lon=${lon}`);
+    if (r.status === 401) return { authRequired: true, payload: null };
+    if (!r.ok) throw new Error(String(r.status));
+    return { authRequired: false, payload: (await r.json()) as VesselsPayload };
+  },
+
+  async vesselDetail(mmsi: string): Promise<VesselDetail> {
+    if (SINGLE_FILE) {
+      return { mmsi, lat: null, lon: null, course_deg: null, course_source: null,
+               speed_kt: null, pos_ts: null, errors: [VESSELS_UNAVAILABLE] };
+    }
+    return getJson<VesselDetail>(`/api/vessel?mmsi=${encodeURIComponent(mmsi)}`);
+  },
+
+  async vesselTrack(key: string): Promise<VesselTrackResult> {
+    if (SINGLE_FILE) {
+      return { key, count: 0, first_ts: null, last_ts: null, span_s: 0,
+               buffer_window_s: 0, sample_s: 0, truncated: false, points: [] };
+    }
+    return getJson<VesselTrackResult>(`/api/vessel-track?key=${encodeURIComponent(key)}`);
   },
 
   async feeds(): Promise<FeedStatus[]> {
