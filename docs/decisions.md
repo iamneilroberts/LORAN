@@ -3548,3 +3548,32 @@ the part with the clear payoff, and it stands alone.
 wrong. CI closes the mechanical cases only. Incident 4 (a wrong test) and the `git add -A` that
 published a personal file would still get through. **CI is not a substitute for checking the
 artefact you actually shipped.**
+
+## D-078 — 2026-08-08 — TAKE CONTROL: deep-link a live contact into the adsb-game flight sim
+
+The selection dossier grows one prominent, full-width **TAKE CONTROL** button directly under the
+title (the owner asked for it to be obvious on selection, not buried). Clicking it opens the
+sibling **adsb-game** flight sim in a new tab, flying the selected live aircraft.
+
+- **Protocol (fixed contract, adsb-game is built to match):** open `${SIM_BASE}/?takeover=<hex>`
+  where `<hex>` is the lowercase ICAO 24-bit hex, in a new tab with `noopener,noreferrer`. adsb-game
+  reads the hex on load and spawns the sim on that contact. The sim tab is a separate app — LORAN
+  hands off and stays a live display.
+- **Configurable base:** `SIM_BASE` is one named constant in `config.ts`, default
+  `https://adsb.voygent.app`, overridable at build time via `VITE_SIM_BASE`. Pointing at a local
+  sim or a different host is a one-line env change, never a code edit — same pattern as every other
+  frontend knob here (D-019).
+- **Eligibility is ported, not imported.** adsb-game and LORAN share no runtime code, so the sim's
+  own gate (`takeover/eligibility.ts::checkEligibility`) is re-implemented against LORAN's
+  `Aircraft` field names in `panels/takeover.ts::canTakeControl`: `on_ground` (not the readsb
+  `alt_baro:"ground"` string), `seen_pos_s` for staleness (max 15 s, matching adsb-game's
+  `MAX_SEEN_POS_S`), `alt_geom_ft ?? alt_baro_ft` for altitude, `gs_kt`, `track_deg`. A contact on
+  the ground, on a stale fix, or missing altitude / ground speed / track is refused. Type and
+  military status are NOT refusals — that is the sim's call to make on spawn.
+- **The disabled button always names its reason.** The same predicate produces the disabled state
+  and the reason string shown beneath it (`Sim unavailable · POSITION STALE (40S)`), so the button
+  can never be dead for a reason the operator cannot see — the same honesty rule the eligibility
+  gate and the external-links gate already hold.
+- Gate + URL builder are pure and unit-tested (`panels/takeover.test.ts`), with the broken-arm
+  cases (each refusal breaks exactly one field of an otherwise-flyable contact) carrying the weight.
+  No new dependency; frontend only; no backend change.

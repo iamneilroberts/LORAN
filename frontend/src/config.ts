@@ -16,6 +16,16 @@ function num(v: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/* ---- take control → adsb-game flight sim (D-078) ---- */
+
+/**
+ * Base URL of the adsb-game flight sim the TAKE CONTROL button deep-links into. The button opens
+ * `${SIM_BASE}/?takeover=<lowercase-hex>` in a new tab and adsb-game reads the hex and spawns the
+ * sim flying that live contact. A single constant so pointing at a local sim or a different host is
+ * a one-line env override, never a code edit.
+ */
+export const SIM_BASE = str(import.meta.env.VITE_SIM_BASE, "https://adsb.voygent.app");
+
 /* ---- weather radar (D-040) ---- */
 
 /**

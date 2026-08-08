@@ -13,6 +13,7 @@ import {
 import { altitudeColour } from "../globe/aircraftLayer";
 import { downloadGeoJSON } from "./trackExport";
 import { externalLinks } from "./externalLinks";
+import { canTakeControl, simTakeoverUrl } from "./takeover";
 import { checkFiledOrigin, checkFiledRoute } from "../data/routeCheck";
 import { COLLAPSE_AFTER_MS, HOVER_EXPAND_DELAY_MS, trafficPanelSections } from "./trafficCollapse";
 import { api, isSingleFile } from "../api";
@@ -674,6 +675,48 @@ function PhotoBlock({ result, pending }: { result: PhotoResult | null; pending: 
 }
 
 /**
+ * TAKE CONTROL — hands the selected LIVE contact to the adsb-game flight sim (D-078). It sits
+ * directly under the dossier title, full-width and prominent, because it is the one action in this
+ * panel that leaves the console entirely. The gate and its reason both come from `takeover.ts`, so
+ * a contact the sim cannot honestly spawn (on the ground, stale fix, missing altitude / speed /
+ * track) is refused with the reason named on screen, never a silently dead button. On click it
+ * opens `${SIM_BASE}/?takeover=<lowercase-hex>` in a new tab — adsb-game reads the hex and spawns.
+ */
+function TakeControlBlock({ aircraft }: { aircraft: Aircraft }) {
+  const verdict = canTakeControl(aircraft);
+  const url = verdict.eligible && aircraft.hex ? simTakeoverUrl(aircraft.hex) : null;
+  return (
+    <div className="py-1 px-[10px]">
+      <button
+        disabled={!verdict.eligible}
+        // window.open with noopener,noreferrer is the anchor's target=_blank rel=... in one call:
+        // the sim tab gets no handle back to this window and no referrer.
+        onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}
+        title={verdict.eligible
+          ? "Fly this live aircraft in the adsb-game flight sim (opens in a new tab)"
+          : `Cannot take control — ${verdict.reason}`}
+        style={{
+          font: "inherit", width: "100%", minHeight: 34, fontSize: 11,
+          letterSpacing: ".14em", textTransform: "uppercase", borderRadius: 0,
+          border: `1px solid ${verdict.eligible ? "var(--cyan)" : "var(--line-bright)"}`,
+          background: verdict.eligible ? "rgba(95,215,224,.08)" : "transparent",
+          color: verdict.eligible ? "var(--cyan)" : "var(--dim)",
+          cursor: verdict.eligible ? "pointer" : "not-allowed",
+        }}
+      >
+        ▶ Take control
+      </button>
+      {/* The gate's own words, so the button is never disabled for a reason the operator can't see. */}
+      {!verdict.eligible && (
+        <div className="lbl pt-1" style={{ fontSize: 9, color: "var(--amber)" }}>
+          Sim unavailable · {verdict.reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Outbound reference links. The gating lives in `externalLinks.ts` so it is under test; this
  * is only the rendering. Chips rather than a row of text: they match the TRACK / CLEAR / EXPORT
  * vocabulary already established two blocks up, and a 9px inline link is a poor target.
@@ -883,6 +926,7 @@ export function SelectionPanel({ fullWidth = false }: { fullWidth?: boolean } = 
         </span>
         <button onClick={() => select(null)} className="lbl" style={{ background: "none", border: "none", cursor: "pointer" }}>×</button>
       </div>
+      <TakeControlBlock aircraft={a} />
       <div className="py-1">
         <div className="row"><span>ICAO24</span><span>{a.hex?.toUpperCase() ?? DASH}</span></div>
         <div className={`row ${a.military ? "row--mil" : ""}`}>
